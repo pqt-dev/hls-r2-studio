@@ -65,7 +65,8 @@ Bảng `users` (Laravel Auth chuẩn, dùng cho đăng nhập admin):
 |---|---|---|
 | id | bigint | |
 | name | string | |
-| email | string, unique | dùng để đăng nhập |
+| username | string, unique | dùng để đăng nhập |
+| email | string, nullable | dự phòng cho tính năng quên mật khẩu sau này, hiện có thể để trống |
 | email_verified_at | timestamp, nullable | không dùng trong luồng hiện tại (không có xác minh email) |
 | password | string, hashed | |
 | remember_token | string, nullable | |
@@ -95,7 +96,7 @@ mysql -u root -p -e "CREATE DATABASE hls_r2_studio CHARACTER SET utf8mb4 COLLATE
 
 ```bash
 php artisan migrate
-php artisan admin:create admin@example.com "mat-khau-manh"
+php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
 ```
 
 Chạy ứng dụng — cần **hai tiến trình song song**:
@@ -248,7 +249,7 @@ docker compose up -d mysql
 # đợi mysql healthy
 
 docker compose run --rm app php artisan migrate --force
-docker compose run --rm app php artisan admin:create admin@example.com "mat-khau-manh"
+docker compose run --rm app php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
 
 docker compose up -d
 ```

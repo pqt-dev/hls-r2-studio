@@ -17,9 +17,22 @@ class VideoController extends Controller
      */
     public function index(Request $request)
     {
-        $activeVideos = Video::whereIn('status', ['pending', 'processing'])
-            ->orderBy('created_at', 'asc')
-            ->get();
+        $request->validate([
+            'search' => ['nullable', 'string'],
+            'status' => ['nullable', 'in:pending,processing,ready,failed'],
+        ]);
+
+        $search = $request->query('search');
+        $status = $request->query('status');
+
+        $applySearch = function ($query) use ($search) {
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                        ->orWhere('original_filename', 'like', "%{$search}%");
+                });
+            }
+        };
 
         $allowedPerPage = [12, 24, 48, 100];
         $perPage = Setting::current()->videos_per_page;
@@ -27,7 +40,32 @@ class VideoController extends Controller
             $perPage = (int) $request->query('per_page');
         }
 
+        $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
+
+        if ($status) {
+            $filteredVideos = Video::where('status', $status)
+                ->tap($applySearch)
+                ->orderBy('created_at', 'desc')
+                ->paginate($perPage);
+
+            foreach ($filteredVideos as $video) {
+                if ($video->status === 'ready') {
+                    $video->public_url = Setting::current()->r2Disk()->url($video->playlist_path);
+                }
+            }
+
+            $hasActive = $filteredVideos->contains(fn ($video) => in_array($video->status, ['pending', 'processing'], true));
+
+            return view('videos.index', compact('filteredVideos', 'status', 'search', 'deleteFromR2', 'perPage', 'allowedPerPage', 'hasActive'));
+        }
+
+        $activeVideos = Video::whereIn('status', ['pending', 'processing'])
+            ->tap($applySearch)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
         $completedVideos = Video::whereIn('status', ['ready', 'failed'])
+            ->tap($applySearch)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
@@ -37,9 +75,9 @@ class VideoController extends Controller
             }
         }
 
-        $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
+        $hasActive = $activeVideos->isNotEmpty();
 
-        return view('videos.index', compact('activeVideos', 'completedVideos', 'deleteFromR2', 'perPage', 'allowedPerPage'));
+        return view('videos.index', compact('activeVideos', 'completedVideos', 'deleteFromR2', 'perPage', 'allowedPerPage', 'status', 'search', 'hasActive'));
     }
 
     /**
