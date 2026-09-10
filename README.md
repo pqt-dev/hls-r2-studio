@@ -87,6 +87,12 @@ php artisan key:generate
 
 Điền vào `.env`: thông tin MySQL (`DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`), Cloudflare R2 (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_URL`), và `FFMPEG_BINARY`/`FFPROBE_BINARY` nếu ffmpeg không nằm trong `$PATH` (dùng `which ffmpeg` / `which ffprobe` để lấy full path).
 
+Laravel migration chỉ tạo bảng, không tự tạo database — tạo database trống trên MySQL trước khi migrate (đổi `hls_r2_studio` khớp với `DB_DATABASE` bạn đã điền ở bước trên):
+
+```bash
+mysql -u root -p -e "CREATE DATABASE hls_r2_studio CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+```
+
 ```bash
 php artisan migrate
 php artisan admin:create admin@example.com "mat-khau-manh"
@@ -127,6 +133,8 @@ cp .env.example .env
 - Đổi `DB_PASSWORD`/`DB_ROOT_PASSWORD` khỏi giá trị mặc định.
 - Sinh `APP_KEY`: `docker compose run --rm app php artisan key:generate`.
 - Nếu là VPS production: đổi thêm `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=<domain thật>`.
+
+Không cần tự tạo database — container `mysql` tự tạo theo `MYSQL_DATABASE`/`DB_DATABASE` trong `.env` ngay lần khởi động đầu tiên.
 
 ```bash
 docker compose up -d mysql
