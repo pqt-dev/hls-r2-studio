@@ -269,3 +269,4 @@ Khuyến nghị: số worker = số core CPU trừ 1 (dư 1 core cho web server)
 
 - Laravel giới hạn upload theo `UPLOAD_MAX_SIZE_MB` trong `.env`, nhưng PHP còn giới hạn riêng qua `php.ini` (`docker/php/uploads.ini`) và nginx (`client_max_body_size` trong `docker/nginx.conf`) — đổi cả 3 nơi rồi build lại image nếu cần tăng giới hạn.
 - `FFMPEG_BINARY`/`FFPROBE_BINARY` mặc định là `ffmpeg`/`ffprobe` (lấy từ `$PATH`); image Docker đã cài sẵn qua `apt` nên không cần chỉnh khi chạy Docker.
+- Nếu deploy sau reverse proxy có SSL riêng (aaPanel, Nginx ngoài, Cloudflare Tunnel...): app đã tự động trust proxy header (`trustProxies(at: '*')` trong `bootstrap/app.php`) nên không cần chỉnh gì thêm phía Laravel — chỉ cần đảm bảo proxy đó gửi header `X-Forwarded-Proto: https`, nếu không link asset/URL sinh ra sẽ bị sai scheme (`http://` thay vì `https://`) gây mixed content.
