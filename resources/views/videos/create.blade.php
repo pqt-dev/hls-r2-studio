@@ -5,8 +5,12 @@
 @section('breadcrumb', 'Trang chủ / Tải lên video')
 
 @section('content')
-    <div class="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
-        <form id="upload-form" class="space-y-5"
+    <div class="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div class="bg-emerald-600 px-6 py-4">
+            <h2 class="text-base font-semibold text-white">☁️ Tải lên Video</h2>
+        </div>
+
+        <form id="upload-form" class="p-6 space-y-5"
               data-max-size-mb="{{ config('videos.max_upload_size_mb') }}"
               data-chunk-size-mb="{{ config('videos.chunk_size_mb') }}">
             <div id="title-field-wrapper">
@@ -19,15 +23,24 @@
             <div>
                 <label for="video" class="block text-sm font-medium text-gray-700 mb-1">File video</label>
                 <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
-                <label for="video"
-                       class="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 cursor-pointer">
-                    Chọn video
-                </label>
+                <div id="dropzone"
+                     class="rounded-2xl border-2 border-dashed border-gray-300 px-6 py-10 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors">
+                    <div class="text-4xl mb-2">☁️</div>
+                    <p class="text-sm text-gray-600">
+                        Kéo thả video vào đây hoặc
+                        <span class="text-emerald-600 font-medium underline">chọn file</span>
+                    </p>
+                </div>
                 <p class="mt-1 text-xs text-gray-500">Định dạng: mp4, mov, mkv, avi, webm. Dung lượng tối đa {{ config('videos.max_upload_size_mb') }} MB.</p>
                 <div id="selected-files-list" class="mt-2 space-y-1 hidden"></div>
             </div>
 
-            <div id="upload-queue" class="hidden space-y-3"></div>
+            <div id="upload-progress-card" class="hidden rounded-2xl border border-gray-200 overflow-hidden">
+                <div class="bg-emerald-600 px-4 py-2">
+                    <h3 class="text-sm font-semibold text-white">📊 Tiến trình tải lên</h3>
+                </div>
+                <div id="upload-queue" class="p-4 space-y-3"></div>
+            </div>
 
             <div id="upload-error" class="hidden rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm"></div>
 
@@ -54,6 +67,8 @@
                 const titleFieldWrapper = document.getElementById('title-field-wrapper');
                 const titleMultiNote = document.getElementById('title-multi-note');
                 const submitButton = document.getElementById('upload-submit');
+                const dropzone = document.getElementById('dropzone');
+                const uploadProgressCard = document.getElementById('upload-progress-card');
                 const queueList = document.getElementById('upload-queue');
                 const selectedFilesList = document.getElementById('selected-files-list');
                 const errorBox = document.getElementById('upload-error');
@@ -174,9 +189,41 @@
                     renderSelectedFilesList();
                 });
 
+                dropzone.addEventListener('click', function () {
+                    fileInput.click();
+                });
+
+                dropzone.addEventListener('dragover', function (e) {
+                    e.preventDefault();
+                    dropzone.classList.add('border-emerald-400', 'bg-emerald-50/40');
+                });
+
+                dropzone.addEventListener('dragleave', function (e) {
+                    e.preventDefault();
+                    dropzone.classList.remove('border-emerald-400', 'bg-emerald-50/40');
+                });
+
+                dropzone.addEventListener('drop', function (e) {
+                    e.preventDefault();
+                    dropzone.classList.remove('border-emerald-400', 'bg-emerald-50/40');
+
+                    const droppedFiles = e.dataTransfer.files;
+                    if (!droppedFiles || droppedFiles.length === 0) {
+                        return;
+                    }
+
+                    const dataTransfer = new DataTransfer();
+                    Array.from(droppedFiles).forEach(function (file) {
+                        dataTransfer.items.add(file);
+                    });
+                    fileInput.files = dataTransfer.files;
+
+                    fileInput.dispatchEvent(new Event('change'));
+                });
+
                 function buildQueueUI(files) {
                     queueList.innerHTML = '';
-                    queueList.classList.remove('hidden');
+                    uploadProgressCard.classList.remove('hidden');
 
                     return files.map(function (file) {
                         const row = document.createElement('div');

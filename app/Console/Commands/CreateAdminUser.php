@@ -12,28 +12,28 @@ class CreateAdminUser extends Command
      *
      * @var string
      */
-    protected $signature = 'admin:create {email} {password}';
+    protected $signature = 'admin:create {username} {password} {--email=}';
 
     /**
      * The console command description.
      *
      * @var string
      */
-    protected $description = 'Tạo hoặc cập nhật tài khoản admin (upsert theo email)';
+    protected $description = 'Tạo hoặc cập nhật tài khoản admin (upsert theo username)';
 
     /**
      * Execute the console command.
      */
     public function handle(): void
     {
-        $email = $this->argument('email');
+        $username = $this->argument('username');
         $password = $this->argument('password');
 
         User::updateOrCreate(
-            ['email' => $email],
-            ['name' => 'Admin', 'password' => $password]
+            ['username' => $username],
+            ['name' => 'Admin', 'password' => $password, 'email' => $this->option('email')]
         );
 
-        $this->info("Đã tạo/cập nhật admin: {$email}");
+        $this->info("Đã tạo/cập nhật admin: {$username}");
     }
 }

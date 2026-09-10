@@ -4,11 +4,71 @@
 @section('page-title', 'Danh sách video')
 @section('breadcrumb', 'Trang chủ / Danh sách video')
 
-@php
-    $hasActive = $activeVideos->isNotEmpty();
-@endphp
-
 @section('content')
+    <form method="GET" action="{{ route('videos.index') }}" class="mb-4 flex items-center gap-2">
+        @if (request()->query('status'))
+            <input type="hidden" name="status" value="{{ request()->query('status') }}">
+        @endif
+        <input type="text" name="search" value="{{ $search }}" placeholder="Tìm theo tên video hoặc tên file..."
+               class="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600">
+        <button type="submit"
+                class="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+            Tìm kiếm
+        </button>
+    </form>
+
+    <div class="flex gap-2 mb-4 border-b border-gray-200">
+        @php
+            $tabs = [
+                null => 'Tất cả',
+                'pending' => 'Đang chờ',
+                'processing' => 'Đang xử lý',
+                'ready' => 'Đã hoàn thành',
+                'failed' => 'Thất bại',
+            ];
+            $currentStatus = request()->query('status');
+        @endphp
+        @foreach ($tabs as $value => $label)
+            <a href="{{ route('videos.index', array_filter(['status' => $value, 'search' => $search])) }}"
+               class="px-3 py-2 text-sm font-medium border-b-2 {{ $currentStatus === $value ? 'border-emerald-600 text-emerald-600' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
+                {{ $label }}
+            </a>
+        @endforeach
+    </div>
+
+    @if ($status)
+        <div>
+            @if ($filteredVideos->isEmpty())
+                <div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500">
+                    Không tìm thấy video nào.
+                </div>
+            @else
+                <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
+                    <table class="min-w-full divide-y divide-gray-200 text-sm">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="w-10 px-3 py-2"></th>
+                                <th class="px-3 py-2 text-left">Thumbnail</th>
+                                <th class="px-3 py-2 text-left">Tên video</th>
+                                <th class="px-3 py-2 text-left">Trạng thái</th>
+                                <th class="px-3 py-2 text-left">Thời lượng</th>
+                                <th class="px-3 py-2 text-left">Kích thước</th>
+                                <th class="px-3 py-2 text-left">Thông số</th>
+                                <th class="px-3 py-2 text-left">Ngày upload</th>
+                                <th class="px-3 py-2 text-right">Hành động</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-gray-100">
+                            @foreach ($filteredVideos as $video)
+                                @include('videos._row', ['video' => $video])
+                            @endforeach
+                        </tbody>
+                    </table>
+                </div>
+                <div class="mt-4">{{ $filteredVideos->appends(request()->query())->links() }}</div>
+            @endif
+        </div>
+    @else
     @if ($activeVideos->isNotEmpty())
         <div class="mb-8">
             <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">⏳ Đang xử lý / Hàng đợi ({{ $activeVideos->count() }})</h2>
@@ -104,6 +164,7 @@
             <div class="mt-4">{{ $completedVideos->appends(request()->query())->links() }}</div>
         @endif
     </div>
+    @endif
 
     <div id="video-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
         <div class="bg-black rounded-xl overflow-hidden w-full max-w-3xl">

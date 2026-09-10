@@ -17,7 +17,7 @@ class AuthController extends Controller
     public function login(Request $request): RedirectResponse
     {
         $credentials = $request->validate([
-            'email' => ['required', 'string'],
+            'username' => ['required', 'string'],
             'password' => ['required', 'string'],
         ]);
 
@@ -28,8 +28,8 @@ class AuthController extends Controller
         }
 
         return back()->withErrors([
-            'email' => 'Email hoặc mật khẩu không đúng.',
-        ])->onlyInput('email');
+            'username' => 'Email hoặc mật khẩu không đúng.',
+        ])->onlyInput('username');
     }
 
     public function logout(Request $request): RedirectResponse
