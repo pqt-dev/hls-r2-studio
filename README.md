@@ -231,8 +231,15 @@ cp .env.example .env
 
 - Điền R2 thật vào `.env` (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_URL`).
 - Đổi `DB_PASSWORD`/`DB_ROOT_PASSWORD` khỏi giá trị mặc định.
-- Sinh `APP_KEY`: `docker compose run --rm app php artisan key:generate`.
 - Nếu là VPS production: đổi thêm `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=<domain thật>`.
+
+**Bắt buộc — sinh `APP_KEY`** (Laravel dùng key này để mã hoá session, cookie, và các trường nhạy cảm như `r2_secret_access_key` trong Cài đặt; thiếu key này app sẽ lỗi ngay khi chạy):
+
+```bash
+docker compose run --rm app php artisan key:generate
+```
+
+⚠️ Chỉ chạy lệnh này **1 lần duy nhất** khi mới cài — sinh lại `APP_KEY` sau khi đã có dữ liệu thật sẽ làm hỏng các trường đã mã hoá bằng key cũ (ví dụ R2 Secret Key đã lưu qua trang Cài đặt sẽ không giải mã được nữa).
 
 Không cần tự tạo database — container `mysql` tự tạo theo `MYSQL_DATABASE`/`DB_DATABASE` trong `.env` ngay lần khởi động đầu tiên.
 
