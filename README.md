@@ -74,7 +74,9 @@ Bảng `users` (Laravel Auth chuẩn, dùng cho đăng nhập admin):
 
 ## Cài đặt
 
-### Cách 1: Không dùng Docker (cài trực tiếp)
+### Cách 1: Cài trực tiếp (khuyến nghị cho VPS/production)
+
+Khuyến nghị dùng cách này cho VPS/production: Docker chạy Nginx và kết nối DB riêng dễ xung đột với panel quản lý VPS có sẵn (ví dụ aaPanel) — từng gặp lỗi HTTPS/CSS do 2 lớp Nginx chồng nhau, và firewall/quyền MySQL phức tạp không cần thiết khi mọi thứ vốn đã chạy sẵn trên cùng máy.
 
 Yêu cầu: PHP 8.2+, Composer, Node.js + npm, MySQL, FFmpeg/FFprobe, tài khoản Cloudflare R2.
 
@@ -211,44 +213,18 @@ sudo ufw allow 80/tcp
 
 - Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn là việc cần tự làm thêm (giống Cách 2, không lặp lại chi tiết ở đây).
 
-### Cách 2: Dùng Docker (chạy local hoặc lên VPS — cùng 1 quy trình)
+### Cách 2: Dùng Docker (CHỈ khuyến nghị cho test/dev cục bộ, KHÔNG dùng cho VPS)
 
-Các bước dưới đây giống nhau dù chạy trên máy local hay trên VPS thật — nếu deploy VPS, SSH vào VPS trước rồi làm các bước y hệt.
+Cách này chỉ nên dùng để test tính năng trên máy cá nhân trước khi deploy thật bằng Cách 1. Không dùng Docker để deploy lên VPS production — xem lý do ở đầu mục Cách 1.
 
-Yêu cầu: Docker + Docker Compose đã cài (trên VPS: `curl -fsSL https://get.docker.com | sh`).
-
-Nếu là VPS, đưa code lên VPS trước (không copy `.env` thật qua kênh này):
-
-```bash
-rsync -avz --progress --exclude 'node_modules' --exclude 'vendor' --exclude '.env' --exclude '.git' \
-  ./ user@your-vps-ip:/path/to/hls-r2-studio/
-```
-
-Các bước còn lại (local và VPS giống nhau):
+Yêu cầu: Docker + Docker Compose đã cài.
 
 ```bash
 cp .env.example .env
 ```
 
 - Điền R2 thật vào `.env` (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_URL`).
-- Đổi `DB_PASSWORD` khỏi giá trị mặc định.
-- Nếu là VPS production: đổi thêm `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=<domain thật>`.
-
-### Cấu hình MySQL (dùng MySQL có sẵn trên VPS/host, không chạy MySQL riêng trong Docker)
-
-App này KHÔNG tự chạy MySQL riêng — cần có sẵn 1 MySQL server trên máy (host), ví dụ MySQL do aaPanel/cPanel quản lý, hoặc MySQL cài trực tiếp.
-
-1. Tạo 1 database + user riêng cho app này (KHÔNG dùng chung database của project khác) — nếu dùng aaPanel: vào **Database** → **Add database**, đặt tên rõ ràng (ví dụ `hls_r2_studio`), đặt username/password mạnh, ghi lại thông tin này.
-2. Đảm bảo user vừa tạo được phép kết nối từ Docker container — trong aaPanel, khi tạo database thường có thể chọn quyền truy cập ("Permission" hoặc "Access Host") — chọn `%` (mọi host) hoặc dải IP nội bộ Docker (`172.17.0.0/16` hoặc dải cầu nối Docker thực tế trên máy đó) thay vì chỉ `localhost`, vì kết nối từ container không tính là `localhost` của host.
-3. Điền vào `.env`:
-```env
-DB_HOST=host.docker.internal
-DB_PORT=3306
-DB_DATABASE=<tên database vừa tạo>
-DB_USERNAME=<username vừa tạo>
-DB_PASSWORD=<password vừa tạo>
-```
-4. Nếu MySQL trên host chỉ lắng nghe `127.0.0.1` (mặc định bảo mật phổ biến), cần kiểm tra cấu hình `bind-address` trong `my.cnf` của MySQL host cho phép kết nối từ Docker (thường aaPanel đã mở sẵn `0.0.0.0` khi bật "Remote access" cho MySQL trong giao diện aaPanel — bật tính năng này nếu Docker container không kết nối được).
+- Đổi `DB_PASSWORD` và `DB_ROOT_PASSWORD` khỏi giá trị mặc định.
 
 **Bắt buộc — sinh `APP_KEY`** (Laravel dùng key này để mã hoá session, cookie, và các trường nhạy cảm như `r2_secret_access_key` trong Cài đặt; thiếu key này app sẽ lỗi ngay khi chạy):
 
@@ -259,30 +235,26 @@ docker compose run --rm app php artisan key:generate
 ⚠️ Chỉ chạy lệnh này **1 lần duy nhất** khi mới cài — sinh lại `APP_KEY` sau khi đã có dữ liệu thật sẽ làm hỏng các trường đã mã hoá bằng key cũ (ví dụ R2 Secret Key đã lưu qua trang Cài đặt sẽ không giải mã được nữa).
 
 ```bash
+docker compose up -d
 docker compose run --rm app php artisan migrate --force
 docker compose run --rm app php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
-
-docker compose up -d
 ```
 
-Truy cập `http://localhost:8080/login` (hoặc domain/IP:port VPS).
-
-Nếu là VPS và test qua IP:port, mở firewall: `ufw allow 8080/tcp`.
-
-- Domain/SSL và cập nhật CORS R2 cho domain thật là việc cần tự làm thêm (không nằm trong phạm vi hướng dẫn này).
-- Backup database: dùng công cụ backup có sẵn của aaPanel (hoặc panel quản lý MySQL host tương ứng) vì database chạy trên host, không nằm trong volume Docker.
+Truy cập `http://localhost:8080/login`.
 
 ## Chạy nhiều worker song song
 
-Mặc định `docker-compose.yml` chạy 2 worker song song (`queue: deploy.replicas: 2`). Để đổi số lượng, sửa `replicas` của service `queue` rồi `docker compose up -d`:
+Với Cách 1 (cài trực tiếp), "nhiều worker" nghĩa là chạy nhiều instance systemd (`hls-r2-studio-queue@1`, `hls-r2-studio-queue@2`, ...) — xem hướng dẫn ở bước 5 của Cách 1.
+
+Nếu dùng Cách 2 (Docker, chỉ để test/dev cục bộ): mặc định `docker-compose.yml` chạy 2 worker song song (`queue: deploy.replicas: 2`). Để đổi số lượng, sửa `replicas` của service `queue` rồi `docker compose up -d`:
 
 ```yaml
   queue:
     deploy:
-      replicas: 2   # tuỳ chỉnh theo số core CPU thực tế của VPS
+      replicas: 2
 ```
 
-Khuyến nghị: số worker = số core CPU trừ 1 (dư 1 core cho web server). Có thể override tạm thời bằng `docker compose up -d --scale queue=5`.
+Có thể override tạm thời bằng `docker compose up -d --scale queue=5`.
 
 ## Lưu ý khác
 
@@ -292,3 +264,8 @@ Khuyến nghị: số worker = số core CPU trừ 1 (dư 1 core cho web server)
   - **Cách 1**: cấu hình reverse proxy gửi đúng header `X-Forwarded-Proto: https` — app đã tự động trust proxy header (`trustProxies(at: '*')` trong `bootstrap/app.php`) nên phía Laravel không cần chỉnh gì thêm. Một số panel (ví dụ aaPanel) tự sinh cấu hình Nginx không kèm header này, phải tự sửa tay và dễ bị ghi đè khi sửa lại qua GUI.
   - **Cách 2 (đơn giản hơn, khuyến nghị)**: set `APP_ENV=production` trong `.env` (thường đã có sẵn ở môi trường production) hoặc `FORCE_HTTPS=true` — Laravel sẽ tự ép scheme `https` cho mọi URL sinh ra (`URL::forceScheme('https')` trong `AppServiceProvider`), không cần đụng gì tới cấu hình proxy/Nginx bên ngoài. Mặc định `FORCE_HTTPS` bật theo `APP_ENV=production`, có thể override thủ công bằng `FORCE_HTTPS=false`/`true`.
   - **Lưu ý**: KHÔNG bật `FORCE_HTTPS=true` (hoặc `APP_ENV=production`) trên môi trường dev local không có HTTPS thật ở tầng ngoài — trình duyệt sẽ cố tải asset qua `https://` trên cổng không có TLS (ví dụ `https://localhost:8080`) và load lỗi. Tính năng này chỉ dùng cho VPS production có HTTPS thật ở tầng ngoài (aaPanel/Nginx làm SSL termination).
+- Thư mục `database/` bên trong container là named volume (`database-data`) — sau khi `git pull` code có migration MỚI rồi `docker compose build/up`, migration file mới có thể KHÔNG tự xuất hiện trong container (volume cũ che mất bản mới từ image). Nếu `php artisan migrate` chạy xong nhưng thiếu đúng migration bạn vừa thêm, copy tay vào trước:
+  ```bash
+  docker compose cp database/migrations/<tên_file_migration>.php app:/var/www/html/database/migrations/
+  docker compose exec app php artisan migrate --force
+  ```
