@@ -1,0 +1,350 @@
+@extends('layouts.app')
+
+@section('title', 'Tải lên video - HLS R2 Studio')
+@section('page-title', 'Tải lên video')
+@section('breadcrumb', 'Trang chủ / Tải lên video')
+
+@section('content')
+    <div class="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <form id="upload-form" class="space-y-5"
+              data-max-size-mb="{{ config('videos.max_upload_size_mb') }}"
+              data-chunk-size-mb="{{ config('videos.chunk_size_mb') }}">
+            <div id="title-field-wrapper">
+                <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Tiêu đề (tuỳ chọn)</label>
+                <input type="text" name="title" id="title" value="{{ old('title') }}"
+                       class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600">
+                <p id="title-multi-note" class="mt-1 text-xs text-gray-500 hidden">Tiêu đề tự động lấy theo tên file khi upload nhiều video.</p>
+            </div>
+
+            <div>
+                <label for="video" class="block text-sm font-medium text-gray-700 mb-1">File video</label>
+                <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
+                <label for="video"
+                       class="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 cursor-pointer">
+                    Chọn video
+                </label>
+                <p class="mt-1 text-xs text-gray-500">Định dạng: mp4, mov, mkv, avi, webm. Dung lượng tối đa {{ config('videos.max_upload_size_mb') }} MB.</p>
+                <div id="selected-files-list" class="mt-2 space-y-1 hidden"></div>
+            </div>
+
+            <div id="upload-queue" class="hidden space-y-3"></div>
+
+            <div id="upload-error" class="hidden rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm"></div>
+
+            <div id="upload-summary" class="hidden rounded-lg bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 text-sm">
+                <p id="upload-summary-text"></p>
+                <a href="{{ route('videos.index') }}" class="mt-2 inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
+                    Xem danh sách video
+                </a>
+            </div>
+
+            <button type="submit" id="upload-submit"
+                    class="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
+                Tải lên
+            </button>
+        </form>
+    </div>
+
+    @push('scripts')
+        <script>
+            (function () {
+                const form = document.getElementById('upload-form');
+                const fileInput = document.getElementById('video');
+                const titleInput = document.getElementById('title');
+                const titleFieldWrapper = document.getElementById('title-field-wrapper');
+                const titleMultiNote = document.getElementById('title-multi-note');
+                const submitButton = document.getElementById('upload-submit');
+                const queueList = document.getElementById('upload-queue');
+                const selectedFilesList = document.getElementById('selected-files-list');
+                const errorBox = document.getElementById('upload-error');
+                const summaryBox = document.getElementById('upload-summary');
+                const summaryText = document.getElementById('upload-summary-text');
+
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const allowedExtensions = ['mp4', 'mov', 'mkv', 'avi', 'webm'];
+                const maxSizeBytes = parseInt(form.dataset.maxSizeMb, 10) * 1024 * 1024;
+                const CHUNK_SIZE = parseInt(form.dataset.chunkSizeMb, 10) * 1024 * 1024;
+
+                function showError(message) {
+                    errorBox.textContent = message;
+                    errorBox.classList.remove('hidden');
+                }
+
+                function hideError() {
+                    errorBox.classList.add('hidden');
+                    errorBox.textContent = '';
+                }
+
+                function hideSummary() {
+                    summaryBox.classList.add('hidden');
+                    summaryText.textContent = '';
+                }
+
+                function formatSize(bytes) {
+                    if (bytes >= 1024 * 1024 * 1024) {
+                        return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
+                    }
+                    if (bytes >= 1024 * 1024) {
+                        return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+                    }
+                    return (bytes / 1024).toFixed(2) + ' KB';
+                }
+
+                function sleep(ms) {
+                    return new Promise((resolve) => setTimeout(resolve, ms));
+                }
+
+                async function fetchWithRetry(url, options, maxRetries = 3) {
+                    let lastError;
+                    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                        try {
+                            const response = await fetch(url, options);
+                            if (!response.ok) {
+                                let message = `Yêu cầu thất bại (HTTP ${response.status}).`;
+                                try {
+                                    const data = await response.json();
+                                    if (data && data.message) {
+                                        message = data.message;
+                                    }
+                                } catch (e) {
+                                    // ignore JSON parse error, keep default message
+                                }
+                                throw new Error(message);
+                            }
+                            return await response.json();
+                        } catch (err) {
+                            lastError = err;
+                            if (attempt < maxRetries) {
+                                await sleep(1000);
+                            }
+                        }
+                    }
+                    throw lastError;
+                }
+
+                function updateTitleVisibility() {
+                    const count = fileInput.files.length;
+                    if (count > 1) {
+                        titleFieldWrapper.classList.add('hidden');
+                        titleInput.disabled = true;
+                        titleMultiNote.classList.remove('hidden');
+                    } else {
+                        titleFieldWrapper.classList.remove('hidden');
+                        titleInput.disabled = false;
+                        titleMultiNote.classList.add('hidden');
+                    }
+                }
+
+                function renderSelectedFilesList() {
+                    const files = Array.from(fileInput.files);
+                    selectedFilesList.innerHTML = '';
+
+                    if (files.length === 0) {
+                        selectedFilesList.classList.add('hidden');
+                        return;
+                    }
+
+                    selectedFilesList.classList.remove('hidden');
+
+                    files.forEach(function (file) {
+                        const row = document.createElement('div');
+                        row.className = 'flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2 border border-gray-200';
+
+                        const nameEl = document.createElement('span');
+                        nameEl.className = 'text-gray-700 truncate';
+                        nameEl.textContent = file.name;
+
+                        const sizeEl = document.createElement('span');
+                        sizeEl.className = 'text-gray-400 ml-2 shrink-0';
+                        sizeEl.textContent = formatSize(file.size);
+
+                        row.appendChild(nameEl);
+                        row.appendChild(sizeEl);
+                        selectedFilesList.appendChild(row);
+                    });
+                }
+
+                function hideSelectedFilesList() {
+                    selectedFilesList.classList.add('hidden');
+                    selectedFilesList.innerHTML = '';
+                }
+
+                fileInput.addEventListener('change', function () {
+                    updateTitleVisibility();
+                    renderSelectedFilesList();
+                });
+
+                function buildQueueUI(files) {
+                    queueList.innerHTML = '';
+                    queueList.classList.remove('hidden');
+
+                    return files.map(function (file) {
+                        const row = document.createElement('div');
+                        row.className = 'rounded-lg border border-gray-200 p-3';
+
+                        const header = document.createElement('div');
+                        header.className = 'flex items-center justify-between text-sm';
+
+                        const nameEl = document.createElement('span');
+                        nameEl.className = 'font-medium text-gray-800 truncate mr-2';
+                        nameEl.textContent = file.name;
+
+                        const sizeEl = document.createElement('span');
+                        sizeEl.className = 'text-gray-500 text-xs whitespace-nowrap';
+                        sizeEl.textContent = formatSize(file.size);
+
+                        header.appendChild(nameEl);
+                        header.appendChild(sizeEl);
+
+                        const barWrapper = document.createElement('div');
+                        barWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5 mt-2';
+
+                        const bar = document.createElement('div');
+                        bar.className = 'bg-emerald-600 h-2.5 rounded-full';
+                        bar.style.width = '0%';
+
+                        barWrapper.appendChild(bar);
+
+                        const statusEl = document.createElement('p');
+                        statusEl.className = 'mt-1 text-xs text-gray-500';
+                        statusEl.textContent = 'Đang chờ';
+
+                        row.appendChild(header);
+                        row.appendChild(barWrapper);
+                        row.appendChild(statusEl);
+                        queueList.appendChild(row);
+
+                        return {
+                            file: file,
+                            bar: bar,
+                            statusEl: statusEl,
+                        };
+                    });
+                }
+
+                function setItemProgress(item, percent) {
+                    item.bar.style.width = percent + '%';
+                    item.statusEl.textContent = 'Đang tải lên (' + percent + '%)';
+                }
+
+                function setItemStatus(item, text) {
+                    item.statusEl.textContent = text;
+                }
+
+                async function uploadFile(item) {
+                    const file = item.file;
+                    const title = fileInput.files.length > 1 ? '' : titleInput.value;
+
+                    const initData = await fetchWithRetry('/uploads/init', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            filename: file.name,
+                            total_size: file.size,
+                            title: title,
+                        }),
+                    }, 1);
+
+                    const uploadId = initData.upload_id;
+                    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+                    let bytesSent = 0;
+
+                    for (let i = 0; i < totalChunks; i++) {
+                        const start = i * CHUNK_SIZE;
+                        const end = Math.min(start + CHUNK_SIZE, file.size);
+                        const chunk = file.slice(start, end);
+
+                        await fetchWithRetry('/uploads/' + uploadId + '/chunk', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/octet-stream',
+                                'X-Chunk-Index': i,
+                                'X-CSRF-TOKEN': csrfToken,
+                                'Accept': 'application/json',
+                            },
+                            body: chunk,
+                        });
+
+                        bytesSent += (end - start);
+                        setItemProgress(item, Math.round((bytesSent / file.size) * 100));
+                    }
+
+                    setItemStatus(item, 'Đang xử lý...');
+
+                    await fetchWithRetry('/uploads/' + uploadId + '/complete', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'Accept': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            filename: file.name,
+                            total_size: file.size,
+                            title: title,
+                        }),
+                    }, 1);
+
+                    setItemStatus(item, 'Hoàn tất');
+                }
+
+                form.addEventListener('submit', async function (e) {
+                    e.preventDefault();
+                    hideError();
+                    hideSummary();
+
+                    const files = Array.from(fileInput.files);
+                    if (files.length === 0) {
+                        showError('Vui lòng chọn file video.');
+                        return;
+                    }
+
+                    const invalidMessages = [];
+                    for (const file of files) {
+                        const extension = file.name.split('.').pop().toLowerCase();
+                        if (!allowedExtensions.includes(extension)) {
+                            invalidMessages.push(file.name + ': định dạng không hợp lệ. Chỉ chấp nhận ' + allowedExtensions.join(', ') + '.');
+                            continue;
+                        }
+                        if (file.size > maxSizeBytes) {
+                            invalidMessages.push(file.name + ': dung lượng vượt quá giới hạn cho phép.');
+                        }
+                    }
+
+                    if (invalidMessages.length > 0) {
+                        showError(invalidMessages.join(' '));
+                        return;
+                    }
+
+                    submitButton.disabled = true;
+                    fileInput.disabled = true;
+
+                    hideSelectedFilesList();
+
+                    const items = buildQueueUI(files);
+
+                    let successCount = 0;
+
+                    for (const item of items) {
+                        try {
+                            await uploadFile(item);
+                            successCount++;
+                        } catch (err) {
+                            setItemStatus(item, 'Lỗi: ' + (err.message || 'Đã có lỗi xảy ra trong quá trình tải lên.'));
+                        }
+                    }
+
+                    submitButton.disabled = false;
+                    fileInput.disabled = false;
+
+                    summaryText.textContent = 'Đã upload xong ' + successCount + '/' + items.length + ' video thành công.';
+                    summaryBox.classList.remove('hidden');
+                });
+            })();
+        </script>
+    @endpush
+@endsection
