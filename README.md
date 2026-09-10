@@ -231,8 +231,24 @@ cp .env.example .env
 ```
 
 - Điền R2 thật vào `.env` (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_URL`).
-- Đổi `DB_PASSWORD`/`DB_ROOT_PASSWORD` khỏi giá trị mặc định.
+- Đổi `DB_PASSWORD` khỏi giá trị mặc định.
 - Nếu là VPS production: đổi thêm `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=<domain thật>`.
+
+### Cấu hình MySQL (dùng MySQL có sẵn trên VPS/host, không chạy MySQL riêng trong Docker)
+
+App này KHÔNG tự chạy MySQL riêng — cần có sẵn 1 MySQL server trên máy (host), ví dụ MySQL do aaPanel/cPanel quản lý, hoặc MySQL cài trực tiếp.
+
+1. Tạo 1 database + user riêng cho app này (KHÔNG dùng chung database của project khác) — nếu dùng aaPanel: vào **Database** → **Add database**, đặt tên rõ ràng (ví dụ `hls_r2_studio`), đặt username/password mạnh, ghi lại thông tin này.
+2. Đảm bảo user vừa tạo được phép kết nối từ Docker container — trong aaPanel, khi tạo database thường có thể chọn quyền truy cập ("Permission" hoặc "Access Host") — chọn `%` (mọi host) hoặc dải IP nội bộ Docker (`172.17.0.0/16` hoặc dải cầu nối Docker thực tế trên máy đó) thay vì chỉ `localhost`, vì kết nối từ container không tính là `localhost` của host.
+3. Điền vào `.env`:
+```env
+DB_HOST=host.docker.internal
+DB_PORT=3306
+DB_DATABASE=<tên database vừa tạo>
+DB_USERNAME=<username vừa tạo>
+DB_PASSWORD=<password vừa tạo>
+```
+4. Nếu MySQL trên host chỉ lắng nghe `127.0.0.1` (mặc định bảo mật phổ biến), cần kiểm tra cấu hình `bind-address` trong `my.cnf` của MySQL host cho phép kết nối từ Docker (thường aaPanel đã mở sẵn `0.0.0.0` khi bật "Remote access" cho MySQL trong giao diện aaPanel — bật tính năng này nếu Docker container không kết nối được).
 
 **Bắt buộc — sinh `APP_KEY`** (Laravel dùng key này để mã hoá session, cookie, và các trường nhạy cảm như `r2_secret_access_key` trong Cài đặt; thiếu key này app sẽ lỗi ngay khi chạy):
 
@@ -242,12 +258,7 @@ docker compose run --rm app php artisan key:generate
 
 ⚠️ Chỉ chạy lệnh này **1 lần duy nhất** khi mới cài — sinh lại `APP_KEY` sau khi đã có dữ liệu thật sẽ làm hỏng các trường đã mã hoá bằng key cũ (ví dụ R2 Secret Key đã lưu qua trang Cài đặt sẽ không giải mã được nữa).
 
-Không cần tự tạo database — container `mysql` tự tạo theo `MYSQL_DATABASE`/`DB_DATABASE` trong `.env` ngay lần khởi động đầu tiên.
-
 ```bash
-docker compose up -d mysql
-# đợi mysql healthy
-
 docker compose run --rm app php artisan migrate --force
 docker compose run --rm app php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
 
@@ -259,7 +270,7 @@ Truy cập `http://localhost:8080/login` (hoặc domain/IP:port VPS).
 Nếu là VPS và test qua IP:port, mở firewall: `ufw allow 8080/tcp`.
 
 - Domain/SSL và cập nhật CORS R2 cho domain thật là việc cần tự làm thêm (không nằm trong phạm vi hướng dẫn này).
-- Nên tự thiết lập backup định kỳ cho volume `mysql-data` (ứng dụng không tự động backup).
+- Backup database: dùng công cụ backup có sẵn của aaPanel (hoặc panel quản lý MySQL host tương ứng) vì database chạy trên host, không nằm trong volume Docker.
 
 ## Chạy nhiều worker song song
 
