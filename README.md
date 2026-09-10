@@ -110,6 +110,106 @@ php artisan queue:work
 
 Truy cập `http://localhost:8000/login`.
 
+#### Chạy production thật trên VPS (thay vì `php artisan serve`)
+
+`php artisan serve` chỉ dùng để dev — không bền vững cho production (không tự khởi động lại, không xử lý nhiều connection tốt). Các bước dưới đây thay thế bằng Nginx + PHP-FPM + systemd, giả định Ubuntu 22.04/24.04.
+
+**1. Cài Nginx + PHP-FPM** (đổi `php8.2-fpm` theo đúng version PHP đã cài — kiểm tra bằng `php -v`):
+
+```bash
+sudo apt install -y nginx php8.2-fpm
+```
+
+**2. Set quyền thư mục** (Laravel cần ghi được vào `storage/` và `bootstrap/cache/`):
+
+```bash
+sudo chown -R www-data:www-data storage bootstrap/cache
+sudo chmod -R 775 storage bootstrap/cache
+```
+
+**3. Cấu hình Nginx** — tạo file `/etc/nginx/sites-available/hls-r2-studio`:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;   # đổi thành domain thật hoặc để _ nếu test qua IP
+
+    root /path/to/hls-r2-studio/public;   # đổi đúng đường dẫn project thật
+    index index.php;
+
+    client_max_body_size 2048m;
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+
+    location ~ \.php$ {
+        fastcgi_pass unix:/run/php/php8.2-fpm.sock;   # đổi khớp version PHP-FPM đã cài
+        fastcgi_index index.php;
+        include fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_read_timeout 300s;
+    }
+
+    location ~ /\.(?!well-known).* {
+        deny all;
+    }
+}
+```
+
+Kích hoạt:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/hls-r2-studio /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+**4. Cấu hình `php.ini` cho PHP-FPM** (khớp `UPLOAD_MAX_SIZE_MB=2048`) — sửa `/etc/php/8.2/fpm/php.ini`:
+
+```ini
+upload_max_filesize = 2048M
+post_max_size = 2048M
+max_execution_time = 300
+```
+
+Restart: `sudo systemctl restart php8.2-fpm`.
+
+**5. Chạy queue worker bền vững bằng systemd** (thay vì mở terminal thủ công) — tạo file `/etc/systemd/system/hls-r2-studio-queue@.service` (template unit để chạy nhiều instance song song, khớp mặc định 2 worker của bản Docker):
+
+```ini
+[Unit]
+Description=HLS R2 Studio Queue Worker #%i
+After=network.target mysql.service
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/hls-r2-studio
+ExecStart=/usr/bin/php artisan queue:work --tries=1 --timeout=3600
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Kích hoạt 2 worker song song (khớp mặc định Docker):
+
+```bash
+sudo systemctl enable --now hls-r2-studio-queue@1 hls-r2-studio-queue@2
+```
+
+Kiểm tra: `sudo systemctl status hls-r2-studio-queue@1`, xem log: `sudo journalctl -u hls-r2-studio-queue@1 -f`.
+
+**6. Firewall**:
+
+```bash
+sudo ufw allow 80/tcp
+```
+
+**7. Cập nhật code sau này** (không như Docker tự rebuild) cần tự chạy lại `composer install --no-dev`, `npm run build`, và `sudo systemctl restart php8.2-fpm hls-r2-studio-queue@1 hls-r2-studio-queue@2` để áp dụng code mới.
+
+- Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn là việc cần tự làm thêm (giống Cách 2, không lặp lại chi tiết ở đây).
+
 ### Cách 2: Dùng Docker (chạy local hoặc lên VPS — cùng 1 quy trình)
 
 Các bước dưới đây giống nhau dù chạy trên máy local hay trên VPS thật — nếu deploy VPS, SSH vào VPS trước rồi làm các bước y hệt.
