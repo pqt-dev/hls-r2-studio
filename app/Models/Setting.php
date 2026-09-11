@@ -30,7 +30,12 @@ class Setting extends Model
 
     public static function current(): self
     {
-        return static::firstOrCreate(['id' => 1]);
+        return static::firstOrCreate(['id' => 1], [
+            'delete_from_r2_on_destroy' => true,
+            'transcode_resolution' => '720',
+            'transcode_segment_seconds' => 6,
+            'videos_per_page' => 24,
+        ]);
     }
 
     public function effectiveR2Config(): array
