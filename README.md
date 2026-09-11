@@ -524,6 +524,39 @@ Nếu dùng Cách 2 (Docker, chỉ để test/dev cục bộ): mặc định `do
 
 Có thể override tạm thời bằng `docker compose up -d --scale queue=5`.
 
+## Import hàng loạt video có sẵn từ một bucket R2 khác
+
+Dùng khi đã có sẵn một kho video (MP4/MOV/MKV/AVI/WEBM) nằm trên một bucket R2 khác và muốn đưa toàn bộ vào hệ thống để băm HLS — thay vì upload thủ công từng file qua giao diện web.
+
+**Cấu hình** — điền vào `.env` (chỉ cần khi dùng tính năng này, không bắt buộc cho vận hành bình thường):
+
+```env
+R2_SOURCE_ACCESS_KEY_ID=<access key của bucket nguồn>
+R2_SOURCE_SECRET_ACCESS_KEY=<secret key của bucket nguồn>
+R2_SOURCE_BUCKET=media
+R2_SOURCE_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+```
+
+> `R2_SOURCE_ENDPOINT` KHÔNG kèm tên bucket ở cuối — tên bucket đã tách riêng vào `R2_SOURCE_BUCKET`.
+
+**Cách chạy** — chạy thử trước để xem danh sách file sẽ được import (không tạo record, không đẩy job nào):
+
+```bash
+php artisan videos:import-from-r2 --dry-run
+```
+
+Khi danh sách đã đúng, chạy thật:
+
+```bash
+php artisan videos:import-from-r2
+```
+
+Lệnh bỏ qua các file đã import trước đó (đã có record `videos` cùng `original_filename` và `status` khác `failed`), nên chạy lại nhiều lần an toàn — chỉ những video từng import lỗi mới được tạo lại để thử lần nữa.
+
+**Lưu ý an toàn**: bucket nguồn chỉ được ĐỌC — command và job import không bao giờ ghi hay xoá bất cứ thứ gì trên bucket này. Khi tạo credentials cho `R2_SOURCE_*`, nên dùng R2 API Token có quyền **Object Read only** để chặn cứng ở tầng quyền, đặc biệt khi bucket nguồn đang phục vụ một website production khác.
+
+**Lưu ý vận hành**: lệnh này chỉ tạo record + đẩy job vào queue nên chạy rất nhanh; việc tải file và băm HLS thật sự diễn ra ở các queue worker nền (`queue:work`) đã cấu hình sẵn — không cần giữ phiên SSH mở trong suốt quá trình xử lý. Tuy vậy vẫn nên chạy lệnh trong `screen`/`tmux`/`nohup` để phòng mất kết nối ngay giữa lúc lệnh đang liệt kê file và tạo record.
+
 ## Lưu ý khác
 
 - Laravel giới hạn upload theo `UPLOAD_MAX_SIZE_MB` trong `.env`, nhưng PHP còn giới hạn riêng qua `php.ini` (`docker/php/uploads.ini`) và nginx (`client_max_body_size` trong `docker/nginx.conf`) — đổi cả 3 nơi rồi build lại image nếu cần tăng giới hạn.
