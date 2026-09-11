@@ -19,7 +19,7 @@ class CreateAdminUser extends Command
      *
      * @var string
      */
-    protected $description = 'Tạo hoặc cập nhật tài khoản admin (upsert theo username)';
+    protected $description = 'Create or update an admin account (upsert by username)';
 
     /**
      * Execute the console command.
@@ -34,6 +34,6 @@ class CreateAdminUser extends Command
             ['name' => 'Admin', 'password' => $password, 'email' => $this->option('email')]
         );
 
-        $this->info("Đã tạo/cập nhật admin: {$username}");
+        $this->info("Admin created/updated: {$username}");
     }
 }

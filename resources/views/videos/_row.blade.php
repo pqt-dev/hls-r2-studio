@@ -1,9 +1,9 @@
 @php
     $badge = match ($video->status) {
-        'pending' => ['bg-yellow-100 text-yellow-800', 'Đang chờ'],
-        'processing' => ['bg-blue-100 text-blue-800', 'Đang xử lý'],
-        'ready' => ['bg-green-100 text-green-800', 'Sẵn sàng'],
-        'failed' => ['bg-red-100 text-red-800', 'Lỗi'],
+        'pending' => ['bg-yellow-100 text-yellow-800', 'Pending'],
+        'processing' => ['bg-amber-100 text-amber-800', 'Processing'],
+        'ready' => ['bg-green-100 text-green-800', 'Ready'],
+        'failed' => ['bg-red-100 text-red-800', 'Failed'],
         default => ['bg-gray-100 text-gray-800', $video->status],
     };
 
@@ -31,7 +31,7 @@
             @if ($thumbnailUrl)
                 <img src="{{ $thumbnailUrl }}" alt="{{ $video->title }}" class="w-full h-full object-cover">
             @else
-                <span class="text-gray-400 text-[10px]">No thumb</span>
+                <span class="text-gray-400 text-[10px]">No thumbnail</span>
             @endif
         </div>
     </td>
@@ -57,9 +57,9 @@
         @if ($video->status === 'processing')
             @php
                 $stageLabel = match ($video->stage) {
-                    'queued' => 'Đang chờ xử lý',
-                    'transcoding' => 'Đang băm video',
-                    'uploading_r2' => 'Đang tải lên R2',
+                    'queued' => 'Queued',
+                    'transcoding' => 'Transcoding',
+                    'uploading_r2' => 'Uploading to R2',
                     default => $video->stage,
                 };
             @endphp
@@ -70,7 +70,7 @@
                 <p class="text-xs text-gray-500">{{ $stageLabel }} — {{ $video->progress }}%</p>
             </div>
         @elseif ($video->status === 'pending')
-            <p class="text-xs text-gray-500 mt-1">Đang chờ trong hàng đợi...</p>
+            <p class="text-xs text-gray-500 mt-1">Waiting in queue...</p>
         @endif
     </td>
 
@@ -95,14 +95,14 @@
             @if ($video->status === 'ready' && $playlistUrl)
                 <button type="button"
                         onclick="openVideoModal('{{ $playlistUrl }}', '{{ addslashes($video->title) }}')"
-                        class="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">
-                    Xem
+                        class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800">
+                    <x-lucide-eye class="w-3.5 h-3.5" /> View
                 </button>
 
                 <button type="button"
                         onclick="copyVideoLink(this, '{{ $video->public_url }}')"
-                        class="inline-flex items-center rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    Sao chép link
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    <x-lucide-copy class="w-3.5 h-3.5" /> Copy Link
                 </button>
             @endif
 
@@ -111,8 +111,8 @@
                 @csrf
                 @method('DELETE')
                 <button type="submit"
-                        class="inline-flex items-center rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100">
-                    Xoá
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100">
+                    <x-lucide-trash-2 class="w-3.5 h-3.5" /> Delete
                 </button>
             </form>
         </div>
