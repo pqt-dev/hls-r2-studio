@@ -45,7 +45,7 @@ class SettingsController extends Controller
 
         $settings->save();
 
-        return back()->with('success', 'Đã lưu cấu hình R2.');
+        return back()->with('success', 'R2 configuration saved.');
     }
 
     public function updateTranscode(Request $request): RedirectResponse
@@ -62,7 +62,7 @@ class SettingsController extends Controller
             'transcode_fps' => $validated['transcode_fps'],
         ]);
 
-        return back()->with('success', 'Đã lưu tuỳ chọn băm video.');
+        return back()->with('success', 'Transcoding options saved.');
     }
 
     public function updateDisplay(Request $request): RedirectResponse
@@ -75,7 +75,7 @@ class SettingsController extends Controller
             'videos_per_page' => $validated['videos_per_page'],
         ]);
 
-        return back()->with('success', 'Đã lưu tuỳ chọn hiển thị.');
+        return back()->with('success', 'Display options saved.');
     }
 
     public function updatePassword(Request $request): RedirectResponse
@@ -87,6 +87,6 @@ class SettingsController extends Controller
 
         auth()->user()->update(['password' => $validated['password']]);
 
-        return back()->with('success', 'Đã đổi mật khẩu.');
+        return back()->with('success', 'Password changed.');
     }
 }

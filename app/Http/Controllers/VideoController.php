@@ -216,7 +216,7 @@ class VideoController extends Controller
 
         if ($actualSize !== $totalSize) {
             return response()->json([
-                'message' => "File assembled không khớp kích thước: nhận được {$actualSize} bytes, kỳ vọng {$totalSize} bytes.",
+                'message' => "Assembled file size mismatch: received {$actualSize} bytes, expected {$totalSize} bytes.",
             ], 422);
         }
 
@@ -267,10 +267,10 @@ class VideoController extends Controller
         $this->deleteVideo($video, $deleteFromR2);
 
         if ($deleteFromR2) {
-            return redirect()->route('videos.index')->with('success', 'Video đã được xoá.');
+            return redirect()->route('videos.index')->with('success', 'Video has been deleted.');
         }
 
-        return redirect()->route('videos.index')->with('success', 'Đã xoá record, GIỮ LẠI file trên R2.');
+        return redirect()->route('videos.index')->with('success', 'Record deleted, file on R2 was KEPT.');
     }
 
     /**
@@ -291,7 +291,7 @@ class VideoController extends Controller
             $count++;
         }
 
-        return redirect()->route('videos.index')->with('status', "Đã xoá {$count} video.");
+        return redirect()->route('videos.index')->with('status', "Deleted {$count} videos.");
     }
 
     /**

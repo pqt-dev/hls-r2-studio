@@ -82,7 +82,7 @@ Khuyến nghị dùng cách này cho VPS/production: Docker chạy Nginx và k�
 > - **Đã có aaPanel** → làm theo mục [Deploy với aaPanel](#deploy-với-aapanel) bên dưới — đơn giản hơn nhiều, không cần tự cài Nginx/PHP-FPM/systemd thủ công.
 > - **VPS "trắng", chưa cài gì** → làm theo phần "Cài Nginx + PHP-FPM thủ công" tiếp theo ngay sau đây.
 
-Yêu cầu: PHP 8.2+, Composer, Node.js + npm, MySQL, FFmpeg/FFprobe, tài khoản Cloudflare R2.
+Yêu cầu: PHP 8.3+ (dự án đã test và xác nhận chạy ổn định trên PHP 8.4 — một số bản `composer.lock` có thể khoá các gói yêu cầu PHP >=8.4, nên khuyến nghị dùng PHP 8.4 nếu VPS hỗ trợ), Composer 2.2+ (bản cũ hơn sẽ báo lỗi `composer-runtime-api` không tương thích — cập nhật bằng `composer self-update`), Node.js + npm, MySQL, FFmpeg/FFprobe, tài khoản Cloudflare R2.
 
 ```bash
 composer install
@@ -92,7 +92,39 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-Điền vào `.env`: thông tin MySQL (`DB_HOST`, `DB_DATABASE`, `DB_USERNAME`, `DB_PASSWORD`), Cloudflare R2 (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_URL`), và `FFMPEG_BINARY`/`FFPROBE_BINARY` nếu ffmpeg không nằm trong `$PATH` (dùng `which ffmpeg` / `which ffprobe` để lấy full path).
+Mở file `.env` và điền các giá trị sau — mỗi key một dòng riêng biệt, không gộp chung:
+
+**Database (MySQL):**
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=hls_r2_studio
+DB_USERNAME=<user MySQL>
+DB_PASSWORD=<password MySQL>
+```
+> `DB_HOST` là `127.0.0.1` khi MySQL chạy trên cùng máy với PHP (trường hợp thường gặp nhất, kể cả khi dùng aaPanel). Giá trị `mysql` chỉ có ý nghĩa khi chạy qua Docker Compose ở Cách 2 — không dùng giá trị đó ở Cách 1.
+
+**Cloudflare R2:**
+```env
+R2_ACCESS_KEY_ID=<access key>
+R2_SECRET_ACCESS_KEY=<secret key>
+R2_BUCKET=<tên bucket>
+R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+R2_URL=<URL public để phát video, vd https://cdn.your-domain.com hoặc URL r2.dev>
+```
+
+**FFmpeg** (chỉ cần điền nếu ffmpeg/ffprobe không nằm sẵn trong `$PATH` — kiểm tra bằng `which ffmpeg` và `which ffprobe` trước):
+```env
+FFMPEG_BINARY=/usr/bin/ffmpeg
+FFPROBE_BINARY=/usr/bin/ffprobe
+```
+
+**Domain/HTTPS** (bắt buộc đổi khi deploy production):
+```env
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://domain-thật-của-bạn
+```
 
 Laravel migration chỉ tạo bảng, không tự tạo database — tạo database trống trên MySQL trước khi migrate (đổi `hls_r2_studio` khớp với `DB_DATABASE` bạn đã điền ở bước trên):
 
@@ -229,50 +261,225 @@ sudo ufw allow 80/tcp
 
 aaPanel tự quản lý Nginx + PHP-FPM + SSL cho bạn — không cần tự `apt install nginx`/tự tạo file cấu hình Nginx như phần "VPS trắng" ở trên (làm vậy sẽ xung đột với Nginx của chính aaPanel).
 
-1. **Đưa code lên VPS**: `git clone` repo vào 1 thư mục (hoặc dùng thư mục site aaPanel đã tạo sẵn khi bạn add domain).
+**Bước 1 — Đưa code lên VPS**
 
-2. **Tạo website trong aaPanel**: vào tab **PHP Project** (hoặc **Website** → **Add site** tuỳ phiên bản aaPanel) → chọn domain, chọn **PHP version 8.2 trở lên**, **Document Root** đặt thành thư mục `public/` bên trong code vừa clone (ví dụ `/www/wwwroot/ten-domain/public`) — đây là điểm khác biệt quan trọng so với web PHP thường (Laravel luôn trỏ root vào `public/`, không phải thư mục gốc project).
+SSH vào VPS, vào thư mục web root (`/www/wwwroot/`), rồi clone code vào một thư mục tạm rồi đổi tên — cách này tránh lỗi `destination path '.' already exists` do aaPanel thường tự sinh sẵn vài file ẩn (`.user.ini`, `.htaccess`...) trong thư mục site trống mà `ls` mặc định không hiện ra:
 
-3. **Cài extension PHP cần thiết**: vào aaPanel → **PHP** (chọn đúng version vừa dùng) → **Extensions**/**Cài đặt** → bật: `pdo_mysql`, `mbstring`, `curl`, `pcntl`, `bcmath`, `fileinfo` (đa số đã bật sẵn mặc định, chỉ cần kiểm tra).
+```bash
+cd /www/wwwroot
+git clone <git-repo-url> hls-temp
+rm -rf ten-domain.com          # thư mục site aaPanel đã tạo sẵn (nếu có), đổi đúng tên domain thật
+mv hls-temp ten-domain.com
+cd ten-domain.com
+```
 
-4. **Tăng giới hạn upload**: aaPanel → **PHP** → **Configuration file** (hoặc **php.ini**) → tìm và sửa:
-   ```ini
-   upload_max_filesize = 2048M
-   post_max_size = 2048M
-   max_execution_time = 300
-   ```
-   Lưu lại, aaPanel tự restart PHP-FPM.
+**Bước 2 — Kiểm tra và cài đúng version PHP**
 
-5. **Cài Composer, Node.js, FFmpeg** (aaPanel thường có sẵn qua **App Store**/**Software** — kiểm tra trước, nếu không có thì cài qua SSH terminal):
-   ```bash
-   # Composer (nếu chưa có)
-   curl -sS https://getcomposer.org/installer | php
-   sudo mv composer.phar /usr/local/bin/composer
+Dự án yêu cầu PHP `^8.3` theo `composer.json`, nhưng `composer.lock` hiện tại có thể khoá một số gói Symfony yêu cầu PHP **>= 8.4** — nên cần PHP 8.4, không phải 8.3, dù composer.json ghi 8.3+. Kiểm tra:
 
-   # FFmpeg (nếu chưa có)
-   sudo apt install -y ffmpeg
-   ```
+```bash
+php -v
+```
 
-6. **Cài dependencies + build** (SSH vào VPS, cd vào đúng thư mục code):
-   ```bash
-   cd /www/wwwroot/ten-domain
-   composer install --no-dev
-   npm install && npm run build
-   ```
+Nếu VPS chưa có PHP 8.4: vào aaPanel → **App Store** → tab **PHP** → tìm **PHP-8.4** → **Install**. Không cần gỡ bản PHP cũ, aaPanel cho cài song song nhiều bản.
 
-7. **Cấu hình `.env`** — giống hệt hướng dẫn chung ở trên (điền MySQL, R2, sinh `APP_KEY`, `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://domain-thật`).
+Từ đây, các lệnh PHP CLI trong hướng dẫn này đều dùng full path tới đúng bản 8.4 để tránh gọi nhầm bản mặc định cũ hơn (thường vẫn còn là 8.3 sau khi cài thêm 8.4):
 
-8. **Tạo database + migrate + tạo admin** — dùng đúng MySQL của aaPanel (tạo qua tab **Database** trong aaPanel thay vì lệnh `mysql -u root -p` — xem hướng dẫn tạo database ở phần chung phía trên), rồi:
-   ```bash
-   php artisan migrate --force
-   php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
-   ```
+```bash
+/www/server/php/84/bin/php -v
+```
+(nếu đường dẫn khác, kiểm tra bằng `ls /www/server/php/` để tìm đúng số thư mục version)
 
-9. **Chạy queue worker** — vẫn cần systemd giống hướng dẫn chung bên dưới (aaPanel KHÔNG tự quản lý việc này) — xem mục "Chạy queue worker bền vững bằng systemd" phía trên, làm y hệt, chỉ cần đổi `WorkingDirectory` đúng đường dẫn thư mục code trên aaPanel.
+**Bước 3 — Bật extension PHP bắt buộc**
 
-10. **Bật SSL**: vào site vừa tạo trong aaPanel → tab **SSL** → chọn **Let's Encrypt** → xin chứng chỉ miễn phí (1 click, aaPanel tự làm hết, không cần đụng gì tới Nginx config thủ công).
+aaPanel → **PHP** → chọn **8.4** → **Install extensions** (hoặc **Installed Extensions**) → bật các extension sau (không phải lúc nào cũng bật sẵn mặc định, phải tự kiểm tra từng cái):
+- `fileinfo` — **bắt buộc**, thiếu sẽ làm `composer install` báo lỗi ngay
+- `pdo_mysql`
+- `mbstring`
+- `curl`
+- `pcntl`
+- `bcmath`
 
-11. **Kiểm tra**: mở `https://domain-thật/login`.
+Sau khi tick xong → **Restart** PHP 8.4. Kiểm tra lại:
+```bash
+/www/server/php/84/bin/php -m | grep fileinfo
+```
+
+**Bước 4 — Cập nhật Composer** (bản Composer có sẵn trên nhiều VPS/aaPanel là bản cũ, không hỗ trợ Laravel 13):
+
+```bash
+/www/server/php/84/bin/php /usr/bin/composer self-update
+```
+
+Nếu lệnh trên báo lỗi không tìm thấy composer, cài mới:
+```bash
+/www/server/php/84/bin/php -r "copy('https://getcomposer.org/installer', 'composer-setup.php');"
+/www/server/php/84/bin/php composer-setup.php --install-dir=/usr/bin --filename=composer
+/www/server/php/84/bin/php -r "unlink('composer-setup.php');"
+```
+
+**Bước 5 — Cài Node.js + FFmpeg** (nếu VPS chưa có):
+
+```bash
+# Node.js 20+ qua NodeSource (bản apt mặc định của Ubuntu thường quá cũ)
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
+sudo apt install -y nodejs
+
+# FFmpeg
+sudo apt install -y ffmpeg
+```
+
+**Bước 6 — Cài dependencies + build asset**
+
+```bash
+/www/server/php/84/bin/php /usr/bin/composer install --no-dev
+npm install
+npm run build
+```
+
+**Bước 7 — Tạo database qua aaPanel**
+
+aaPanel → **Database** → **Add database** → đặt tên (vd `hls_r2_studio`) → tạo user + password mới → ghi nhớ lại 3 thông tin này để điền `.env` ở bước sau.
+
+**Bước 8 — Cấu hình `.env`**
+
+```bash
+cp .env.example .env
+```
+
+Mở file bằng `nano .env`, điền các giá trị sau — **mỗi key một dòng riêng biệt**, không gộp chung:
+
+```env
+# Database — khớp với database vừa tạo ở Bước 7
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_DATABASE=hls_r2_studio
+DB_USERNAME=<user MySQL vừa tạo>
+DB_PASSWORD=<password MySQL vừa tạo>
+```
+
+> `DB_HOST` luôn là `127.0.0.1` khi deploy kiểu này (PHP và MySQL cùng chạy trên 1 máy qua aaPanel) — **không** dùng giá trị `mysql`, đó là tên service chỉ có ý nghĩa trong Cách 2 (Docker).
+
+```env
+# Cloudflare R2
+R2_ACCESS_KEY_ID=<access key R2>
+R2_SECRET_ACCESS_KEY=<secret key R2>
+R2_BUCKET=<tên bucket>
+R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
+R2_URL=<URL public để phát video — custom domain hoặc URL r2.dev>
+```
+
+```env
+# Domain/HTTPS thật
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://domain-thật-của-bạn
+FORCE_HTTPS=true
+```
+
+**Bước 9 — Sinh key, tạo bảng, tạo admin**
+
+```bash
+/www/server/php/84/bin/php artisan key:generate
+/www/server/php/84/bin/php artisan migrate --force
+/www/server/php/84/bin/php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
+```
+
+**Bước 10 — Set quyền thư mục** (Laravel cần ghi được vào `storage/` và `bootstrap/cache/`; `www` là user chạy PHP-FPM mặc định của aaPanel — kiểm tra bằng `ps aux | grep php-fpm` nếu VPS bạn dùng user khác):
+
+```bash
+chown -R www:www storage bootstrap/cache
+chmod -R 775 storage bootstrap/cache
+```
+
+**Bước 11 — Tạo website trong aaPanel**
+
+Vào tab **Website** → **Add site** (hoặc **PHP Project** tuỳ phiên bản aaPanel) → điền domain → chọn **PHP version 8.4** → **Document Root** đặt thành thư mục `public/` bên trong code vừa clone (ví dụ `/www/wwwroot/ten-domain.com/public`) — Laravel luôn trỏ web root vào `public/`, không phải thư mục gốc project.
+
+Nếu site đã được tạo sẵn trước khi bạn clone code (thường gặp), vào site đó → **Directory** → xác nhận **Site directory** đang trỏ đúng `.../public`.
+
+**Bước 12 — Tắt "Anti-XSS attack" (open_basedir)**
+
+Vào site → **Directory** → tìm toggle **Anti-XSS attack** (chú thích nhỏ bên dưới: *Base directory limit / open_basedir*) → đảm bảo toggle này đang **TẮT**.
+
+> ⚠️ Đây là bước dễ bị bỏ sót nhất và gây lỗi khó hiểu nhất: nếu bật, PHP chỉ được phép đọc file trong `public/` — nhưng code Laravel thật (`vendor/`, `storage/`, `bootstrap/`) nằm ở thư mục cha, nên trang sẽ trắng trang kèm lỗi `open_basedir restriction in effect` khi truy cập. Nếu gặp lỗi này, quay lại đây tắt toggle rồi thử lại.
+
+**Bước 13 — Bật URL rewrite (bắt buộc, thiếu bước này mọi trang ngoài trang chủ sẽ báo `404 Not Found`)**
+
+Vào site → **URL rewrite** (伪静态) → chọn template có sẵn **Laravel5** (hoặc **Laravel**, tuỳ tên hiển thị) → **Save**.
+
+Nếu aaPanel không có sẵn template Laravel, chọn **Custom** và dán:
+```nginx
+location / {
+    try_files $uri $uri/ /index.php?$query_string;
+}
+```
+
+**Bước 14 — Tăng giới hạn upload**
+
+aaPanel → **PHP** → **8.4** → **Configuration file** → tìm và sửa:
+```ini
+upload_max_filesize = 2048M
+post_max_size = 2048M
+max_execution_time = 300
+memory_limit = 512M
+```
+**Save** → aaPanel tự restart PHP-FPM.
+
+**Bước 15 — Bật SSL**
+
+Vào site → tab **SSL** → chọn **Let's Encrypt** → tick domain → **Apply** (aaPanel tự xin và tự gia hạn chứng chỉ, không cần đụng vào Nginx config thủ công).
+
+**Bước 16 — Chạy queue worker bằng systemd** (bắt buộc — video sẽ không bao giờ transcode nếu thiếu bước này; aaPanel KHÔNG tự quản lý việc này)
+
+Tạo file:
+```bash
+nano /etc/systemd/system/hls-r2-studio-queue@.service
+```
+
+Dán đúng nội dung sau — chú ý `--timeout=3600`, thiếu cờ này Laravel sẽ tự kill job sau 60 giây mặc định (dù video ngắn, quá trình ffmpeg + upload R2 thường vượt quá 60 giây):
+
+```ini
+[Unit]
+Description=HLS R2 Studio Queue Worker #%i
+After=network.target mysql.service
+
+[Service]
+User=www
+WorkingDirectory=/www/wwwroot/ten-domain.com
+ExecStart=/www/server/php/84/bin/php artisan queue:work --sleep=3 --tries=1 --timeout=3600 --max-time=3600
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Kích hoạt 2 worker song song:
+```bash
+systemctl daemon-reload
+systemctl enable --now hls-r2-studio-queue@1
+systemctl enable --now hls-r2-studio-queue@2
+```
+
+Kiểm tra: `systemctl status hls-r2-studio-queue@1`, xem log: `journalctl -u hls-r2-studio-queue@1 -f`.
+
+**Bước 17 — Kiểm tra**
+
+Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã tạo ở Bước 9, thử upload 1 video ngắn để xác nhận toàn bộ pipeline (upload → transcode → upload R2 → phát HLS) chạy hoàn chỉnh.
+
+#### Xử lý sự cố thường gặp khi deploy aaPanel
+
+| Lỗi gặp phải | Nguyên nhân | Cách fix |
+|---|---|---|
+| `destination path '.' already exists` khi `git clone` | Thư mục site có file ẩn aaPanel tự sinh (`.user.ini`...) mà `ls` không hiện | Clone vào thư mục tạm rồi `mv` đè lên (xem Bước 1) |
+| `composer install` báo `ext-fileinfo` thiếu | Extension `fileinfo` chưa bật cho bản PHP đang dùng | Bật qua aaPanel → PHP → Install extensions (Bước 3) |
+| `composer install` báo các gói Symfony yêu cầu PHP >= 8.4 | VPS đang chạy PHP 8.3 nhưng `composer.lock` khoá bản cần 8.4 | Cài PHP 8.4 qua App Store (Bước 2) |
+| `composer install` báo `composer-runtime-api` không khớp | Bản Composer cài sẵn quá cũ (< 2.2) | `composer self-update` (Bước 4) |
+| Trang trắng, lỗi `open_basedir restriction in effect` | Toggle "Anti-XSS attack" (open_basedir) đang bật, giới hạn PHP chỉ đọc được `public/` | Tắt toggle này trong site → Directory (Bước 12) |
+| `404 Not Found nginx` khi vào `/login` (nhưng trang chủ `/` vào được) | Thiếu rule rewrite URL đẹp cho Laravel | Bật URL rewrite template Laravel5 (Bước 13) |
+| Video kẹt ở "Đang xử lý" mãi không xong, log có `Job timed out` | Queue worker thiếu cờ `--timeout`, Laravel tự kill job sau 60s mặc định | Thêm `--timeout=3600` vào `ExecStart` của systemd unit (Bước 16) |
+| `systemctl restart nginx`/`php-fpm-84` báo lỗi nhưng service vẫn đang chạy | Script khởi động kiểu LSB không xử lý đúng "restart" khi service đã chạy | Dùng `/etc/init.d/nginx reload` và `/etc/init.d/php-fpm-84 restart` thay vì `systemctl restart` |
 
 ### Cách 2: Dùng Docker (CHỈ khuyến nghị cho test/dev cục bộ, KHÔNG dùng cho VPS)
 

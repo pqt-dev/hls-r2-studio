@@ -1,43 +1,43 @@
 @extends('layouts.app')
 
-@section('title', 'Tải lên video - HLS R2 Studio')
-@section('page-title', 'Tải lên video')
-@section('breadcrumb', 'Trang chủ / Tải lên video')
+@section('title', 'Upload Video - HLS R2 Studio')
+@section('page-title', 'Upload Video')
+@section('breadcrumb', 'Home / Upload Video')
 
 @section('content')
     <div class="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-emerald-600 px-6 py-4">
-            <h2 class="text-base font-semibold text-white">☁️ Tải lên Video</h2>
+        <div class="bg-emerald-700 px-6 py-4">
+            <h2 class="text-base font-semibold text-white inline-flex items-center gap-2"><x-lucide-cloud-upload class="w-4 h-4" /> Upload Video</h2>
         </div>
 
         <form id="upload-form" class="p-6 space-y-5"
               data-max-size-mb="{{ config('videos.max_upload_size_mb') }}"
               data-chunk-size-mb="{{ config('videos.chunk_size_mb') }}">
             <div id="title-field-wrapper">
-                <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Tiêu đề (tuỳ chọn)</label>
+                <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title (optional)</label>
                 <input type="text" name="title" id="title" value="{{ old('title') }}"
                        class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600">
-                <p id="title-multi-note" class="mt-1 text-xs text-gray-500 hidden">Tiêu đề tự động lấy theo tên file khi upload nhiều video.</p>
+                <p id="title-multi-note" class="mt-1 text-xs text-gray-500 hidden">Title is automatically taken from the filename when uploading multiple videos.</p>
             </div>
 
             <div>
-                <label for="video" class="block text-sm font-medium text-gray-700 mb-1">File video</label>
+                <label for="video" class="block text-sm font-medium text-gray-700 mb-1">Video File</label>
                 <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
                 <div id="dropzone"
                      class="rounded-2xl border-2 border-dashed border-gray-300 px-6 py-10 text-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/40 transition-colors">
-                    <div class="text-4xl mb-2">☁️</div>
+                    <div class="mb-2"><x-lucide-cloud-upload class="w-10 h-10 mx-auto text-gray-400" /></div>
                     <p class="text-sm text-gray-600">
-                        Kéo thả video vào đây hoặc
-                        <span class="text-emerald-600 font-medium underline">chọn file</span>
+                        Drag and drop video here or
+                        <span class="text-emerald-700 font-medium underline">choose file</span>
                     </p>
                 </div>
-                <p class="mt-1 text-xs text-gray-500">Định dạng: mp4, mov, mkv, avi, webm. Dung lượng tối đa {{ config('videos.max_upload_size_mb') }} MB.</p>
+                <p class="mt-1 text-xs text-gray-500">Formats: mp4, mov, mkv, avi, webm. Maximum size {{ config('videos.max_upload_size_mb') }} MB.</p>
                 <div id="selected-files-list" class="mt-2 space-y-1 hidden"></div>
             </div>
 
             <div id="upload-progress-card" class="hidden rounded-2xl border border-gray-200 overflow-hidden">
-                <div class="bg-emerald-600 px-4 py-2">
-                    <h3 class="text-sm font-semibold text-white">📊 Tiến trình tải lên</h3>
+                <div class="bg-emerald-700 px-4 py-2">
+                    <h3 class="text-sm font-semibold text-white inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Upload Progress</h3>
                 </div>
                 <div id="upload-queue" class="p-4 space-y-3"></div>
             </div>
@@ -46,14 +46,14 @@
 
             <div id="upload-summary" class="hidden rounded-lg bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 text-sm">
                 <p id="upload-summary-text"></p>
-                <a href="{{ route('videos.index') }}" class="mt-2 inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700">
-                    Xem danh sách video
+                <a href="{{ route('videos.index') }}" class="mt-2 inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">
+                    View Video List
                 </a>
             </div>
 
             <button type="submit" id="upload-submit"
-                    class="inline-flex items-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed">
-                Tải lên
+                    class="inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed">
+                Upload
             </button>
         </form>
     </div>
@@ -115,7 +115,7 @@
                         try {
                             const response = await fetch(url, options);
                             if (!response.ok) {
-                                let message = `Yêu cầu thất bại (HTTP ${response.status}).`;
+                                let message = `Request failed (HTTP ${response.status}).`;
                                 try {
                                     const data = await response.json();
                                     if (data && data.message) {
@@ -254,7 +254,7 @@
 
                         const statusEl = document.createElement('p');
                         statusEl.className = 'mt-1 text-xs text-gray-500';
-                        statusEl.textContent = 'Đang chờ';
+                        statusEl.textContent = 'Pending';
 
                         row.appendChild(header);
                         row.appendChild(barWrapper);
@@ -271,7 +271,7 @@
 
                 function setItemProgress(item, percent) {
                     item.bar.style.width = percent + '%';
-                    item.statusEl.textContent = 'Đang tải lên (' + percent + '%)';
+                    item.statusEl.textContent = 'Uploading (' + percent + '%)';
                 }
 
                 function setItemStatus(item, text) {
@@ -320,7 +320,7 @@
                         setItemProgress(item, Math.round((bytesSent / file.size) * 100));
                     }
 
-                    setItemStatus(item, 'Đang xử lý...');
+                    setItemStatus(item, 'Processing...');
 
                     await fetchWithRetry('/uploads/' + uploadId + '/complete', {
                         method: 'POST',
@@ -336,7 +336,7 @@
                         }),
                     }, 1);
 
-                    setItemStatus(item, 'Hoàn tất');
+                    setItemStatus(item, 'Done');
                 }
 
                 form.addEventListener('submit', async function (e) {
@@ -346,7 +346,7 @@
 
                     const files = Array.from(fileInput.files);
                     if (files.length === 0) {
-                        showError('Vui lòng chọn file video.');
+                        showError('Please select a video file.');
                         return;
                     }
 
@@ -354,11 +354,11 @@
                     for (const file of files) {
                         const extension = file.name.split('.').pop().toLowerCase();
                         if (!allowedExtensions.includes(extension)) {
-                            invalidMessages.push(file.name + ': định dạng không hợp lệ. Chỉ chấp nhận ' + allowedExtensions.join(', ') + '.');
+                            invalidMessages.push(file.name + ': invalid format. Only ' + allowedExtensions.join(', ') + ' are accepted.');
                             continue;
                         }
                         if (file.size > maxSizeBytes) {
-                            invalidMessages.push(file.name + ': dung lượng vượt quá giới hạn cho phép.');
+                            invalidMessages.push(file.name + ': size exceeds the allowed limit.');
                         }
                     }
 
@@ -381,14 +381,14 @@
                             await uploadFile(item);
                             successCount++;
                         } catch (err) {
-                            setItemStatus(item, 'Lỗi: ' + (err.message || 'Đã có lỗi xảy ra trong quá trình tải lên.'));
+                            setItemStatus(item, 'Error: ' + (err.message || 'An error occurred during upload.'));
                         }
                     }
 
                     submitButton.disabled = false;
                     fileInput.disabled = false;
 
-                    summaryText.textContent = 'Đã upload xong ' + successCount + '/' + items.length + ' video thành công.';
+                    summaryText.textContent = 'Successfully uploaded ' + successCount + '/' + items.length + ' videos.';
                     summaryBox.classList.remove('hidden');
                 });
             })();
