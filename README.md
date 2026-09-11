@@ -78,6 +78,10 @@ Bảng `users` (Laravel Auth chuẩn, dùng cho đăng nhập admin):
 
 Khuyến nghị dùng cách này cho VPS/production: Docker chạy Nginx và kết nối DB riêng dễ xung đột với panel quản lý VPS có sẵn (ví dụ aaPanel) — từng gặp lỗi HTTPS/CSS do 2 lớp Nginx chồng nhau, và firewall/quyền MySQL phức tạp không cần thiết khi mọi thứ vốn đã chạy sẵn trên cùng máy.
 
+> **VPS của bạn đã có sẵn panel quản lý (aaPanel, cPanel, Plesk...) chưa?**
+> - **Đã có aaPanel** → làm theo mục [Deploy với aaPanel](#deploy-với-aapanel) bên dưới — đơn giản hơn nhiều, không cần tự cài Nginx/PHP-FPM/systemd thủ công.
+> - **VPS "trắng", chưa cài gì** → làm theo phần "Cài Nginx + PHP-FPM thủ công" tiếp theo ngay sau đây.
+
 Yêu cầu: PHP 8.2+, Composer, Node.js + npm, MySQL, FFmpeg/FFprobe, tài khoản Cloudflare R2.
 
 ```bash
@@ -179,6 +183,14 @@ Restart: `sudo systemctl restart php8.2-fpm`.
 
 **5. Chạy queue worker bền vững bằng systemd** (thay vì mở terminal thủ công) — tạo file `/etc/systemd/system/hls-r2-studio-queue@.service` (template unit để chạy nhiều instance song song, khớp mặc định 2 worker của bản Docker):
 
+Cần làm 2 việc: **(1) tạo 1 file cấu hình mới** mô tả cách chạy queue worker, **(2) bật nó chạy**. Systemd là công cụ có sẵn trên Linux để quản lý các tiến trình chạy nền (tự khởi động lại nếu crash, tự chạy khi VPS reboot) — không cần cài thêm gì.
+
+**Bước 1** — tạo file (dùng `nano`, dán nguyên đoạn dưới vào, lưu bằng `Ctrl+O` → `Enter` → `Ctrl+X`):
+```bash
+sudo nano /etc/systemd/system/hls-r2-studio-queue@.service
+```
+Dán đoạn cấu hình sau (giải thích nhanh: `[Unit]` = thông tin chung + chờ mạng/MySQL sẵn sàng trước khi chạy; `[Service]` = lệnh thực sự chạy và tự khởi động lại nếu lỗi; `[Install]` = tự chạy mỗi khi VPS khởi động lại):
+
 ```ini
 [Unit]
 Description=HLS R2 Studio Queue Worker #%i
@@ -195,7 +207,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-Kích hoạt 2 worker song song (khớp mặc định Docker):
+**Bước 2** — bật chạy thật (lệnh này mới là lúc queue worker THỰC SỰ bắt đầu chạy), kích hoạt 2 worker song song (khớp mặc định Docker):
 
 ```bash
 sudo systemctl enable --now hls-r2-studio-queue@1 hls-r2-studio-queue@2
@@ -212,6 +224,55 @@ sudo ufw allow 80/tcp
 **7. Cập nhật code sau này** (không như Docker tự rebuild) cần tự chạy lại `composer install --no-dev`, `npm run build`, và `sudo systemctl restart php8.2-fpm hls-r2-studio-queue@1 hls-r2-studio-queue@2` để áp dụng code mới.
 
 - Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn là việc cần tự làm thêm (giống Cách 2, không lặp lại chi tiết ở đây).
+
+#### Deploy với aaPanel
+
+aaPanel tự quản lý Nginx + PHP-FPM + SSL cho bạn — không cần tự `apt install nginx`/tự tạo file cấu hình Nginx như phần "VPS trắng" ở trên (làm vậy sẽ xung đột với Nginx của chính aaPanel).
+
+1. **Đưa code lên VPS**: `git clone` repo vào 1 thư mục (hoặc dùng thư mục site aaPanel đã tạo sẵn khi bạn add domain).
+
+2. **Tạo website trong aaPanel**: vào tab **PHP Project** (hoặc **Website** → **Add site** tuỳ phiên bản aaPanel) → chọn domain, chọn **PHP version 8.2 trở lên**, **Document Root** đặt thành thư mục `public/` bên trong code vừa clone (ví dụ `/www/wwwroot/ten-domain/public`) — đây là điểm khác biệt quan trọng so với web PHP thường (Laravel luôn trỏ root vào `public/`, không phải thư mục gốc project).
+
+3. **Cài extension PHP cần thiết**: vào aaPanel → **PHP** (chọn đúng version vừa dùng) → **Extensions**/**Cài đặt** → bật: `pdo_mysql`, `mbstring`, `curl`, `pcntl`, `bcmath`, `fileinfo` (đa số đã bật sẵn mặc định, chỉ cần kiểm tra).
+
+4. **Tăng giới hạn upload**: aaPanel → **PHP** → **Configuration file** (hoặc **php.ini**) → tìm và sửa:
+   ```ini
+   upload_max_filesize = 2048M
+   post_max_size = 2048M
+   max_execution_time = 300
+   ```
+   Lưu lại, aaPanel tự restart PHP-FPM.
+
+5. **Cài Composer, Node.js, FFmpeg** (aaPanel thường có sẵn qua **App Store**/**Software** — kiểm tra trước, nếu không có thì cài qua SSH terminal):
+   ```bash
+   # Composer (nếu chưa có)
+   curl -sS https://getcomposer.org/installer | php
+   sudo mv composer.phar /usr/local/bin/composer
+
+   # FFmpeg (nếu chưa có)
+   sudo apt install -y ffmpeg
+   ```
+
+6. **Cài dependencies + build** (SSH vào VPS, cd vào đúng thư mục code):
+   ```bash
+   cd /www/wwwroot/ten-domain
+   composer install --no-dev
+   npm install && npm run build
+   ```
+
+7. **Cấu hình `.env`** — giống hệt hướng dẫn chung ở trên (điền MySQL, R2, sinh `APP_KEY`, `APP_ENV=production`, `APP_DEBUG=false`, `APP_URL=https://domain-thật`).
+
+8. **Tạo database + migrate + tạo admin** — dùng đúng MySQL của aaPanel (tạo qua tab **Database** trong aaPanel thay vì lệnh `mysql -u root -p` — xem hướng dẫn tạo database ở phần chung phía trên), rồi:
+   ```bash
+   php artisan migrate --force
+   php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
+   ```
+
+9. **Chạy queue worker** — vẫn cần systemd giống hướng dẫn chung bên dưới (aaPanel KHÔNG tự quản lý việc này) — xem mục "Chạy queue worker bền vững bằng systemd" phía trên, làm y hệt, chỉ cần đổi `WorkingDirectory` đúng đường dẫn thư mục code trên aaPanel.
+
+10. **Bật SSL**: vào site vừa tạo trong aaPanel → tab **SSL** → chọn **Let's Encrypt** → xin chứng chỉ miễn phí (1 click, aaPanel tự làm hết, không cần đụng gì tới Nginx config thủ công).
+
+11. **Kiểm tra**: mở `https://domain-thật/login`.
 
 ### Cách 2: Dùng Docker (CHỈ khuyến nghị cho test/dev cục bộ, KHÔNG dùng cho VPS)
 
