@@ -553,6 +553,14 @@ php artisan videos:import-from-r2
 
 Lệnh bỏ qua các file đã import trước đó (đã có record `videos` cùng `original_filename` và `status` khác `failed`), nên chạy lại nhiều lần an toàn — chỉ những video từng import lỗi mới được tạo lại để thử lần nữa.
 
+**Lọc theo nội dung WordPress** — nếu chỉ muốn import những file thật sự được tham chiếu trong nội dung WordPress (ví dụ export bài viết/database dạng text), dùng `--wp-content-file=`:
+
+```bash
+php artisan videos:import-from-r2 --wp-content-file=/path/to/wp-content-export.txt
+```
+
+Lệnh sẽ đọc toàn bộ nội dung file này và chỉ giữ lại những video có tên file (kèm đuôi, ví dụ `abc.mp4`) xuất hiện trong nội dung đó; các file không tìm thấy sẽ bị bỏ qua và in ra dòng thông báo riêng. Có thể kết hợp với `--dry-run` để xem trước danh sách file sẽ được import sau khi lọc.
+
 **Lưu ý an toàn**: bucket nguồn chỉ được ĐỌC — command và job import không bao giờ ghi hay xoá bất cứ thứ gì trên bucket này. Khi tạo credentials cho `R2_SOURCE_*`, nên dùng R2 API Token có quyền **Object Read only** để chặn cứng ở tầng quyền, đặc biệt khi bucket nguồn đang phục vụ một website production khác.
 
 **Lưu ý vận hành**: lệnh này chỉ tạo record + đẩy job vào queue nên chạy rất nhanh; việc tải file và băm HLS thật sự diễn ra ở các queue worker nền (`queue:work`) đã cấu hình sẵn — không cần giữ phiên SSH mở trong suốt quá trình xử lý. Tuy vậy vẫn nên chạy lệnh trong `screen`/`tmux`/`nohup` để phòng mất kết nối ngay giữa lúc lệnh đang liệt kê file và tạo record.
