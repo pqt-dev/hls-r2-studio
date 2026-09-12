@@ -19,6 +19,16 @@ class TranscodeVideoJob implements ShouldQueue
 
     public $tries = 1;
 
+    private const MIN_THUMBNAIL_SATURATION = 5.0;
+
+    private const MIN_THUMBNAIL_DETAIL = 3.0;
+
+    private const DETAIL_SCORE_WEIGHT = 5.0;
+
+    private const INITIAL_SAMPLE_FRACTIONS = [0.1, 0.3, 0.5, 0.7, 0.9];
+
+    private const EXTRA_SAMPLE_FRACTIONS = [0.2, 0.4, 0.6, 0.8, 0.05, 0.95];
+
     /**
      * Create a new job instance.
      */
@@ -57,7 +67,7 @@ class TranscodeVideoJob implements ShouldQueue
             $video->progress = 90;
             $video->save();
 
-            $this->generateThumbnail($this->localUploadPath, $tmpDir, $duration);
+            $this->generateThumbnail($this->localUploadPath, $tmpDir, $duration, $video->output_width, $video->output_height);
 
             $video->stage = 'uploading_r2';
             $video->progress = 92;
@@ -275,7 +285,7 @@ class TranscodeVideoJob implements ShouldQueue
         }
     }
 
-    private function generateThumbnail(string $inputPath, string $tmpDir, float $duration): void
+    private function generateThumbnail(string $inputPath, string $tmpDir, float $duration, ?int $sourceWidth, ?int $sourceHeight): void
     {
         $finalPath = "{$tmpDir}/thumbnail.jpg";
 
@@ -286,44 +296,107 @@ class TranscodeVideoJob implements ShouldQueue
         }
 
         $maxTimestamp = max(0, $duration - 0.5);
-        $points = [$duration * 0.15, $duration * 0.5, $duration * 0.85];
+
+        $rank = fn (array $c) => ($c['saturationScore'] ?? 0)
+            + self::DETAIL_SCORE_WEIGHT * ($c['detailScore'] ?? 0);
+
+        $isRemoved = fn (array $c) => $c['saturationScore'] === null
+            || $c['saturationScore'] < self::MIN_THUMBNAIL_SATURATION
+            || ($c['detailScore'] !== null && $c['detailScore'] < self::MIN_THUMBNAIL_DETAIL);
 
         $candidates = [];
+        $candidateCounter = 0;
 
-        foreach ($points as $i => $point) {
-            $timestamp = min(max($point, 0), $maxTimestamp);
-            $candidatePath = "{$tmpDir}/thumb_candidate_{$i}.jpg";
+        $extractCandidate = function (float $fraction) use ($inputPath, $tmpDir, $duration, $maxTimestamp, &$candidateCounter, &$candidates): void {
+            $timestamp = min(max($duration * $fraction, 0), $maxTimestamp);
+            $candidatePath = "{$tmpDir}/thumb_candidate_{$candidateCounter}.jpg";
+            $candidateCounter++;
             $this->extractThumbnailCandidate($inputPath, $timestamp, $candidatePath);
-            $candidates[] = $candidatePath;
+            $candidates[] = [
+                'timestamp' => $timestamp,
+                'path' => $candidatePath,
+                'saturationScore' => $this->measureSaturation($candidatePath),
+                'detailScore' => $this->measureDetail($candidatePath),
+            ];
+        };
+
+        foreach (self::INITIAL_SAMPLE_FRACTIONS as $fraction) {
+            $extractCandidate($fraction);
         }
 
-        $bestPath = $candidates[0];
-        $bestScore = -1.0;
-        $measured = false;
+        $countKept = fn () => count(array_filter($candidates, fn (array $c) => ! $isRemoved($c)));
 
-        foreach ($candidates as $candidatePath) {
-            $score = $this->measureSaturation($candidatePath);
+        foreach (self::EXTRA_SAMPLE_FRACTIONS as $fraction) {
+            if ($countKept() >= 3) {
+                break;
+            }
 
-            if ($score !== null) {
-                $measured = true;
+            $extractCandidate($fraction);
+        }
 
-                if ($score > $bestScore) {
-                    $bestScore = $score;
-                    $bestPath = $candidatePath;
-                }
+        $kept = array_values(array_filter(
+            $candidates,
+            fn (array $c) => ! $isRemoved($c)
+        ));
+        $removed = array_values(array_filter(
+            $candidates,
+            fn (array $c) => $isRemoved($c)
+        ));
+
+        if (count($kept) < 3) {
+            usort($removed, fn (array $a, array $b) => $rank($b) <=> $rank($a));
+            $kept = array_merge($kept, array_slice($removed, 0, 3 - count($kept)));
+        }
+
+        usort($kept, fn (array $a, array $b) => $rank($b) <=> $rank($a));
+        $selected = array_slice($kept, 0, 3);
+
+        usort($selected, fn (array $a, array $b) => $a['timestamp'] <=> $b['timestamp']);
+
+        $isLandscape = $sourceWidth !== null && $sourceHeight !== null && $sourceWidth > $sourceHeight;
+
+        $this->composeGridThumbnail(array_column($selected, 'path'), $finalPath, $isLandscape);
+
+        foreach ($candidates as $candidate) {
+            if (File::exists($candidate['path'])) {
+                File::delete($candidate['path']);
             }
         }
+    }
 
-        if (! $measured) {
-            $bestPath = $candidates[0];
+    private function composeGridThumbnail(array $orderedFramePaths, string $outputPath, bool $isLandscape): void
+    {
+        if ($isLandscape) {
+            // 3 horizontal strips stacked so a landscape source keeps its full width per frame
+            $filter = '[0:v]scale=1080:360:force_original_aspect_ratio=increase,crop=1080:360[c0];'
+                .'[1:v]scale=1080:360:force_original_aspect_ratio=increase,crop=1080:360[c1];'
+                .'[2:v]scale=1080:360:force_original_aspect_ratio=increase,crop=1080:360[c2];'
+                .'[c0][c1][c2]vstack=inputs=3[v]';
+        } else {
+            // Square 1080x1080 canvas split into 3 vertical columns so WordPress' near-square crop keeps all 3 frames
+            $filter = '[0:v]scale=360:1080:force_original_aspect_ratio=increase,crop=360:1080[c0];'
+                .'[1:v]scale=360:1080:force_original_aspect_ratio=increase,crop=360:1080[c1];'
+                .'[2:v]scale=360:1080:force_original_aspect_ratio=increase,crop=360:1080[c2];'
+                .'[c0][c1][c2]hstack=inputs=3[v]';
         }
 
-        File::copy($bestPath, $finalPath);
+        $process = new Process([
+            config('services.ffmpeg.binary'),
+            '-y',
+            '-i', $orderedFramePaths[0],
+            '-i', $orderedFramePaths[1],
+            '-i', $orderedFramePaths[2],
+            '-filter_complex', $filter,
+            '-map', '[v]',
+            '-frames:v', '1',
+            $outputPath,
+        ]);
 
-        foreach ($candidates as $candidatePath) {
-            if (File::exists($candidatePath)) {
-                File::delete($candidatePath);
-            }
+        $process->setTimeout(3600);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            throw new \RuntimeException('ffmpeg grid thumbnail failed: '.$process->getErrorOutput());
         }
     }
 
@@ -355,6 +428,33 @@ class TranscodeVideoJob implements ShouldQueue
             '-f', 'lavfi',
             '-i', "movie={$imagePath},signalstats",
             '-show_entries', 'frame_tags=lavfi.signalstats.SATAVG',
+            '-of', 'default=noprint_wrappers=1:nokey=1',
+        ]);
+
+        $process->setTimeout(60);
+        $process->run();
+
+        if (! $process->isSuccessful()) {
+            return null;
+        }
+
+        $output = trim($process->getOutput());
+
+        if ($output === '' || ! is_numeric($output)) {
+            return null;
+        }
+
+        return (float) $output;
+    }
+
+    private function measureDetail(string $imagePath): ?float
+    {
+        $process = new Process([
+            config('services.ffmpeg.ffprobe_binary'),
+            '-v', 'error',
+            '-f', 'lavfi',
+            '-i', "movie={$imagePath},edgedetect,signalstats",
+            '-show_entries', 'frame_tags=lavfi.signalstats.YAVG',
             '-of', 'default=noprint_wrappers=1:nokey=1',
         ]);
 
