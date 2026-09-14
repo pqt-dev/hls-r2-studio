@@ -232,6 +232,24 @@
             }, 1500);
         }
 
+        function copyThumbnailUrl(button, url) {
+            navigator.clipboard.writeText(url);
+
+            const originalHTML = button.innerHTML;
+            const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
+            const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
+
+            button.innerHTML = originalHTML.replace(/Copy Thumbnail/, 'Copied!');
+            button.classList.remove(...originalClasses);
+            button.classList.add(...successClasses);
+
+            setTimeout(function () {
+                button.innerHTML = originalHTML;
+                button.classList.remove(...successClasses);
+                button.classList.add(...originalClasses);
+            }, 1500);
+        }
+
         const selectAllCheckbox = document.getElementById('select-all-checkbox');
         const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
         const selectedCountEl = document.getElementById('selected-count');
