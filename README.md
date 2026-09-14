@@ -82,7 +82,7 @@ Khuyến nghị dùng cách này cho VPS/production: Docker chạy Nginx và k�
 > - **Đã có aaPanel** → làm theo mục [Deploy với aaPanel](#deploy-với-aapanel) bên dưới — đơn giản hơn nhiều, không cần tự cài Nginx/PHP-FPM/systemd thủ công.
 > - **VPS "trắng", chưa cài gì** → làm theo phần "Cài Nginx + PHP-FPM thủ công" tiếp theo ngay sau đây.
 
-Yêu cầu: PHP 8.3+ (dự án đã test và xác nhận chạy ổn định trên PHP 8.4 — một số bản `composer.lock` có thể khoá các gói yêu cầu PHP >=8.4, nên khuyến nghị dùng PHP 8.4 nếu VPS hỗ trợ), Composer 2.2+ (bản cũ hơn sẽ báo lỗi `composer-runtime-api` không tương thích — cập nhật bằng `composer self-update`), Node.js + npm, MySQL, FFmpeg/FFprobe, tài khoản Cloudflare R2.
+Yêu cầu: PHP 8.4+ (composer.json yêu cầu PHP `^8.4` vì `composer.lock` khoá một số gói Symfony yêu cầu PHP >=8.4), Composer 2.2+ (bản cũ hơn sẽ báo lỗi `composer-runtime-api` không tương thích — cập nhật bằng `composer self-update`), Node.js + npm, MySQL, FFmpeg/FFprobe, tài khoản Cloudflare R2.
 
 ```bash
 composer install
@@ -275,7 +275,7 @@ cd ten-domain.com
 
 **Bước 2 — Kiểm tra và cài đúng version PHP**
 
-Dự án yêu cầu PHP `^8.3` theo `composer.json`, nhưng `composer.lock` hiện tại có thể khoá một số gói Symfony yêu cầu PHP **>= 8.4** — nên cần PHP 8.4, không phải 8.3, dù composer.json ghi 8.3+. Kiểm tra:
+Dự án yêu cầu PHP `^8.4` theo `composer.json`, vì `composer.lock` khoá một số gói Symfony (ví dụ `symfony/console`, `symfony/http-foundation`, `symfony/http-kernel`...) yêu cầu PHP **>= 8.4**. Kiểm tra:
 
 ```bash
 php -v

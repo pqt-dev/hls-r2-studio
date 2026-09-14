@@ -29,6 +29,8 @@ class TranscodeVideoJob implements ShouldQueue
 
     private const EXTRA_SAMPLE_FRACTIONS = [0.2, 0.4, 0.6, 0.8, 0.05, 0.95];
 
+    private const SMART_CROP_WINDOW_COUNT = 7;
+
     /**
      * Create a new job instance.
      */
@@ -343,19 +345,27 @@ class TranscodeVideoJob implements ShouldQueue
             fn (array $c) => $isRemoved($c)
         ));
 
-        if (count($kept) < 3) {
+        $isLandscape = $sourceWidth !== null && $sourceHeight !== null && $sourceWidth > $sourceHeight;
+
+        $minNeeded = $isLandscape ? 1 : 3;
+
+        if (count($kept) < $minNeeded) {
             usort($removed, fn (array $a, array $b) => $rank($b) <=> $rank($a));
-            $kept = array_merge($kept, array_slice($removed, 0, 3 - count($kept)));
+            $kept = array_merge($kept, array_slice($removed, 0, $minNeeded - count($kept)));
         }
 
         usort($kept, fn (array $a, array $b) => $rank($b) <=> $rank($a));
-        $selected = array_slice($kept, 0, 3);
 
-        usort($selected, fn (array $a, array $b) => $a['timestamp'] <=> $b['timestamp']);
+        if ($isLandscape) {
+            $best = $kept[0];
+            $this->composeSingleFrameThumbnail($best['path'], $finalPath);
+        } else {
+            $selected = array_slice($kept, 0, 3);
 
-        $isLandscape = $sourceWidth !== null && $sourceHeight !== null && $sourceWidth > $sourceHeight;
+            usort($selected, fn (array $a, array $b) => $a['timestamp'] <=> $b['timestamp']);
 
-        $this->composeGridThumbnail(array_column($selected, 'path'), $finalPath, $isLandscape);
+            $this->composeGridThumbnail(array_column($selected, 'path'), $finalPath);
+        }
 
         foreach ($candidates as $candidate) {
             if (File::exists($candidate['path'])) {
@@ -364,29 +374,30 @@ class TranscodeVideoJob implements ShouldQueue
         }
     }
 
-    private function composeGridThumbnail(array $orderedFramePaths, string $outputPath, bool $isLandscape): void
+    private function composeSingleFrameThumbnail(string $framePath, string $outputPath): void
     {
-        if ($isLandscape) {
-            // 3 horizontal strips stacked so a landscape source keeps its full width per frame
-            $filter = '[0:v]scale=1080:360:force_original_aspect_ratio=increase,crop=1080:360[c0];'
-                .'[1:v]scale=1080:360:force_original_aspect_ratio=increase,crop=1080:360[c1];'
-                .'[2:v]scale=1080:360:force_original_aspect_ratio=increase,crop=1080:360[c2];'
-                .'[c0][c1][c2]vstack=inputs=3[v]';
-        } else {
-            // Square 1080x1080 canvas split into 3 vertical columns so WordPress' near-square crop keeps all 3 frames
-            $filter = '[0:v]scale=360:1080:force_original_aspect_ratio=increase,crop=360:1080[c0];'
-                .'[1:v]scale=360:1080:force_original_aspect_ratio=increase,crop=360:1080[c1];'
-                .'[2:v]scale=360:1080:force_original_aspect_ratio=increase,crop=360:1080[c2];'
-                .'[c0][c1][c2]hstack=inputs=3[v]';
+        $this->smartCropToCanvas($framePath, $outputPath, 1080, 1080);
+    }
+
+    private function composeGridThumbnail(array $orderedFramePaths, string $outputPath): void
+    {
+        $workDir = dirname($outputPath);
+        $uid = uniqid('grid_', true);
+        $columnPaths = [];
+
+        foreach ($orderedFramePaths as $index => $framePath) {
+            $columnPath = "{$workDir}/{$uid}_col_{$index}.jpg";
+            $this->smartCropToCanvas($framePath, $columnPath, 360, 1080);
+            $columnPaths[] = $columnPath;
         }
 
         $process = new Process([
             config('services.ffmpeg.binary'),
             '-y',
-            '-i', $orderedFramePaths[0],
-            '-i', $orderedFramePaths[1],
-            '-i', $orderedFramePaths[2],
-            '-filter_complex', $filter,
+            '-i', $columnPaths[0],
+            '-i', $columnPaths[1],
+            '-i', $columnPaths[2],
+            '-filter_complex', '[0:v][1:v][2:v]hstack=inputs=3[v]',
             '-map', '[v]',
             '-frames:v', '1',
             $outputPath,
@@ -395,8 +406,136 @@ class TranscodeVideoJob implements ShouldQueue
         $process->setTimeout(3600);
         $process->run();
 
+        foreach ($columnPaths as $columnPath) {
+            if (File::exists($columnPath)) {
+                File::delete($columnPath);
+            }
+        }
+
         if (! $process->isSuccessful()) {
             throw new \RuntimeException('ffmpeg grid thumbnail failed: '.$process->getErrorOutput());
+        }
+    }
+
+    private function smartCropToCanvas(string $framePath, string $outputPath, int $canvasWidth, int $canvasHeight): void
+    {
+        $workDir = dirname($outputPath);
+        $uid = uniqid('smartcrop_', true);
+        $scaledPath = "{$workDir}/{$uid}_scaled.jpg";
+
+        $scaleProcess = new Process([
+            config('services.ffmpeg.binary'),
+            '-y',
+            '-i', $framePath,
+            '-vf', "scale={$canvasWidth}:{$canvasHeight}:force_original_aspect_ratio=increase",
+            '-frames:v', '1',
+            $scaledPath,
+        ]);
+        $scaleProcess->setTimeout(3600);
+        $scaleProcess->run();
+
+        if (! $scaleProcess->isSuccessful()) {
+            throw new \RuntimeException('ffmpeg smart-crop scale failed: '.$scaleProcess->getErrorOutput());
+        }
+
+        $dimensions = getimagesize($scaledPath);
+
+        if ($dimensions === false) {
+            File::delete($scaledPath);
+
+            throw new \RuntimeException("Unable to read scaled image dimensions: {$scaledPath}");
+        }
+
+        [$scaledWidth, $scaledHeight] = $dimensions;
+
+        $excessX = $scaledWidth - $canvasWidth;
+        $excessY = $scaledHeight - $canvasHeight;
+
+        if ($excessX > 0) {
+            $axis = 'x';
+            $maxOffset = $excessX;
+        } elseif ($excessY > 0) {
+            $axis = 'y';
+            $maxOffset = $excessY;
+        } else {
+            $axis = null;
+            $maxOffset = 0;
+        }
+
+        if ($maxOffset > 0) {
+            $windowCount = self::SMART_CROP_WINDOW_COUNT;
+            $offsets = [];
+
+            for ($i = 0; $i < $windowCount; $i++) {
+                $offsets[] = (int) round($maxOffset * $i / ($windowCount - 1));
+            }
+
+            $offsets = array_values(array_unique($offsets));
+        } else {
+            $offsets = [0];
+        }
+
+        $trialPaths = [];
+        $bestOffset = null;
+        $bestScore = null;
+
+        foreach ($offsets as $index => $offset) {
+            $x = $axis === 'x' ? $offset : 0;
+            $y = $axis === 'y' ? $offset : 0;
+            $trialPath = "{$workDir}/{$uid}_trial_{$index}.jpg";
+            $trialPaths[] = $trialPath;
+
+            $cropProcess = new Process([
+                config('services.ffmpeg.binary'),
+                '-y',
+                '-i', $scaledPath,
+                '-vf', "crop={$canvasWidth}:{$canvasHeight}:{$x}:{$y}",
+                '-frames:v', '1',
+                $trialPath,
+            ]);
+            $cropProcess->setTimeout(3600);
+            $cropProcess->run();
+
+            if (! $cropProcess->isSuccessful()) {
+                continue;
+            }
+
+            $score = $this->measureDetail($trialPath);
+
+            if ($score !== null && ($bestScore === null || $score > $bestScore)) {
+                $bestScore = $score;
+                $bestOffset = $offset;
+            }
+        }
+
+        if ($bestOffset === null) {
+            $bestOffset = (int) round($maxOffset / 2);
+        }
+
+        $finalX = $axis === 'x' ? $bestOffset : 0;
+        $finalY = $axis === 'y' ? $bestOffset : 0;
+
+        $finalCropProcess = new Process([
+            config('services.ffmpeg.binary'),
+            '-y',
+            '-i', $scaledPath,
+            '-vf', "crop={$canvasWidth}:{$canvasHeight}:{$finalX}:{$finalY}",
+            '-frames:v', '1',
+            $outputPath,
+        ]);
+        $finalCropProcess->setTimeout(3600);
+        $finalCropProcess->run();
+
+        File::delete($scaledPath);
+
+        foreach ($trialPaths as $trialPath) {
+            if (File::exists($trialPath)) {
+                File::delete($trialPath);
+            }
+        }
+
+        if (! $finalCropProcess->isSuccessful()) {
+            throw new \RuntimeException('ffmpeg smart-crop final crop failed: '.$finalCropProcess->getErrorOutput());
         }
     }
 
