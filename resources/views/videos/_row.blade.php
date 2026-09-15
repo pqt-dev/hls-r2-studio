@@ -94,15 +94,23 @@
         <div class="inline-flex items-center gap-2">
             @if ($video->status === 'ready' && $playlistUrl)
                 <button type="button"
-                        onclick="openVideoModal('{{ $playlistUrl }}', '{{ addslashes($video->title) }}')"
+                        onclick="openVideoModal({{ \Illuminate\Support\Js::from($playlistUrl) }}, {{ \Illuminate\Support\Js::from($video->title) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800">
                     <x-lucide-eye class="w-3.5 h-3.5" /> View
                 </button>
 
                 <button type="button"
-                        onclick="copyVideoLink(this, '{{ $video->public_url }}')"
+                        onclick="copyVideoLink(this, {{ \Illuminate\Support\Js::from($video->public_url) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
                     <x-lucide-copy class="w-3.5 h-3.5" /> Copy Link
+                </button>
+            @endif
+
+            @if ($thumbnailUrl)
+                <button type="button"
+                        onclick="copyThumbnailUrl(this, {{ \Illuminate\Support\Js::from($thumbnailUrl) }})"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    <x-lucide-copy class="w-3.5 h-3.5" /> Copy Thumbnail
                 </button>
             @endif
 
