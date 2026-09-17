@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
 
 class AuthController extends Controller
@@ -27,8 +28,13 @@ class AuthController extends Controller
             return redirect()->route('dashboard.overview');
         }
 
+        Log::warning('Failed login attempt', [
+            'username' => $credentials['username'],
+            'ip' => $request->ip(),
+        ]);
+
         return back()->withErrors([
-            'username' => 'Incorrect email or password.',
+            'username' => 'Incorrect username or password.',
         ])->onlyInput('username');
     }
 

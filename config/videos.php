@@ -37,4 +37,55 @@ return [
 
     'chunk_size_mb' => (int) env('UPLOAD_CHUNK_SIZE_MB', 8),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Abandoned Upload TTL (Hours)
+    |--------------------------------------------------------------------------
+    |
+    | Number of hours a chunked upload directory may remain untouched before
+    | it is considered abandoned and eligible for cleanup.
+    |
+    */
+
+    'abandoned_upload_ttl_hours' => (int) env('UPLOAD_ABANDONED_TTL_HOURS', 24),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Orphaned Transcode Temp TTL (Hours)
+    |--------------------------------------------------------------------------
+    |
+    | Number of hours a transcode temp directory may remain in the
+    | 'processing' state before it is considered orphaned (job crashed
+    | before it could clean up) and eligible for cleanup.
+    |
+    */
+
+    'orphaned_transcode_ttl_hours' => (int) env('TRANSCODE_ORPHANED_TTL_HOURS', 48),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Orphaned Upload TTL (Hours)
+    |--------------------------------------------------------------------------
+    |
+    | Number of hours an original uploaded file may remain in the uploads
+    | directory before it is considered orphaned (the transcode job that was
+    | supposed to consume it never ran to completion) and eligible for
+    | cleanup.
+    |
+    */
+
+    'orphaned_upload_ttl_hours' => (int) env('UPLOAD_ORPHANED_TTL_HOURS', 72),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Transcode Timeout Multiplier
+    |--------------------------------------------------------------------------
+    |
+    | Multiplier applied to the video's duration (in seconds) to derive the
+    | ffmpeg process timeout. See TranscodeVideoJob::calculateProcessTimeout().
+    |
+    */
+
+    'transcode_timeout_multiplier' => (int) env('TRANSCODE_TIMEOUT_MULTIPLIER', 8),
+
 ];

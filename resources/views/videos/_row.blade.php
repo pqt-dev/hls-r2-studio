@@ -27,7 +27,7 @@
     @endif
 
     <td class="px-3 py-2">
-        <div class="w-20 h-12 bg-gray-200 rounded overflow-hidden flex items-center justify-center">
+        <div class="w-12 h-12 bg-gray-200 rounded overflow-hidden flex items-center justify-center">
             @if ($thumbnailUrl)
                 <img src="{{ $thumbnailUrl }}" alt="{{ $video->title }}" class="w-full h-full object-cover">
             @else

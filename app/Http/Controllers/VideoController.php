@@ -48,9 +48,11 @@ class VideoController extends Controller
                 ->orderBy('created_at', 'desc')
                 ->paginate($perPage);
 
+            $disk = Setting::current()->r2Disk();
+
             foreach ($filteredVideos as $video) {
                 if ($video->status === 'ready') {
-                    $video->public_url = Setting::current()->r2Disk()->url($video->playlist_path);
+                    $video->public_url = $disk->url($video->playlist_path);
                 }
             }
 
@@ -62,6 +64,7 @@ class VideoController extends Controller
         $activeVideos = Video::whereIn('status', ['pending', 'processing'])
             ->tap($applySearch)
             ->orderBy('created_at', 'asc')
+            ->limit(100)
             ->get();
 
         $completedVideos = Video::whereIn('status', ['ready', 'failed'])
@@ -69,9 +72,11 @@ class VideoController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
+        $disk = Setting::current()->r2Disk();
+
         foreach ($completedVideos as $video) {
             if ($video->status === 'ready') {
-                $video->public_url = Setting::current()->r2Disk()->url($video->playlist_path);
+                $video->public_url = $disk->url($video->playlist_path);
             }
         }
 
@@ -156,40 +161,201 @@ class VideoController extends Controller
     {
         $maxSizeBytes = config('videos.max_upload_size_mb') * 1024 * 1024;
 
-        $request->validate([
+        $validated = $request->validate([
             'filename' => ['required', 'string', 'regex:/\.(mp4|mov|mkv|avi|webm)$/i'],
             'total_size' => ['required', 'integer', 'min:1', "max:{$maxSizeBytes}"],
             'title' => ['nullable', 'string', 'max:255'],
         ]);
 
         $uploadId = (string) Str::uuid();
+        $uploadDir = "chunked_uploads/{$uploadId}";
 
-        Storage::disk('local')->makeDirectory("chunked_uploads/{$uploadId}");
+        Storage::disk('local')->makeDirectory("{$uploadDir}/chunks");
+        Storage::disk('local')->put("{$uploadDir}/meta.json", json_encode([
+            'filename' => $validated['filename'],
+            'total_size' => (int) $validated['total_size'],
+        ]));
 
         return response()->json(['upload_id' => $uploadId]);
     }
 
     /**
-     * Receive one chunk of a chunked upload and append it to the assembled file.
+     * Receive one chunk of a chunked upload and store it as its own file.
+     *
+     * The chunk is first written to a uniquely named temporary file, then moved
+     * into place with rename(), which is atomic on the same filesystem. A chunk
+     * file therefore either exists with its full content or does not exist at
+     * all, which also makes re-sending the same chunk index idempotent.
      */
     public function uploadChunk(Request $request, string $uploadId)
     {
+        $disk = Storage::disk('local');
         $uploadDir = "chunked_uploads/{$uploadId}";
 
-        if (! Storage::disk('local')->exists($uploadDir)) {
+        if (! $disk->exists($uploadDir)) {
             abort(404);
         }
 
         $chunkIndex = (int) $request->header('X-Chunk-Index');
-        $blobPath = Storage::disk('local')->path("{$uploadDir}/blob.part");
 
-        $handle = fopen($blobPath, 'ab');
-        $input = fopen('php://input', 'rb');
-        stream_copy_to_stream($input, $handle);
-        fclose($input);
-        fclose($handle);
+        if ($chunkIndex < 0) {
+            return response()->json([
+                'message' => 'The chunk index of this upload is invalid. Please try uploading again.',
+            ], 422);
+        }
+
+        $chunksDir = "{$uploadDir}/chunks";
+        $uniqueToken = (string) Str::uuid();
+        $tmpRelativePath = "{$uploadDir}/incoming_{$chunkIndex}_{$uniqueToken}.tmp";
+        $tmpPath = $disk->path($tmpRelativePath);
+
+        try {
+            $disk->makeDirectory($chunksDir);
+
+            $tmpHandle = fopen($tmpPath, 'wb');
+            if ($tmpHandle === false) {
+                throw new \RuntimeException('Unable to open temporary chunk file for writing.');
+            }
+
+            $input = $request->getContent(true);
+            $copied = stream_copy_to_stream($input, $tmpHandle);
+            fclose($input);
+            fclose($tmpHandle);
+
+            if ($copied === false) {
+                throw new \RuntimeException('Failed to read chunk data from request body.');
+            }
+
+            $declaredSize = $this->declaredUploadSize($uploadDir);
+
+            // Without the declared size the upload limit cannot be enforced,
+            // so the session is refused rather than accepted unchecked.
+            if ($declaredSize === null) {
+                $this->deleteFile($tmpPath, "rejecting chunk {$chunkIndex} of upload {$uploadId} whose metadata is unusable");
+
+                return response()->json([
+                    'message' => 'Upload session is invalid or expired. Please start a new upload.',
+                ], 422);
+            }
+
+            $storedSize = $this->storedChunksSize($uploadDir, $chunkIndex);
+
+            if ($storedSize + $copied > $declaredSize) {
+                $this->deleteFile($tmpPath, "rejecting oversized chunk {$chunkIndex} of upload {$uploadId}");
+
+                Log::warning("Upload {$uploadId} exceeds its declared size: chunk {$chunkIndex} would bring the total to ".($storedSize + $copied)." bytes, declared {$declaredSize} bytes.");
+
+                return response()->json([
+                    'message' => 'Upload exceeds the declared file size.',
+                ], 413);
+            }
+
+            if (! rename($tmpPath, $disk->path("{$chunksDir}/{$chunkIndex}.chunk"))) {
+                throw new \RuntimeException('Unable to move the received chunk into place.');
+            }
+        } catch (\Throwable $e) {
+            $this->deleteFile($tmpPath, "cleaning up after a failed chunk upload for {$uploadId}, chunk {$chunkIndex}");
+
+            Log::error("Chunk upload failed for uploadId {$uploadId}, chunk {$chunkIndex}: {$e->getMessage()}");
+
+            return response()->json([
+                'message' => 'Failed to save uploaded chunk.',
+            ], 500);
+        }
 
         return response()->json(['received_index' => $chunkIndex, 'ok' => true]);
+    }
+
+    /**
+     * Read the total size declared when the upload session was initialized.
+     *
+     * Returns null when the metadata cannot be read, which makes the upload
+     * limit unenforceable and therefore invalidates the session.
+     */
+    private function declaredUploadSize(string $uploadDir): ?int
+    {
+        $metaPath = "{$uploadDir}/meta.json";
+
+        if (! Storage::disk('local')->exists($metaPath)) {
+            Log::warning("Upload metadata is missing for {$uploadDir}; the declared size cannot be enforced.");
+
+            return null;
+        }
+
+        $meta = json_decode((string) Storage::disk('local')->get($metaPath), true);
+
+        if (! is_array($meta) || ! isset($meta['total_size'])) {
+            Log::warning("Upload metadata is unreadable for {$uploadDir}; the declared size cannot be enforced.");
+
+            return null;
+        }
+
+        return (int) $meta['total_size'];
+    }
+
+    /**
+     * Total size of the chunks already stored for an upload, optionally
+     * ignoring one index (the chunk currently being received, which may
+     * already exist because the client is retrying it).
+     */
+    private function storedChunksSize(string $uploadDir, ?int $ignoreIndex = null): int
+    {
+        $disk = Storage::disk('local');
+        $chunksDir = "{$uploadDir}/chunks";
+
+        if (! $disk->exists($chunksDir)) {
+            return 0;
+        }
+
+        $total = 0;
+
+        foreach ($disk->files($chunksDir) as $file) {
+            if (! preg_match('/^(\d+)\.chunk$/', basename($file), $matches)) {
+                continue;
+            }
+
+            if ($ignoreIndex !== null && (int) $matches[1] === $ignoreIndex) {
+                continue;
+            }
+
+            $total += $disk->size($file);
+        }
+
+        return $total;
+    }
+
+    /**
+     * Collect the stored chunk indexes of an upload, sorted ascending.
+     *
+     * @return list<int>
+     */
+    private function storedChunkIndexes(string $uploadDir): array
+    {
+        $indexes = [];
+
+        foreach (Storage::disk('local')->files("{$uploadDir}/chunks") as $file) {
+            if (preg_match('/^(\d+)\.chunk$/', basename($file), $matches)) {
+                $indexes[] = (int) $matches[1];
+            }
+        }
+
+        sort($indexes);
+
+        return $indexes;
+    }
+
+    /**
+     * Delete a file, logging the failure instead of silently ignoring it.
+     */
+    private function deleteFile(string $absolutePath, string $context): void
+    {
+        if (! file_exists($absolutePath)) {
+            return;
+        }
+
+        if (! @unlink($absolutePath)) {
+            Log::warning("Unable to delete file '{$absolutePath}' while {$context}.");
+        }
     }
 
     /**
@@ -198,47 +364,154 @@ class VideoController extends Controller
      */
     public function completeUpload(Request $request, string $uploadId)
     {
+        $maxSizeBytes = config('videos.max_upload_size_mb') * 1024 * 1024;
+
         $request->validate([
             'filename' => ['required', 'string', 'regex:/\.(mp4|mov|mkv|avi|webm)$/i'],
-            'total_size' => ['required', 'integer', 'min:1'],
+            'total_size' => ['required', 'integer', 'min:1', "max:{$maxSizeBytes}"],
             'title' => ['nullable', 'string', 'max:255'],
         ]);
 
+        $disk = Storage::disk('local');
         $uploadDir = "chunked_uploads/{$uploadId}";
-        $blobPath = Storage::disk('local')->path("{$uploadDir}/blob.part");
+        $chunksDir = "{$uploadDir}/chunks";
 
-        if (! Storage::disk('local')->exists("{$uploadDir}/blob.part")) {
+        if (! $disk->exists($chunksDir)) {
             abort(404);
         }
 
-        $totalSize = (int) $request->input('total_size');
-        $actualSize = filesize($blobPath);
+        $chunkIndexes = $this->storedChunkIndexes($uploadDir);
 
-        if ($actualSize !== $totalSize) {
+        if ($chunkIndexes === []) {
+            abort(404);
+        }
+
+        $expectedCount = end($chunkIndexes) + 1;
+
+        if (count($chunkIndexes) !== $expectedCount) {
+            $missingIndex = null;
+            foreach (range(0, $expectedCount - 1) as $index) {
+                if (! in_array($index, $chunkIndexes, true)) {
+                    $missingIndex = $index;
+                    break;
+                }
+            }
+
+            Log::warning("Upload {$uploadId} is missing chunk {$missingIndex}: received ".count($chunkIndexes)." of {$expectedCount} expected parts.");
+
+            // There is no resume feature: the client always restarts a failed
+            // upload from scratch, so the partial chunks are dead weight.
+            $disk->deleteDirectory($uploadDir);
+
             return response()->json([
-                'message' => "Assembled file size mismatch: received {$actualSize} bytes, expected {$totalSize} bytes.",
+                'message' => "Upload is incomplete: missing part {$missingIndex}. Please try uploading again.",
             ], 422);
         }
 
+        $totalSize = (int) $request->input('total_size');
         $filename = $request->input('filename');
         $extension = pathinfo($filename, PATHINFO_EXTENSION);
         $uuid = (string) Str::uuid();
         $newFilename = "{$uuid}.{$extension}";
 
-        Storage::disk('local')->makeDirectory('uploads');
-        $localUploadPath = Storage::disk('local')->path("uploads/{$newFilename}");
-        rename($blobPath, $localUploadPath);
+        $disk->makeDirectory('uploads');
+        $localUploadPath = $disk->path("uploads/{$newFilename}");
 
-        Storage::disk('local')->deleteDirectory($uploadDir);
+        try {
+            $outputHandle = fopen($localUploadPath, 'wb');
+            if ($outputHandle === false) {
+                throw new \RuntimeException('Unable to open the assembled upload file for writing.');
+            }
 
-        $video = Video::create([
-            'title' => $request->input('title') ?: $filename,
-            'original_filename' => $filename,
-            'original_size_bytes' => $totalSize,
-            'status' => 'pending',
-        ]);
+            try {
+                foreach ($chunkIndexes as $index) {
+                    $chunkHandle = fopen($disk->path("{$chunksDir}/{$index}.chunk"), 'rb');
+                    if ($chunkHandle === false) {
+                        throw new \RuntimeException("Unable to open chunk {$index} of upload {$uploadId}.");
+                    }
 
-        TranscodeVideoJob::dispatch($video->id, $localUploadPath);
+                    try {
+                        if (stream_copy_to_stream($chunkHandle, $outputHandle) === false) {
+                            throw new \RuntimeException("Failed to append chunk {$index} of upload {$uploadId}.");
+                        }
+                    } finally {
+                        fclose($chunkHandle);
+                    }
+                }
+            } finally {
+                fclose($outputHandle);
+            }
+        } catch (\Throwable $e) {
+            $this->deleteFile($localUploadPath, "cleaning up after a failed assembly of upload {$uploadId}");
+
+            Log::error("Failed to finalize upload {$uploadId}: {$e->getMessage()}");
+
+            return response()->json([
+                'message' => 'Failed to finalize the uploaded file.',
+            ], 500);
+        }
+
+        clearstatcache(true, $localUploadPath);
+        $actualSize = filesize($localUploadPath);
+
+        if ($actualSize !== $totalSize) {
+            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} after a size mismatch");
+            $disk->deleteDirectory($uploadDir);
+
+            Log::warning("Assembled file size mismatch for upload {$uploadId}: received {$actualSize} bytes, expected {$totalSize} bytes.");
+
+            return response()->json([
+                'message' => 'The uploaded file appears incomplete or corrupted. Please try uploading again.',
+            ], 422);
+        }
+
+        $disk->deleteDirectory($uploadDir);
+
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo ? finfo_file($finfo, $localUploadPath) : false;
+
+        if (! $mimeType || ! str_starts_with($mimeType, 'video/')) {
+            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} that is not a video file");
+
+            return response()->json([
+                'message' => 'File content does not appear to be a valid video.',
+            ], 422);
+        }
+
+        try {
+            $video = Video::create([
+                'title' => $request->input('title') ?: $filename,
+                'original_filename' => $filename,
+                'original_size_bytes' => $totalSize,
+                'status' => 'pending',
+            ]);
+        } catch (\Throwable $e) {
+            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} after the video record could not be created");
+
+            Log::error("Failed to create video record for upload {$uploadId}: {$e->getMessage()}");
+
+            return response()->json([
+                'message' => 'Failed to save video record.',
+            ], 500);
+        }
+
+        try {
+            TranscodeVideoJob::dispatch($video->id, $localUploadPath);
+        } catch (\Throwable $e) {
+            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} after the transcode job could not be queued");
+
+            try {
+                $video->delete();
+            } catch (\Throwable $deleteError) {
+                Log::error("Failed to remove video record {$video->id} after its transcode job could not be queued: {$deleteError->getMessage()}");
+            }
+
+            Log::error("Failed to queue transcode job for upload {$uploadId}: {$e->getMessage()}");
+
+            return response()->json([
+                'message' => 'Unable to queue this video for processing. Please try again.',
+            ], 500);
+        }
 
         return response()->json(['redirect' => route('videos.index')]);
     }
@@ -284,14 +557,25 @@ class VideoController extends Controller
         ]);
 
         $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
-        $count = 0;
+        $successCount = 0;
+        $failedCount = 0;
 
         foreach (Video::whereIn('id', $validated['selected_ids'])->get() as $video) {
-            $this->deleteVideo($video, $deleteFromR2);
-            $count++;
+            try {
+                $this->deleteVideo($video, $deleteFromR2);
+                $successCount++;
+            } catch (\Throwable $e) {
+                $failedCount++;
+
+                Log::error("Failed to delete video {$video->id} during bulk delete: {$e->getMessage()}");
+            }
         }
 
-        return redirect()->route('videos.index')->with('status', "Deleted {$count} videos.");
+        $status = $failedCount > 0
+            ? "Deleted {$successCount} videos ({$failedCount} failed — check logs)."
+            : "Deleted {$successCount} videos.";
+
+        return redirect()->route('videos.index')->with('status', $status);
     }
 
     /**
@@ -300,7 +584,13 @@ class VideoController extends Controller
     private function deleteVideo(Video $video, bool $deleteFromR2): void
     {
         if ($video->disk_prefix && $deleteFromR2) {
-            Setting::current()->r2Disk()->deleteDirectory($video->disk_prefix);
+            try {
+                if (! Setting::current()->r2Disk()->deleteDirectory($video->disk_prefix)) {
+                    Log::error("Failed to delete R2 files for video {$video->id} (disk_prefix: {$video->disk_prefix}); they may need to be removed manually.");
+                }
+            } catch (\Throwable $e) {
+                Log::error("Failed to delete R2 files for video {$video->id} (disk_prefix: {$video->disk_prefix}): {$e->getMessage()}");
+            }
         }
 
         $video->delete();
