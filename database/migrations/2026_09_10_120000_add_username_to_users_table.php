@@ -31,6 +31,14 @@ return new class extends Migration
      */
     public function down(): void
     {
+        // The original email values were overwritten in up() and are not
+        // recoverable. Before re-applying the NOT NULL constraint, fill any
+        // NULL email with a placeholder derived from the row's id so the
+        // unique, non-null constraint below does not fail.
+        DB::table('users')->whereNull('email')->get()->each(
+            fn ($u) => DB::table('users')->where('id', $u->id)->update(['email' => "user-{$u->id}@placeholder.invalid"])
+        );
+
         Schema::table('users', function (Blueprint $table) {
             $table->dropUnique(['username']);
             $table->dropColumn('username');

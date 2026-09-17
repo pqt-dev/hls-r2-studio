@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -20,7 +22,7 @@ class SettingsController extends Controller
 
     public function updateR2(Request $request): RedirectResponse
     {
-        $validated = $request->validate([
+        $validator = Validator::make($request->all(), [
             'r2_access_key_id' => ['nullable', 'string'],
             'r2_secret_access_key' => ['nullable', 'string'],
             'r2_bucket' => ['nullable', 'string'],
@@ -28,11 +30,17 @@ class SettingsController extends Controller
             'r2_url' => ['nullable', 'string', 'url'],
         ]);
 
+        if ($validator->fails()) {
+            return back()->withErrors($validator)->withInput($request->except(['r2_secret_access_key']));
+        }
+
+        $validated = $validator->validated();
+
         $settings = Setting::current();
 
-        $settings->r2_bucket = $validated['r2_bucket'];
-        $settings->r2_endpoint = $validated['r2_endpoint'];
-        $settings->r2_url = $validated['r2_url'];
+        $settings->r2_bucket = $validated['r2_bucket'] ?? null;
+        $settings->r2_endpoint = $validated['r2_endpoint'] ?? null;
+        $settings->r2_url = $validated['r2_url'] ?? null;
         $settings->delete_from_r2_on_destroy = $request->boolean('delete_from_r2_on_destroy');
 
         if (filled($validated['r2_access_key_id'])) {
@@ -86,6 +94,10 @@ class SettingsController extends Controller
         ]);
 
         auth()->user()->update(['password' => $validated['password']]);
+
+        $request->session()->regenerate();
+
+        Auth::logoutOtherDevices($validated['password']);
 
         return back()->with('success', 'Password changed.');
     }

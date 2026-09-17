@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\User;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Validator;
 
 class CreateAdminUser extends Command
 {
@@ -12,7 +13,7 @@ class CreateAdminUser extends Command
      *
      * @var string
      */
-    protected $signature = 'admin:create {username} {password} {--email=}';
+    protected $signature = 'admin:create {username} {password?} {--email=}';
 
     /**
      * The console command description.
@@ -24,16 +25,31 @@ class CreateAdminUser extends Command
     /**
      * Execute the console command.
      */
-    public function handle(): void
+    public function handle(): int
     {
         $username = $this->argument('username');
-        $password = $this->argument('password');
+        $password = $this->argument('password') ?? $this->secret('Enter password:');
 
-        User::updateOrCreate(
-            ['username' => $username],
-            ['name' => 'Admin', 'password' => $password, 'email' => $this->option('email')]
-        );
+        $validator = Validator::make(['password' => $password], [
+            'password' => ['required', 'min:8'],
+        ]);
+
+        if ($validator->fails()) {
+            $this->error($validator->errors()->first('password'));
+
+            return self::FAILURE;
+        }
+
+        $attributes = ['name' => 'Admin', 'password' => $password];
+
+        if ($this->option('email') !== null) {
+            $attributes['email'] = $this->option('email');
+        }
+
+        User::updateOrCreate(['username' => $username], $attributes);
 
         $this->info("Admin created/updated: {$username}");
+
+        return self::SUCCESS;
     }
 }

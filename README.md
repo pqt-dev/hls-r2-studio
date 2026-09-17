@@ -74,9 +74,9 @@ Bảng `users` (Laravel Auth chuẩn, dùng cho đăng nhập admin):
 
 ## Cài đặt
 
-### Cách 1: Cài trực tiếp (khuyến nghị cho VPS/production)
+### Cài đặt (khuyến nghị cho VPS/production)
 
-Khuyến nghị dùng cách này cho VPS/production: Docker chạy Nginx và kết nối DB riêng dễ xung đột với panel quản lý VPS có sẵn (ví dụ aaPanel) — từng gặp lỗi HTTPS/CSS do 2 lớp Nginx chồng nhau, và firewall/quyền MySQL phức tạp không cần thiết khi mọi thứ vốn đã chạy sẵn trên cùng máy.
+Khuyến nghị dùng cách này cho VPS/production: chạy trực tiếp trên panel quản lý VPS có sẵn (ví dụ aaPanel) tránh được các vấn đề xung đột Nginx chồng lớp và firewall/quyền MySQL phức tạp không cần thiết khi mọi thứ vốn đã chạy sẵn trên cùng máy.
 
 > **VPS của bạn đã có sẵn panel quản lý (aaPanel, cPanel, Plesk...) chưa?**
 > - **Đã có aaPanel** → làm theo mục [Deploy với aaPanel](#deploy-với-aapanel) bên dưới — đơn giản hơn nhiều, không cần tự cài Nginx/PHP-FPM/systemd thủ công.
@@ -102,7 +102,7 @@ DB_DATABASE=hls_r2_studio
 DB_USERNAME=<user MySQL>
 DB_PASSWORD=<password MySQL>
 ```
-> `DB_HOST` là `127.0.0.1` khi MySQL chạy trên cùng máy với PHP (trường hợp thường gặp nhất, kể cả khi dùng aaPanel). Giá trị `mysql` chỉ có ý nghĩa khi chạy qua Docker Compose ở Cách 2 — không dùng giá trị đó ở Cách 1.
+> `DB_HOST` là `127.0.0.1` khi MySQL chạy trên cùng máy với PHP (trường hợp thường gặp nhất, kể cả khi dùng aaPanel).
 
 **Cloudflare R2:**
 ```env
@@ -137,7 +137,7 @@ php artisan migrate
 php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
 ```
 
-Chạy ứng dụng — cần **hai tiến trình song song**:
+Chạy ứng dụng — cần **ba tiến trình song song**:
 
 ```bash
 # Terminal 1
@@ -145,6 +145,12 @@ php artisan serve
 
 # Terminal 2 — bắt buộc, video sẽ không transcode nếu không chạy queue worker
 php artisan queue:work
+
+# Terminal 3 — bắt buộc để tự động dọn rác hàng ngày (upload chunk bỏ dở, thư mục tạm
+# băm HLS bị crash treo, file video mồ côi); nếu thiếu, rác không tự dọn nhưng
+# ứng dụng vẫn hoạt động bình thường (khác với thiếu queue worker — thiếu queue worker
+# thì video hoàn toàn không xử lý được)
+php artisan schedule:work
 ```
 
 Truy cập `http://localhost:8000/login`.
@@ -213,7 +219,7 @@ max_execution_time = 300
 
 Restart: `sudo systemctl restart php8.2-fpm`.
 
-**5. Chạy queue worker bền vững bằng systemd** (thay vì mở terminal thủ công) — tạo file `/etc/systemd/system/hls-r2-studio-queue@.service` (template unit để chạy nhiều instance song song, khớp mặc định 2 worker của bản Docker):
+**5. Chạy queue worker bền vững bằng systemd** (thay vì mở terminal thủ công) — tạo file `/etc/systemd/system/hls-r2-studio-queue@.service` (template unit để chạy nhiều instance song song):
 
 Cần làm 2 việc: **(1) tạo 1 file cấu hình mới** mô tả cách chạy queue worker, **(2) bật nó chạy**. Systemd là công cụ có sẵn trên Linux để quản lý các tiến trình chạy nền (tự khởi động lại nếu crash, tự chạy khi VPS reboot) — không cần cài thêm gì.
 
@@ -231,7 +237,7 @@ After=network.target mysql.service
 [Service]
 User=www-data
 WorkingDirectory=/path/to/hls-r2-studio
-ExecStart=/usr/bin/php artisan queue:work --tries=1 --timeout=3600
+ExecStart=/usr/bin/php artisan queue:work --tries=1 --timeout=172800
 Restart=always
 RestartSec=5
 
@@ -239,7 +245,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-**Bước 2** — bật chạy thật (lệnh này mới là lúc queue worker THỰC SỰ bắt đầu chạy), kích hoạt 2 worker song song (khớp mặc định Docker):
+**Bước 2** — bật chạy thật (lệnh này mới là lúc queue worker THỰC SỰ bắt đầu chạy), kích hoạt 2 worker song song:
 
 ```bash
 sudo systemctl enable --now hls-r2-studio-queue@1 hls-r2-studio-queue@2
@@ -247,15 +253,49 @@ sudo systemctl enable --now hls-r2-studio-queue@1 hls-r2-studio-queue@2
 
 Kiểm tra: `sudo systemctl status hls-r2-studio-queue@1`, xem log: `sudo journalctl -u hls-r2-studio-queue@1 -f`.
 
-**6. Firewall**:
+> **Lưu ý về `DB_QUEUE_RETRY_AFTER`**: `.env.example` đã có sẵn `DB_QUEUE_RETRY_AFTER=176400`. Giá trị này PHẢI luôn LỚN HƠN `--timeout` của queue worker (`172800`) — nếu không, database queue driver sẽ coi 1 job đang chạy hợp lệ là "đã chết" và cho worker khác nhận lại, gây xử lý trùng lặp. Đổi cái này thì phải đổi cái kia theo.
+
+**6. Chạy scheduler bền vững bằng systemd** (bắt buộc để 3 lệnh dọn rác tự động chạy hàng ngày, xem [Lưu ý khác](#lưu-ý-khác) — nếu thiếu, rác không tự dọn nhưng ứng dụng vẫn hoạt động bình thường)
+
+Tạo file `/etc/systemd/system/hls-r2-studio-scheduler.service` (không dùng template `@` như queue worker — scheduler chỉ cần chạy 1 instance duy nhất, không chạy song song nhiều bản):
+
+```bash
+sudo nano /etc/systemd/system/hls-r2-studio-scheduler.service
+```
+
+```ini
+[Unit]
+Description=HLS R2 Studio Scheduler
+After=network.target mysql.service
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/hls-r2-studio
+ExecStart=/usr/bin/php artisan schedule:work
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Bật chạy:
+
+```bash
+sudo systemctl enable --now hls-r2-studio-scheduler
+```
+
+Kiểm tra: `sudo systemctl status hls-r2-studio-scheduler`, xem log: `sudo journalctl -u hls-r2-studio-scheduler -f`.
+
+**7. Firewall**:
 
 ```bash
 sudo ufw allow 80/tcp
 ```
 
-**7. Cập nhật code sau này** (không như Docker tự rebuild) cần tự chạy lại `composer install --no-dev`, `npm run build`, và `sudo systemctl restart php8.2-fpm hls-r2-studio-queue@1 hls-r2-studio-queue@2` để áp dụng code mới.
+**8. Cập nhật code sau này** cần tự chạy lại `composer install --no-dev`, `npm run build`, và `sudo systemctl restart php8.2-fpm hls-r2-studio-queue@1 hls-r2-studio-queue@2 hls-r2-studio-scheduler` để áp dụng code mới.
 
-- Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn là việc cần tự làm thêm (giống Cách 2, không lặp lại chi tiết ở đây).
+- Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn là việc cần tự làm thêm.
 
 #### Deploy với aaPanel
 
@@ -358,7 +398,7 @@ DB_USERNAME=<user MySQL vừa tạo>
 DB_PASSWORD=<password MySQL vừa tạo>
 ```
 
-> `DB_HOST` luôn là `127.0.0.1` khi deploy kiểu này (PHP và MySQL cùng chạy trên 1 máy qua aaPanel) — **không** dùng giá trị `mysql`, đó là tên service chỉ có ý nghĩa trong Cách 2 (Docker).
+> `DB_HOST` luôn là `127.0.0.1` khi deploy kiểu này (PHP và MySQL cùng chạy trên 1 máy qua aaPanel).
 
 ```env
 # Cloudflare R2
@@ -437,7 +477,7 @@ Tạo file:
 nano /etc/systemd/system/hls-r2-studio-queue@.service
 ```
 
-Dán đúng nội dung sau — chú ý `--timeout=3600`, thiếu cờ này Laravel sẽ tự kill job sau 60 giây mặc định (dù video ngắn, quá trình ffmpeg + upload R2 thường vượt quá 60 giây):
+Dán đúng nội dung sau — chú ý `--timeout=172800`: timeout job scale theo độ dài video thật (hệ số x8, sàn 600s — xem `TRANSCODE_TIMEOUT_MULTIPLIER` ở [Lưu ý khác](#lưu-ý-khác)), và `172800` (48 tiếng) là trần an toàn tổng cho cả job (transcode + tạo thumbnail + upload R2), khớp với `$timeout` mức job trong code. Không dùng `3600` — quá thấp cho video dài, Laravel sẽ tự kill job giữa chừng:
 
 ```ini
 [Unit]
@@ -447,7 +487,7 @@ After=network.target mysql.service
 [Service]
 User=www
 WorkingDirectory=/www/wwwroot/ten-domain.com
-ExecStart=/www/server/php/84/bin/php artisan queue:work --sleep=3 --tries=1 --timeout=3600 --max-time=3600
+ExecStart=/www/server/php/84/bin/php artisan queue:work --sleep=3 --tries=1 --timeout=172800 --max-time=172800
 Restart=always
 RestartSec=5
 
@@ -464,7 +504,40 @@ systemctl enable --now hls-r2-studio-queue@2
 
 Kiểm tra: `systemctl status hls-r2-studio-queue@1`, xem log: `journalctl -u hls-r2-studio-queue@1 -f`.
 
-**Bước 17 — Kiểm tra**
+> **Lưu ý về `DB_QUEUE_RETRY_AFTER`**: `.env.example` đã có sẵn `DB_QUEUE_RETRY_AFTER=176400`, PHẢI luôn LỚN HƠN `--timeout` ở trên (`172800`) — nếu không, database queue driver sẽ coi 1 job đang chạy hợp lệ là "đã chết" và cho worker khác nhận lại, gây xử lý trùng lặp. Đổi cái này thì phải đổi cái kia theo.
+
+**Bước 17 — Chạy scheduler bằng systemd** (bắt buộc để 3 lệnh dọn rác tự động chạy hàng ngày, xem [Lưu ý khác](#lưu-ý-khác) — nếu thiếu, rác không tự dọn nhưng ứng dụng vẫn hoạt động bình thường; aaPanel KHÔNG tự quản lý việc này)
+
+Tạo file (không dùng template `@` như queue worker — scheduler chỉ cần chạy 1 instance duy nhất):
+```bash
+nano /etc/systemd/system/hls-r2-studio-scheduler.service
+```
+
+```ini
+[Unit]
+Description=HLS R2 Studio Scheduler
+After=network.target mysql.service
+
+[Service]
+User=www
+WorkingDirectory=/www/wwwroot/ten-domain.com
+ExecStart=/www/server/php/84/bin/php artisan schedule:work
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Kích hoạt:
+```bash
+systemctl daemon-reload
+systemctl enable --now hls-r2-studio-scheduler
+```
+
+Kiểm tra: `systemctl status hls-r2-studio-scheduler`, xem log: `journalctl -u hls-r2-studio-scheduler -f`.
+
+**Bước 18 — Kiểm tra**
 
 Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã tạo ở Bước 9, thử upload 1 video ngắn để xác nhận toàn bộ pipeline (upload → transcode → upload R2 → phát HLS) chạy hoàn chỉnh.
 
@@ -478,62 +551,32 @@ Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã
 | `composer install` báo `composer-runtime-api` không khớp | Bản Composer cài sẵn quá cũ (< 2.2) | `composer self-update` (Bước 4) |
 | Trang trắng, lỗi `open_basedir restriction in effect` | Toggle "Anti-XSS attack" (open_basedir) đang bật, giới hạn PHP chỉ đọc được `public/` | Tắt toggle này trong site → Directory (Bước 12) |
 | `404 Not Found nginx` khi vào `/login` (nhưng trang chủ `/` vào được) | Thiếu rule rewrite URL đẹp cho Laravel | Bật URL rewrite template Laravel5 (Bước 13) |
-| Video kẹt ở "Đang xử lý" mãi không xong, log có `Job timed out` | Queue worker thiếu cờ `--timeout`, Laravel tự kill job sau 60s mặc định | Thêm `--timeout=3600` vào `ExecStart` của systemd unit (Bước 16) |
+| Video kẹt ở "Đang xử lý" mãi không xong, log có `Job timed out` | Queue worker thiếu cờ `--timeout`, Laravel tự kill job sau 60s mặc định | Thêm `--timeout=172800` vào `ExecStart` của systemd unit (Bước 16) |
 | `systemctl restart nginx`/`php-fpm-84` báo lỗi nhưng service vẫn đang chạy | Script khởi động kiểu LSB không xử lý đúng "restart" khi service đã chạy | Dùng `/etc/init.d/nginx reload` và `/etc/init.d/php-fpm-84 restart` thay vì `systemctl restart` |
-
-### Cách 2: Dùng Docker (CHỈ khuyến nghị cho test/dev cục bộ, KHÔNG dùng cho VPS)
-
-Cách này chỉ nên dùng để test tính năng trên máy cá nhân trước khi deploy thật bằng Cách 1. Không dùng Docker để deploy lên VPS production — xem lý do ở đầu mục Cách 1.
-
-Yêu cầu: Docker + Docker Compose đã cài.
-
-```bash
-cp .env.example .env
-```
-
-- Điền R2 thật vào `.env` (`R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, `R2_ENDPOINT`, `R2_URL`).
-- Đổi `DB_PASSWORD` và `DB_ROOT_PASSWORD` khỏi giá trị mặc định.
-
-**Bắt buộc — sinh `APP_KEY`** (Laravel dùng key này để mã hoá session, cookie, và các trường nhạy cảm như `r2_secret_access_key` trong Cài đặt; thiếu key này app sẽ lỗi ngay khi chạy):
-
-```bash
-docker compose run --rm app php artisan key:generate
-```
-
-⚠️ Chỉ chạy lệnh này **1 lần duy nhất** khi mới cài — sinh lại `APP_KEY` sau khi đã có dữ liệu thật sẽ làm hỏng các trường đã mã hoá bằng key cũ (ví dụ R2 Secret Key đã lưu qua trang Cài đặt sẽ không giải mã được nữa).
-
-```bash
-docker compose up -d
-docker compose run --rm app php artisan migrate --force
-docker compose run --rm app php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
-```
-
-Truy cập `http://localhost:8080/login`.
 
 ## Chạy nhiều worker song song
 
-Với Cách 1 (cài trực tiếp), "nhiều worker" nghĩa là chạy nhiều instance systemd (`hls-r2-studio-queue@1`, `hls-r2-studio-queue@2`, ...) — xem hướng dẫn ở bước 5 của Cách 1.
-
-Nếu dùng Cách 2 (Docker, chỉ để test/dev cục bộ): mặc định `docker-compose.yml` chạy 2 worker song song (`queue: deploy.replicas: 2`). Để đổi số lượng, sửa `replicas` của service `queue` rồi `docker compose up -d`:
-
-```yaml
-  queue:
-    deploy:
-      replicas: 2
-```
-
-Có thể override tạm thời bằng `docker compose up -d --scale queue=5`.
+"Nhiều worker" nghĩa là chạy nhiều instance systemd (`hls-r2-studio-queue@1`, `hls-r2-studio-queue@2`, ...) — xem hướng dẫn ở bước 5 trong mục [Chạy production thật trên VPS](#chạy-production-thật-trên-vps-thay-vì-php-artisan-serve).
 
 ## Lưu ý khác
 
-- Laravel giới hạn upload theo `UPLOAD_MAX_SIZE_MB` trong `.env`, nhưng PHP còn giới hạn riêng qua `php.ini` (`docker/php/uploads.ini`) và nginx (`client_max_body_size` trong `docker/nginx.conf`) — đổi cả 3 nơi rồi build lại image nếu cần tăng giới hạn.
-- `FFMPEG_BINARY`/`FFPROBE_BINARY` mặc định là `ffmpeg`/`ffprobe` (lấy từ `$PATH`); image Docker đã cài sẵn qua `apt` nên không cần chỉnh khi chạy Docker.
+- Laravel giới hạn upload theo `UPLOAD_MAX_SIZE_MB` trong `.env`, nhưng PHP còn giới hạn riêng qua `php.ini` (`upload_max_filesize`, `post_max_size`) và nginx (`client_max_body_size`) — đổi cả các nơi này theo hướng dẫn ở bước 4 trong mục [Chạy production thật trên VPS](#chạy-production-thật-trên-vps-thay-vì-php-artisan-serve) (hoặc Bước 14 nếu deploy qua aaPanel) nếu cần tăng giới hạn.
+- `FFMPEG_BINARY`/`FFPROBE_BINARY` mặc định là `ffmpeg`/`ffprobe` (lấy từ `$PATH`).
+- Ứng dụng chạy 3 lệnh dọn rác hàng ngày qua Laravel scheduler (`uploads:cleanup-abandoned`, `videos:cleanup-orphaned-tmp`, `videos:cleanup-orphaned-uploads`) — các lệnh này KHÔNG tự chạy nếu thiếu tiến trình scheduler. Cần `php artisan schedule:work` chạy liên tục (xem Terminal 3 hoặc systemd unit `hls-r2-studio-scheduler` ở trên), hoặc thay bằng cron gọi `php artisan schedule:run` mỗi phút:
+  ```
+  * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
+  ```
+  Nếu thiếu tiến trình này, rác (upload chunk bỏ dở, thư mục tạm băm HLS bị crash treo, file video mồ côi) sẽ không tự động được dọn, dù ứng dụng vẫn hoạt động bình thường.
+- **Tuỳ chỉnh nâng cao** (không bắt buộc, có giá trị mặc định hợp lý — thêm vào `.env` nếu muốn đổi):
+  ```env
+  UPLOAD_ABANDONED_TTL_HOURS=24       # dọn upload chunk bỏ dở sau bao lâu
+  TRANSCODE_ORPHANED_TTL_HOURS=48     # dọn thư mục tạm băm HLS bị crash treo sau bao lâu
+  UPLOAD_ORPHANED_TTL_HOURS=72        # dọn file video gốc mồ côi sau bao lâu
+  TRANSCODE_TIMEOUT_MULTIPLIER=8      # hệ số nhân với độ dài video để tính timeout băm HLS
+  DB_QUEUE_RETRY_AFTER=176400         # PHẢI lớn hơn --timeout của queue worker (xem mục ở trên)
+  ```
+- Rate limiting: đăng nhập giới hạn 5 lần/phút, khởi tạo upload (`/uploads/init`) giới hạn 30 lần/phút, gửi chunk (`/uploads/{id}/chunk`) giới hạn 120 lần/phút — nếu gặp lỗi "Too Many Requests" khi thao tác quá nhanh, đây là nguyên nhân.
 - Nếu deploy sau reverse proxy có SSL riêng (aaPanel, Nginx ngoài, Cloudflare Tunnel...), có 2 cách để link asset/URL sinh ra dùng đúng `https://` (nếu không sẽ bị sai scheme `http://` gây mixed content):
   - **Cách 1**: cấu hình reverse proxy gửi đúng header `X-Forwarded-Proto: https` — app đã tự động trust proxy header (`trustProxies(at: '*')` trong `bootstrap/app.php`) nên phía Laravel không cần chỉnh gì thêm. Một số panel (ví dụ aaPanel) tự sinh cấu hình Nginx không kèm header này, phải tự sửa tay và dễ bị ghi đè khi sửa lại qua GUI.
   - **Cách 2 (đơn giản hơn, khuyến nghị)**: set `APP_ENV=production` trong `.env` (thường đã có sẵn ở môi trường production) hoặc `FORCE_HTTPS=true` — Laravel sẽ tự ép scheme `https` cho mọi URL sinh ra (`URL::forceScheme('https')` trong `AppServiceProvider`), không cần đụng gì tới cấu hình proxy/Nginx bên ngoài. Mặc định `FORCE_HTTPS` bật theo `APP_ENV=production`, có thể override thủ công bằng `FORCE_HTTPS=false`/`true`.
-  - **Lưu ý**: KHÔNG bật `FORCE_HTTPS=true` (hoặc `APP_ENV=production`) trên môi trường dev local không có HTTPS thật ở tầng ngoài — trình duyệt sẽ cố tải asset qua `https://` trên cổng không có TLS (ví dụ `https://localhost:8080`) và load lỗi. Tính năng này chỉ dùng cho VPS production có HTTPS thật ở tầng ngoài (aaPanel/Nginx làm SSL termination).
-- Thư mục `database/` bên trong container là named volume (`database-data`) — sau khi `git pull` code có migration MỚI rồi `docker compose build/up`, migration file mới có thể KHÔNG tự xuất hiện trong container (volume cũ che mất bản mới từ image). Nếu `php artisan migrate` chạy xong nhưng thiếu đúng migration bạn vừa thêm, copy tay vào trước:
-  ```bash
-  docker compose cp database/migrations/<tên_file_migration>.php app:/var/www/html/database/migrations/
-  docker compose exec app php artisan migrate --force
-  ```
+  - **Lưu ý**: KHÔNG bật `FORCE_HTTPS=true` (hoặc `APP_ENV=production`) trên môi trường dev local không có HTTPS thật ở tầng ngoài — trình duyệt sẽ cố tải asset qua `https://` trên cổng không có TLS và load lỗi. Tính năng này chỉ dùng cho VPS production có HTTPS thật ở tầng ngoài (aaPanel/Nginx làm SSL termination).
