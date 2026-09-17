@@ -12,6 +12,7 @@
     $durationLabel = $video->duration ? sprintf('%02d:%02d', $minutes, $seconds) : '--:--';
 
     $thumbnailUrl = $video->thumbnail_path ? Storage::disk('r2')->url($video->thumbnail_path) : null;
+    $storyboardUrl = $video->storyboard_path ? Storage::disk('r2')->url($video->storyboard_path) : null;
     $playlistUrl = $video->playlist_path ? Storage::disk('r2')->url($video->playlist_path) : null;
 @endphp
 
@@ -111,6 +112,14 @@
                         onclick="copyThumbnailUrl(this, {{ \Illuminate\Support\Js::from($thumbnailUrl) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
                     <x-lucide-copy class="w-3.5 h-3.5" /> Copy Thumbnail
+                </button>
+            @endif
+
+            @if ($storyboardUrl)
+                <button type="button"
+                        onclick="copyThumbnailUrl(this, {{ \Illuminate\Support\Js::from($storyboardUrl) }})"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    <x-lucide-images class="w-3.5 h-3.5" /> Copy Storyboard
                 </button>
             @endif
 

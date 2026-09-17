@@ -88,4 +88,16 @@ return [
 
     'transcode_timeout_multiplier' => (int) env('TRANSCODE_TIMEOUT_MULTIPLIER', 8),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Storyboard Tile Size (px)
+    |--------------------------------------------------------------------------
+    |
+    | Width and height, in pixels, of each individual tile in the generated
+    | storyboard grid image. See TranscodeVideoJob::generateStoryboard().
+    |
+    */
+
+    'storyboard_tile_size' => (int) env('STORYBOARD_TILE_SIZE', 160),
+
 ];

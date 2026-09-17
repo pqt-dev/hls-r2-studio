@@ -47,6 +47,19 @@ class TranscodeVideoJob implements ShouldQueue
 
     private const SMART_CROP_WINDOW_COUNT = 3;
 
+    /**
+     * Storyboard grid dimensions (columns, rows) keyed by the exclusive
+     * upper bound (in seconds) of the video duration bracket they apply to.
+     * The last entry (PHP_INT_MAX) is the fallback for any longer duration.
+     * See generateStoryboard().
+     */
+    private const STORYBOARD_GRID_BRACKETS = [
+        60 => [3, 3],
+        300 => [5, 5],
+        1800 => [8, 8],
+        PHP_INT_MAX => [10, 10],
+    ];
+
     private const UPLOAD_CONCURRENCY = 5;
 
     private const UPLOAD_MAX_ATTEMPTS = 3;
@@ -112,6 +125,15 @@ class TranscodeVideoJob implements ShouldQueue
 
             $this->generateThumbnail($this->localUploadPath, $tmpDir, $duration, $video->output_width, $video->output_height);
 
+            try {
+                $this->generateStoryboard($this->localUploadPath, $tmpDir, $duration);
+            } catch (Throwable $e) {
+                Log::warning('Failed to generate storyboard; proceeding without a storyboard.', [
+                    'video_id' => $this->videoId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             $video->stage = 'uploading_r2';
             $video->progress = 92;
             $video->save();
@@ -133,6 +155,8 @@ class TranscodeVideoJob implements ShouldQueue
 
             $video->playlist_path = $prefix.'playlist.m3u8';
             $video->thumbnail_path = File::exists("{$tmpDir}/thumbnail.jpg") ? $prefix.'thumbnail.jpg' : null;
+            $video->storyboard_path = File::exists("{$tmpDir}/storyboard.jpg") ? $prefix.'storyboard.jpg' : null;
+            $video->storyboard_meta_path = File::exists("{$tmpDir}/storyboard.json") ? $prefix.'storyboard.json' : null;
             $video->status = 'ready';
             $video->stage = 'ready';
             $video->progress = 100;
@@ -571,6 +595,81 @@ class TranscodeVideoJob implements ShouldQueue
                 File::delete($candidate['path']);
             }
         }
+    }
+
+    /**
+     * Generate a single storyboard image (a grid of tiles sampled evenly
+     * across the video's duration, used for scrub-bar hover previews) plus a
+     * JSON file describing each tile's time range and position in the grid.
+     * The grid dimensions scale with the video's duration.
+     */
+    private function generateStoryboard(string $inputPath, string $tmpDir, ?float $duration): void
+    {
+        if ($duration === null || $duration <= 0) {
+            Log::warning('Skipping storyboard generation: video duration is unknown.', [
+                'video_id' => $this->videoId,
+            ]);
+
+            return;
+        }
+
+        [$cols, $rows] = $this->storyboardGridForDuration($duration);
+        $totalTiles = $cols * $rows;
+        $tileSize = config('videos.storyboard_tile_size');
+
+        $finalPath = "{$tmpDir}/storyboard.jpg";
+
+        $process = new Process([
+            config('services.ffmpeg.binary'),
+            '-y',
+            '-i', $inputPath,
+            '-vf', "fps={$totalTiles}/{$duration},crop='min(iw\,ih)':'min(iw\,ih)',scale={$tileSize}:{$tileSize},tile={$cols}x{$rows}",
+            '-frames:v', '1',
+            $finalPath,
+        ]);
+
+        $process->setTimeout(60);
+        $process->run();
+
+        // The tile filter requires exactly cols*rows input frames. If fewer
+        // are available it silently produces no output file instead of
+        // failing the process, so file existence must be checked in
+        // addition to the exit code.
+        if (! $process->isSuccessful() || ! File::exists($finalPath)) {
+            throw new \RuntimeException('ffmpeg storyboard generation failed: '.$process->getErrorOutput());
+        }
+
+        $tileDuration = $duration / $totalTiles;
+        $tiles = [];
+
+        for ($i = 0; $i < $totalTiles; $i++) {
+            $col = $i % $cols;
+            $row = intdiv($i, $cols);
+
+            $tiles[] = [
+                'start' => round($i * $tileDuration, 2),
+                'end' => round(($i + 1) * $tileDuration, 2),
+                'x' => $col * $tileSize,
+                'y' => $row * $tileSize,
+            ];
+        }
+
+        File::put("{$tmpDir}/storyboard.json", json_encode($tiles));
+    }
+
+    /**
+     * The storyboard grid dimensions [cols, rows] for a given video duration,
+     * based on the brackets defined in STORYBOARD_GRID_BRACKETS.
+     */
+    private function storyboardGridForDuration(float $duration): array
+    {
+        foreach (self::STORYBOARD_GRID_BRACKETS as $upperBound => $grid) {
+            if ($duration < $upperBound) {
+                return $grid;
+            }
+        }
+
+        return end(self::STORYBOARD_GRID_BRACKETS);
     }
 
     private function composeSingleFrameThumbnail(string $framePath, string $outputPath): void
@@ -1130,7 +1229,7 @@ class TranscodeVideoJob implements ShouldQueue
      */
     private static function isUploadableFile(\SplFileInfo $file): bool
     {
-        return in_array(strtolower($file->getExtension()), ['ts', 'm3u8', 'jpg'], true);
+        return in_array(strtolower($file->getExtension()), ['ts', 'm3u8', 'jpg', 'json'], true);
     }
 
     /**
