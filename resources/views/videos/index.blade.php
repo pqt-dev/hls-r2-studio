@@ -239,7 +239,7 @@
             const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
             const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
 
-            button.innerHTML = originalHTML.replace(/Copy Thumbnail/, 'Copied!');
+            button.innerHTML = originalHTML.replace(/Copy .+/, 'Copied!');
             button.classList.remove(...originalClasses);
             button.classList.add(...successClasses);
 

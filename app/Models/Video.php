@@ -16,6 +16,8 @@ class Video extends Model
         'disk_prefix',
         'playlist_path',
         'thumbnail_path',
+        'storyboard_path',
+        'storyboard_meta_path',
         'duration',
         'error_message',
         'output_width',
