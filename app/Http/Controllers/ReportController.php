@@ -15,21 +15,18 @@ class ReportController extends Controller
     {
         $status = $request->query('status');
 
-        $validSorts = ['priority', 'newest', 'oldest', 'most_reported'];
+        $validSorts = ['newest', 'oldest', 'most_reported'];
         $sort = $request->query('sort');
-        $sort = in_array($sort, $validSorts, true) ? $sort : 'priority';
+        $sort = in_array($sort, $validSorts, true) ? $sort : 'newest';
 
         $query = Report::query()
             ->when($status, fn ($query) => $query->where('status', $status))
             ->orderByRaw("CASE WHEN status = 'resolved' THEN 1 ELSE 0 END ASC");
 
         match ($sort) {
-            'newest' => $query->orderBy('created_at', 'desc'),
-            'oldest' => $query->orderBy('created_at', 'asc'),
+            'oldest' => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END ASC"),
             'most_reported' => $query->orderBy('report_count', 'desc')->orderBy('created_at', 'desc'),
-            default => $query
-                ->orderBy('report_count', 'desc')
-                ->orderBy('created_at', 'desc'),
+            default => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END DESC"), // 'newest'
         };
 
         $reports = $query->paginate(Setting::current()->videos_per_page);
