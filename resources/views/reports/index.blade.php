@@ -85,7 +85,9 @@
                                         {{ $report->report_count }}
                                     </span>
                                 @else
-                                    <span class="text-gray-500">{{ $report->report_count }}</span>
+                                    <span class="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                                        {{ $report->report_count }}
+                                    </span>
                                 @endif
                             </td>
                             <td class="px-3 py-2 text-gray-500" data-reported-at-cell>
@@ -151,6 +153,8 @@
                     resolvedAtLine.style.display = '';
 
                     button.remove();
+
+                    row.parentNode.appendChild(row);
                 })
                 .catch(function () {
                     alert('Failed to mark as resolved. Please try again.');
