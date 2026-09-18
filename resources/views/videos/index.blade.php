@@ -149,7 +149,7 @@
                     <tbody class="divide-y divide-gray-100">
                         @php $lastDate = null; @endphp
                         @foreach ($completedVideos as $video)
-                            @php $currentDate = $video->created_at->format('d/m/Y'); @endphp
+                            @php $currentDate = $video->created_at->toDisplay('d/m/Y'); @endphp
                             @if ($currentDate !== $lastDate)
                                 @php $lastDate = $currentDate; @endphp
                                 <tr>

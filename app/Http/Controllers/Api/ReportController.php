@@ -15,7 +15,6 @@ class ReportController extends Controller
     {
         $validated = $request->validate([
             'page_url' => ['required', 'url', 'max:2048'],
-            'reason' => ['required', 'in:playback_error,audio_error,other'],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
 
