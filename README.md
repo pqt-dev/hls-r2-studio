@@ -1,6 +1,6 @@
 # HLS R2 Studio
 
-Ứng dụng quản lý video nội bộ: upload video, băm sang HLS bằng FFmpeg, lưu trữ trên Cloudflare R2 và phát qua trình phát HLS.js. Có sẵn dashboard theo dõi server, nhật ký upload và trang cài đặt để cấu hình R2/transcode.
+Ứng dụng quản lý video nội bộ: upload video, băm sang HLS bằng FFmpeg, lưu trữ trên Cloudflare R2 và phát qua trình phát HLS.js. Có sẵn dashboard theo dõi server, nhật ký upload, trang cài đặt và tính năng nhận báo lỗi phát video từ người xem.
 
 ## Chức năng
 
@@ -10,12 +10,19 @@
 - Upload lên Cloudflare R2, phát qua HLS.js
 - Dashboard Tổng quan (số liệu CPU/RAM/Disk server + thống kê video)
 - Trang Nhật ký (lịch sử upload)
-- Trang Cài đặt (đổi mật khẩu, cấu hình R2 động, tuỳ chọn xử lý)
+- Trang Cài đặt (đổi mật khẩu, cấu hình R2 động, tuỳ chọn xử lý, số video/trang, múi giờ hiển thị)
 - Danh sách video dạng bảng, phân trang, xoá hàng loạt
 - Hiển thị thông số kỹ thuật video (độ phân giải, fps, codec, bitrate, kích thước file)
 - Chạy nhiều worker song song để băm nhiều video cùng lúc
+- Nhận báo lỗi phát video (Report) từ trang public qua API, quản lý/đánh dấu đã xử lý ở trang admin
 
 **Lưu ý**: URL public của video phụ thuộc vào việc bạn tự cấu hình bucket R2 public (custom domain hoặc `r2.dev` URL) trên Cloudflare dashboard và điền vào `R2_URL` (hoặc trường `r2_url` trong trang Cài đặt). Code không tự động public hoá bucket.
+
+### Tính năng Report (báo lỗi phát video)
+
+Cho phép trang phát video công khai (kể cả đặt trên domain khác) gửi báo cáo lỗi phát về `POST /api/reports` (body: `page_url`, `note` tuỳ chọn). Nhiều báo cáo trùng `page_url` khi còn ở trạng thái `new` sẽ được gộp lại (tăng `report_count`), không tạo dòng mới. Admin xem/đánh dấu đã xử lý tại trang `/reports`.
+
+Muốn gọi API này từ domain khác (site phát video không cùng domain với app), phải thêm domain đó vào `allowed_origins` trong `config/cors.php` — mặc định chỉ cho phép domain khai báo sẵn trong file này. Route API có rate limit 5 lần/10 giây.
 
 ## Cấu trúc dữ liệu
 
@@ -33,6 +40,8 @@ Bảng `videos`:
 | disk_prefix | string, nullable | vd `2026/09/10/my-video-12/` |
 | playlist_path | string, nullable | path tới `.m3u8` trên disk `r2` |
 | thumbnail_path | string, nullable | |
+| storyboard_path | string, nullable | path ảnh lưới storyboard (preview khi tua video) |
+| storyboard_meta_path | string, nullable | path file metadata mô tả lưới storyboard |
 | duration | float, nullable | giây |
 | error_message | text, nullable | |
 | output_width | unsigned smallint, nullable | chiều rộng video output thật (ffprobe) |
@@ -57,6 +66,7 @@ Bảng `settings` (bảng đơn dòng, luôn có 1 record `id = 1` — truy cậ
 | transcode_segment_seconds | unsigned tinyint, default 6 | độ dài mỗi segment `.ts` (giây) |
 | transcode_fps | unsigned tinyint, nullable | fps ép cứng; để trống = giữ fps gốc video |
 | videos_per_page | unsigned smallint, default 24 | số video/trang ở danh sách |
+| display_timezone | string, default `Asia/Ho_Chi_Minh` | múi giờ hiển thị thời gian trên giao diện |
 | created_at / updated_at | timestamp | |
 
 Bảng `users` (Laravel Auth chuẩn, dùng cho đăng nhập admin):
@@ -72,11 +82,25 @@ Bảng `users` (Laravel Auth chuẩn, dùng cho đăng nhập admin):
 | remember_token | string, nullable | |
 | created_at / updated_at | timestamp | |
 
+Bảng `reports` (báo lỗi phát video, gửi từ trang public qua `POST /api/reports`):
+
+| Cột | Kiểu | Ghi chú |
+|---|---|---|
+| id | bigint | |
+| page_url | string | URL trang đang phát video khi người xem báo lỗi |
+| note | text, nullable | ghi chú thêm của người báo (tối đa 1000 ký tự) |
+| reporter_ip | string, nullable | IP người gửi |
+| status | string, default `new` | `new` \| `resolved` |
+| report_count | unsigned int, default 1 | số lần bị báo trùng `page_url` khi còn `new` |
+| resolved_at | timestamp, nullable | thời điểm admin đánh dấu đã xử lý |
+| last_reported_at | timestamp, nullable | lần báo gần nhất (kể cả báo trùng) |
+| created_at / updated_at | timestamp | |
+
 ## Cài đặt
 
 ### Cài đặt (khuyến nghị cho VPS/production)
 
-Khuyến nghị dùng cách này cho VPS/production: chạy trực tiếp trên panel quản lý VPS có sẵn (ví dụ aaPanel) tránh được các vấn đề xung đột Nginx chồng lớp và firewall/quyền MySQL phức tạp không cần thiết khi mọi thứ vốn đã chạy sẵn trên cùng máy.
+Khuyến nghị dùng cách này cho VPS/production: chạy trực tiếp trên panel quản lý VPS có sẵn (ví dụ aaPanel) tránh xung đột Nginx/firewall/quyền MySQL khi mọi thứ vốn đã chạy sẵn trên cùng máy.
 
 > **VPS của bạn đã có sẵn panel quản lý (aaPanel, cPanel, Plesk...) chưa?**
 > - **Đã có aaPanel** → làm theo mục [Deploy với aaPanel](#deploy-với-aapanel) bên dưới — đơn giản hơn nhiều, không cần tự cài Nginx/PHP-FPM/systemd thủ công.
@@ -134,8 +158,9 @@ mysql -u root -p -e "CREATE DATABASE hls_r2_studio CHARACTER SET utf8mb4 COLLATE
 
 ```bash
 php artisan migrate
-php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
+php artisan admin:create admin --email=admin@example.com
 ```
+> Không truyền password trên dòng lệnh (tránh lộ qua lịch sử shell) — lệnh sẽ tự hỏi (`Enter password:`) và ẩn ký tự khi gõ. Password tối thiểu 8 ký tự. Muốn truyền trực tiếp vẫn được: `php artisan admin:create admin "mat-khau-manh" --email=admin@example.com`. Lệnh này upsert theo `username` — chạy lại với cùng username sẽ đổi mật khẩu tài khoản đó thay vì tạo trùng.
 
 Chạy ứng dụng — cần **ba tiến trình song song**:
 
@@ -157,7 +182,7 @@ Truy cập `http://localhost:8000/login`.
 
 #### Chạy production thật trên VPS (thay vì `php artisan serve`)
 
-`php artisan serve` chỉ dùng để dev — không bền vững cho production (không tự khởi động lại, không xử lý nhiều connection tốt). Các bước dưới đây thay thế bằng Nginx + PHP-FPM + systemd, giả định Ubuntu 22.04/24.04.
+`php artisan serve` chỉ dùng để dev — không bền vững cho production. Các bước dưới đây thay thế bằng Nginx + PHP-FPM + systemd, giả định Ubuntu 22.04/24.04.
 
 **1. Cài Nginx + PHP-FPM** (đổi `php8.2-fpm` theo đúng version PHP đã cài — kiểm tra bằng `php -v`):
 
@@ -221,13 +246,11 @@ Restart: `sudo systemctl restart php8.2-fpm`.
 
 **5. Chạy queue worker bền vững bằng systemd** (thay vì mở terminal thủ công) — tạo file `/etc/systemd/system/hls-r2-studio-queue@.service` (template unit để chạy nhiều instance song song):
 
-Cần làm 2 việc: **(1) tạo 1 file cấu hình mới** mô tả cách chạy queue worker, **(2) bật nó chạy**. Systemd là công cụ có sẵn trên Linux để quản lý các tiến trình chạy nền (tự khởi động lại nếu crash, tự chạy khi VPS reboot) — không cần cài thêm gì.
-
 **Bước 1** — tạo file (dùng `nano`, dán nguyên đoạn dưới vào, lưu bằng `Ctrl+O` → `Enter` → `Ctrl+X`):
 ```bash
 sudo nano /etc/systemd/system/hls-r2-studio-queue@.service
 ```
-Dán đoạn cấu hình sau (giải thích nhanh: `[Unit]` = thông tin chung + chờ mạng/MySQL sẵn sàng trước khi chạy; `[Service]` = lệnh thực sự chạy và tự khởi động lại nếu lỗi; `[Install]` = tự chạy mỗi khi VPS khởi động lại):
+Dán đoạn cấu hình sau:
 
 ```ini
 [Unit]
@@ -245,7 +268,7 @@ RestartSec=5
 WantedBy=multi-user.target
 ```
 
-**Bước 2** — bật chạy thật (lệnh này mới là lúc queue worker THỰC SỰ bắt đầu chạy), kích hoạt 2 worker song song:
+**Bước 2** — bật chạy thật, kích hoạt 2 worker song song:
 
 ```bash
 sudo systemctl enable --now hls-r2-studio-queue@1 hls-r2-studio-queue@2
@@ -257,7 +280,7 @@ Kiểm tra: `sudo systemctl status hls-r2-studio-queue@1`, xem log: `sudo journa
 
 **6. Chạy scheduler bền vững bằng systemd** (bắt buộc để 3 lệnh dọn rác tự động chạy hàng ngày, xem [Lưu ý khác](#lưu-ý-khác) — nếu thiếu, rác không tự dọn nhưng ứng dụng vẫn hoạt động bình thường)
 
-Tạo file `/etc/systemd/system/hls-r2-studio-scheduler.service` (không dùng template `@` như queue worker — scheduler chỉ cần chạy 1 instance duy nhất, không chạy song song nhiều bản):
+Tạo file `/etc/systemd/system/hls-r2-studio-scheduler.service` (không dùng template `@` — scheduler chỉ cần chạy 1 instance duy nhất):
 
 ```bash
 sudo nano /etc/systemd/system/hls-r2-studio-scheduler.service
@@ -293,7 +316,7 @@ Kiểm tra: `sudo systemctl status hls-r2-studio-scheduler`, xem log: `sudo jour
 sudo ufw allow 80/tcp
 ```
 
-**8. Cập nhật code sau này** cần tự chạy lại `composer install --no-dev`, `npm run build`, và `sudo systemctl restart php8.2-fpm hls-r2-studio-queue@1 hls-r2-studio-queue@2 hls-r2-studio-scheduler` để áp dụng code mới.
+**8. Cập nhật code** — xem mục [Cập nhật / Deploy lại khi có code mới](#cập-nhật--deploy-lại-khi-có-code-mới) bên dưới.
 
 - Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn là việc cần tự làm thêm.
 
@@ -303,7 +326,7 @@ aaPanel tự quản lý Nginx + PHP-FPM + SSL cho bạn — không cần tự `a
 
 **Bước 1 — Đưa code lên VPS**
 
-SSH vào VPS, vào thư mục web root (`/www/wwwroot/`), rồi clone code vào một thư mục tạm rồi đổi tên — cách này tránh lỗi `destination path '.' already exists` do aaPanel thường tự sinh sẵn vài file ẩn (`.user.ini`, `.htaccess`...) trong thư mục site trống mà `ls` mặc định không hiện ra:
+SSH vào VPS, vào thư mục web root (`/www/wwwroot/`), clone code vào thư mục tạm rồi đổi tên (tránh lỗi `destination path '.' already exists` do aaPanel thường tự sinh sẵn vài file ẩn trong thư mục site trống):
 
 ```bash
 cd /www/wwwroot
@@ -315,7 +338,7 @@ cd ten-domain.com
 
 **Bước 2 — Kiểm tra và cài đúng version PHP**
 
-Dự án yêu cầu PHP `^8.4` theo `composer.json`, vì `composer.lock` khoá một số gói Symfony (ví dụ `symfony/console`, `symfony/http-foundation`, `symfony/http-kernel`...) yêu cầu PHP **>= 8.4**. Kiểm tra:
+Dự án yêu cầu PHP `^8.4` theo `composer.json`, vì `composer.lock` khoá một số gói Symfony yêu cầu PHP **>= 8.4**. Kiểm tra:
 
 ```bash
 php -v
@@ -323,7 +346,7 @@ php -v
 
 Nếu VPS chưa có PHP 8.4: vào aaPanel → **App Store** → tab **PHP** → tìm **PHP-8.4** → **Install**. Không cần gỡ bản PHP cũ, aaPanel cho cài song song nhiều bản.
 
-Từ đây, các lệnh PHP CLI trong hướng dẫn này đều dùng full path tới đúng bản 8.4 để tránh gọi nhầm bản mặc định cũ hơn (thường vẫn còn là 8.3 sau khi cài thêm 8.4):
+Từ đây, các lệnh PHP CLI trong hướng dẫn này đều dùng full path tới đúng bản 8.4 để tránh gọi nhầm bản mặc định cũ hơn:
 
 ```bash
 /www/server/php/84/bin/php -v
@@ -422,8 +445,9 @@ FORCE_HTTPS=true
 ```bash
 /www/server/php/84/bin/php artisan key:generate
 /www/server/php/84/bin/php artisan migrate --force
-/www/server/php/84/bin/php artisan admin:create admin "mat-khau-manh" --email=admin@example.com
+/www/server/php/84/bin/php artisan admin:create admin --email=admin@example.com
 ```
+> Không truyền password trên dòng lệnh — lệnh sẽ tự hỏi (`Enter password:`, ẩn ký tự khi gõ, tối thiểu 8 ký tự). Chạy lại với cùng username sẽ đổi mật khẩu tài khoản đó (upsert theo `username`).
 
 **Bước 10 — Set quyền thư mục** (Laravel cần ghi được vào `storage/` và `bootstrap/cache/`; `www` là user chạy PHP-FPM mặc định của aaPanel — kiểm tra bằng `ps aux | grep php-fpm` nếu VPS bạn dùng user khác):
 
@@ -558,6 +582,24 @@ Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã
 
 "Nhiều worker" nghĩa là chạy nhiều instance systemd (`hls-r2-studio-queue@1`, `hls-r2-studio-queue@2`, ...) — xem hướng dẫn ở bước 5 trong mục [Chạy production thật trên VPS](#chạy-production-thật-trên-vps-thay-vì-php-artisan-serve).
 
+## Cập nhật / Deploy lại khi có code mới
+
+Luôn chạy `git pull`. Các lệnh còn lại chỉ chạy khi loại file tương ứng có thay đổi — không chắc thì cứ chạy hết cho chắc, không hại gì.
+
+```bash
+cd /path-to-project   # hoặc /www/wwwroot/ten-domain.com nếu dùng aaPanel
+git pull
+```
+
+| Lệnh | Chỉ cần chạy khi nào |
+|---|---|
+| `composer install --no-dev` (dùng đúng bản PHP như hướng dẫn aaPanel nếu áp dụng) | `composer.json`/`composer.lock` thay đổi (có dependency mới) |
+| `npm run build` | Có thay đổi trong `resources/css`, `resources/js`, hoặc file `.blade.php` (thêm/sửa class Tailwind) |
+| `php artisan migrate --force` | Có file migration mới trong `database/migrations/` |
+| `php artisan config:clear` | Đổi file `config/*.php` bất kỳ, hoặc thêm biến mới vào `.env` |
+| Restart queue worker (`systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2`, đổi tên service theo đúng phần deploy đã dùng ở trên) | `app/Jobs/TranscodeVideoJob.php` hoặc code xử lý hàng đợi thay đổi — PHP-FPM tự đọc code mới mỗi request nên các file PHP khác không cần restart gì, chỉ riêng queue worker giữ code cũ trong bộ nhớ tới khi restart |
+| Restart scheduler | Hầu như KHÔNG BAO GIỜ cần, trừ khi sửa `routes/console.php` hoặc chính các lệnh cleanup trong `app/Console/Commands/` |
+
 ## Lưu ý khác
 
 - Laravel giới hạn upload theo `UPLOAD_MAX_SIZE_MB` trong `.env`, nhưng PHP còn giới hạn riêng qua `php.ini` (`upload_max_filesize`, `post_max_size`) và nginx (`client_max_body_size`) — đổi cả các nơi này theo hướng dẫn ở bước 4 trong mục [Chạy production thật trên VPS](#chạy-production-thật-trên-vps-thay-vì-php-artisan-serve) (hoặc Bước 14 nếu deploy qua aaPanel) nếu cần tăng giới hạn.
@@ -573,9 +615,11 @@ Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã
   TRANSCODE_ORPHANED_TTL_HOURS=48     # dọn thư mục tạm băm HLS bị crash treo sau bao lâu
   UPLOAD_ORPHANED_TTL_HOURS=72        # dọn file video gốc mồ côi sau bao lâu
   TRANSCODE_TIMEOUT_MULTIPLIER=8      # hệ số nhân với độ dài video để tính timeout băm HLS
+  STORYBOARD_TILE_SIZE=160            # kích thước (px) mỗi ô trong ảnh lưới storyboard
   DB_QUEUE_RETRY_AFTER=176400         # PHẢI lớn hơn --timeout của queue worker (xem mục ở trên)
   ```
-- Rate limiting: đăng nhập giới hạn 5 lần/phút, khởi tạo upload (`/uploads/init`) giới hạn 30 lần/phút, gửi chunk (`/uploads/{id}/chunk`) giới hạn 120 lần/phút — nếu gặp lỗi "Too Many Requests" khi thao tác quá nhanh, đây là nguyên nhân.
+- Rate limiting: đăng nhập giới hạn 5 lần/phút, khởi tạo upload (`/uploads/init`) giới hạn 30 lần/phút, gửi chunk (`/uploads/{id}/chunk`) giới hạn 120 lần/phút, gửi report (`/api/reports`) giới hạn 5 lần/10 giây — nếu gặp lỗi "Too Many Requests" khi thao tác quá nhanh, đây là nguyên nhân.
+- Muốn nhận report từ trang phát video đặt ở domain khác, thêm domain đó vào `allowed_origins` trong `config/cors.php` (mặc định chỉ cho phép domain khai báo sẵn trong file).
 - Nếu deploy sau reverse proxy có SSL riêng (aaPanel, Nginx ngoài, Cloudflare Tunnel...), có 2 cách để link asset/URL sinh ra dùng đúng `https://` (nếu không sẽ bị sai scheme `http://` gây mixed content):
   - **Cách 1**: cấu hình reverse proxy gửi đúng header `X-Forwarded-Proto: https` — app đã tự động trust proxy header (`trustProxies(at: '*')` trong `bootstrap/app.php`) nên phía Laravel không cần chỉnh gì thêm. Một số panel (ví dụ aaPanel) tự sinh cấu hình Nginx không kèm header này, phải tự sửa tay và dễ bị ghi đè khi sửa lại qua GUI.
   - **Cách 2 (đơn giản hơn, khuyến nghị)**: set `APP_ENV=production` trong `.env` (thường đã có sẵn ở môi trường production) hoặc `FORCE_HTTPS=true` — Laravel sẽ tự ép scheme `https` cho mọi URL sinh ra (`URL::forceScheme('https')` trong `AppServiceProvider`), không cần đụng gì tới cấu hình proxy/Nginx bên ngoài. Mặc định `FORCE_HTTPS` bật theo `APP_ENV=production`, có thể override thủ công bằng `FORCE_HTTPS=false`/`true`.
