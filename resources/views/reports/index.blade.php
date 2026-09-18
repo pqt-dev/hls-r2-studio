@@ -65,12 +65,12 @@
                                 default => ['bg-gray-100 text-gray-800', $report->status],
                             };
                         @endphp
-                        <tr>
+                        <tr data-report-row="{{ $report->id }}">
                             <td class="px-3 py-2 max-w-xs truncate">
                                 <a href="{{ $report->page_url }}" target="_blank" rel="noopener noreferrer" class="underline {{ $report->report_count >= 5 ? 'text-red-700 font-semibold' : 'text-emerald-700' }}">{{ $report->page_url }}</a>
                             </td>
                             <td class="px-3 py-2 text-gray-500 max-w-xs truncate">{{ $report->note }}</td>
-                            <td class="px-3 py-2">
+                            <td class="px-3 py-2" data-status-cell>
                                 <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium {{ $badge[0] }}">
                                     {{ $badge[1] }}
                                 </span>
@@ -88,25 +88,23 @@
                                     <span class="text-gray-500">{{ $report->report_count }}</span>
                                 @endif
                             </td>
-                            <td class="px-3 py-2 text-gray-500">
+                            <td class="px-3 py-2 text-gray-500" data-reported-at-cell>
                                 {{ $report->created_at->toDisplay() }}
-                                @if ($report->status === 'resolved' && $report->resolved_at)
-                                    <div class="text-xs text-gray-400">Resolved: {{ $report->resolved_at->toDisplay() }}</div>
-                                @endif
+                                <div data-resolved-at-line class="text-xs text-gray-400" @if (! ($report->status === 'resolved' && $report->resolved_at)) style="display: none;" @endif>
+                                    Resolved: <span data-resolved-at-value>{{ $report->resolved_at?->toDisplay() }}</span>
+                                </div>
                                 @if ($report->report_count > 1 && $report->last_reported_at)
                                     <div class="text-xs text-gray-400">Last reported: {{ $report->last_reported_at->toDisplay() }}</div>
                                 @endif
                             </td>
-                            <td class="px-3 py-2 text-right whitespace-nowrap">
+                            <td class="px-3 py-2 text-right whitespace-nowrap" data-actions-cell>
                                 @if ($report->status === 'new')
-                                    <form action="{{ route('reports.resolve', $report) }}" method="POST">
-                                        @csrf
-                                        @method('PUT')
-                                        <button type="submit"
-                                                class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800">
-                                            Mark Resolved
-                                        </button>
-                                    </form>
+                                    <button type="button"
+                                            class="js-mark-resolved inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800"
+                                            data-report-id="{{ $report->id }}"
+                                            data-url="{{ route('reports.resolve', $report) }}">
+                                        Mark Resolved
+                                    </button>
                                 @endif
                             </td>
                         </tr>
@@ -117,3 +115,46 @@
         <div class="mt-4">{{ $reports->appends(request()->query())->links() }}</div>
     @endif
 @endsection
+
+@push('scripts')
+    <script>
+        document.addEventListener('click', function (event) {
+            const button = event.target.closest('.js-mark-resolved');
+            if (!button) {
+                return;
+            }
+
+            const url = button.dataset.url;
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+            fetch(url, {
+                method: 'PUT',
+                headers: {
+                    'X-CSRF-TOKEN': csrfToken,
+                    'Accept': 'application/json',
+                },
+            })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Request failed');
+                    }
+                    return response.json();
+                })
+                .then(function (data) {
+                    const row = button.closest('tr');
+
+                    const statusCell = row.querySelector('[data-status-cell]');
+                    statusCell.innerHTML = '<span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium bg-green-100 text-green-800">Resolved</span>';
+
+                    const resolvedAtLine = row.querySelector('[data-resolved-at-line]');
+                    resolvedAtLine.querySelector('[data-resolved-at-value]').textContent = data.resolved_at;
+                    resolvedAtLine.style.display = '';
+
+                    button.remove();
+                })
+                .catch(function () {
+                    alert('Failed to mark as resolved. Please try again.');
+                });
+        });
+    </script>
+@endpush
