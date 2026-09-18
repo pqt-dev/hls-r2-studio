@@ -20,14 +20,14 @@ class ReportController extends Controller
         $sort = in_array($sort, $validSorts, true) ? $sort : 'priority';
 
         $query = Report::query()
-            ->when($status, fn ($query) => $query->where('status', $status));
+            ->when($status, fn ($query) => $query->where('status', $status))
+            ->orderByRaw("CASE WHEN status = 'resolved' THEN 1 ELSE 0 END ASC");
 
         match ($sort) {
             'newest' => $query->orderBy('created_at', 'desc'),
             'oldest' => $query->orderBy('created_at', 'asc'),
             'most_reported' => $query->orderBy('report_count', 'desc')->orderBy('created_at', 'desc'),
             default => $query
-                ->orderByRaw("CASE WHEN status = 'resolved' THEN 1 ELSE 0 END ASC")
                 ->orderBy('report_count', 'desc')
                 ->orderBy('created_at', 'desc'),
         };
@@ -40,9 +40,16 @@ class ReportController extends Controller
     /**
      * Mark the given report as resolved.
      */
-    public function resolve(Report $report)
+    public function resolve(Request $request, Report $report)
     {
         $report->update(['status' => 'resolved', 'resolved_at' => now()]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'resolved_at' => $report->fresh()->resolved_at->toDisplay(),
+            ]);
+        }
 
         return back()->with('success', 'Report marked as resolved.');
     }
