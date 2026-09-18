@@ -36,6 +36,8 @@ class AuthProtectedRoutesTest extends TestCase
             'settings.transcode' => ['put', '/settings/transcode', []],
             'settings.display' => ['put', '/settings/display', []],
             'settings.password' => ['put', '/settings/password', []],
+            'reports.index' => ['get', '/reports', []],
+            'reports.resolve' => ['put', '/reports/1/resolve', []],
         ];
     }
 
