@@ -43,6 +43,10 @@
 
                 <p class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">System</p>
                 <div class="space-y-1">
+                    <a href="{{ route('reports.index') }}"
+                       class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('reports.index') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
+                        <x-lucide-flag class="w-4 h-4 shrink-0" /> Reports
+                    </a>
                     <a href="{{ route('settings.edit') }}"
                        class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('settings.edit') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
                         <x-lucide-settings class="w-4 h-4 shrink-0" /> Settings

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\VideoController;
 use Illuminate\Support\Facades\Route;
@@ -29,4 +30,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings/transcode', [SettingsController::class, 'updateTranscode'])->name('settings.transcode');
     Route::put('/settings/display', [SettingsController::class, 'updateDisplay'])->name('settings.display');
     Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password');
+
+    Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::put('/reports/{report}/resolve', [ReportController::class, 'resolve'])->name('reports.resolve');
 });
