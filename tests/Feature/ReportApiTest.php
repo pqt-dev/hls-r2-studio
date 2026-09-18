@@ -15,7 +15,6 @@ class ReportApiTest extends TestCase
     {
         $response = $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
             'note' => 'Video does not play at all.',
         ]);
 
@@ -24,16 +23,13 @@ class ReportApiTest extends TestCase
 
         $this->assertDatabaseHas('reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
             'status' => 'new',
         ]);
     }
 
     public function test_missing_page_url_returns_422(): void
     {
-        $response = $this->postJson('/api/reports', [
-            'reason' => 'playback_error',
-        ]);
+        $response = $this->postJson('/api/reports', []);
 
         $response->assertStatus(422);
         $response->assertJsonValidationErrors('page_url');
@@ -44,7 +40,6 @@ class ReportApiTest extends TestCase
         for ($i = 0; $i < 5; $i++) {
             $response = $this->postJson('/api/reports', [
                 'page_url' => 'https://toicovl.com/some-post',
-                'reason' => 'playback_error',
             ]);
 
             $response->assertStatus(201);
@@ -52,7 +47,6 @@ class ReportApiTest extends TestCase
 
         $response = $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
         ]);
 
         $response->assertStatus(429);
@@ -62,12 +56,10 @@ class ReportApiTest extends TestCase
     {
         $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
         ])->assertStatus(201);
 
         $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
         ])->assertStatus(201);
 
         $this->assertDatabaseCount('reports', 1);
@@ -85,7 +77,6 @@ class ReportApiTest extends TestCase
 
         $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
         ])->assertStatus(201);
 
         $report = Report::first();
@@ -98,7 +89,6 @@ class ReportApiTest extends TestCase
 
         $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
         ])->assertStatus(201);
 
         $report->refresh();
@@ -113,14 +103,12 @@ class ReportApiTest extends TestCase
     {
         $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
         ])->assertStatus(201);
 
         Report::first()->update(['status' => 'resolved']);
 
         $this->postJson('/api/reports', [
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
         ])->assertStatus(201);
 
         $this->assertDatabaseCount('reports', 2);

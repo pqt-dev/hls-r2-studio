@@ -77,10 +77,12 @@ class SettingsController extends Controller
     {
         $validated = $request->validate([
             'videos_per_page' => ['required', 'in:12,24,48,100'],
+            'display_timezone' => ['required', 'timezone'],
         ]);
 
         Setting::current()->update([
             'videos_per_page' => $validated['videos_per_page'],
+            'display_timezone' => $validated['display_timezone'],
         ]);
 
         return back()->with('success', 'Display options saved.');

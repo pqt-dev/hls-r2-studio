@@ -89,7 +89,7 @@
         @endif
     </td>
 
-    <td class="px-3 py-2 text-gray-500">{{ $video->created_at->format('d/m/Y H:i') }}</td>
+    <td class="px-3 py-2 text-gray-500">{{ $video->created_at->toDisplay() }}</td>
 
     <td class="px-3 py-2 text-right whitespace-nowrap">
         <div class="inline-flex items-center gap-2">

@@ -210,6 +210,20 @@
                     @enderror
                 </div>
 
+                <div>
+                    <label for="display_timezone" class="block text-sm font-medium text-gray-700 mb-1">Display timezone</label>
+                    <select name="display_timezone" id="display_timezone"
+                            class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600">
+                        @php $currentDisplayTimezone = old('display_timezone', $settings->display_timezone); @endphp
+                        @foreach (\DateTimeZone::listIdentifiers() as $timezoneOption)
+                            <option value="{{ $timezoneOption }}" @selected($currentDisplayTimezone === $timezoneOption)>{{ $timezoneOption }}</option>
+                        @endforeach
+                    </select>
+                    @error('display_timezone')
+                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                    @enderror
+                </div>
+
                 <button type="submit"
                         class="inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">
                     Save Other Options

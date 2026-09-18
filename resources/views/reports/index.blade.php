@@ -49,7 +49,6 @@
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-3 py-2 text-left">Page URL</th>
-                        <th class="px-3 py-2 text-left">Reason</th>
                         <th class="px-3 py-2 text-left">Note</th>
                         <th class="px-3 py-2 text-left">Status</th>
                         <th class="px-3 py-2 text-left">Reports</th>
@@ -70,7 +69,6 @@
                             <td class="px-3 py-2 max-w-xs truncate">
                                 <a href="{{ $report->page_url }}" target="_blank" rel="noopener noreferrer" class="underline {{ $report->report_count >= 5 ? 'text-red-700 font-semibold' : 'text-emerald-700' }}">{{ $report->page_url }}</a>
                             </td>
-                            <td class="px-3 py-2 text-gray-500">{{ $report->reason }}</td>
                             <td class="px-3 py-2 text-gray-500 max-w-xs truncate">{{ $report->note }}</td>
                             <td class="px-3 py-2">
                                 <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium {{ $badge[0] }}">
@@ -91,12 +89,12 @@
                                 @endif
                             </td>
                             <td class="px-3 py-2 text-gray-500">
-                                {{ $report->created_at->format('d/m/Y H:i') }}
+                                {{ $report->created_at->toDisplay() }}
                                 @if ($report->status === 'resolved' && $report->resolved_at)
-                                    <div class="text-xs text-gray-400">Resolved: {{ $report->resolved_at->format('d/m/Y H:i') }}</div>
+                                    <div class="text-xs text-gray-400">Resolved: {{ $report->resolved_at->toDisplay() }}</div>
                                 @endif
                                 @if ($report->report_count > 1 && $report->last_reported_at)
-                                    <div class="text-xs text-gray-400">Last reported: {{ $report->last_reported_at->format('d/m/Y H:i') }}</div>
+                                    <div class="text-xs text-gray-400">Last reported: {{ $report->last_reported_at->toDisplay() }}</div>
                                 @endif
                             </td>
                             <td class="px-3 py-2 text-right whitespace-nowrap">

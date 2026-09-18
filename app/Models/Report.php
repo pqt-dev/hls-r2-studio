@@ -8,7 +8,6 @@ class Report extends Model
 {
     protected $fillable = [
         'page_url',
-        'reason',
         'note',
         'reporter_ip',
         'status',

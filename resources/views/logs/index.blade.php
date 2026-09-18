@@ -41,7 +41,7 @@
                         <x-lucide-loader-circle class="w-5 h-5 mx-auto text-amber-500" />
                     @endif
                 </div>
-                <div class="text-center text-xs text-gray-500">{{ $log->created_at->format('d/m/Y H:i') }}</div>
+                <div class="text-center text-xs text-gray-500">{{ $log->created_at->toDisplay() }}</div>
                 <div class="min-w-0">
                     <div class="font-medium text-gray-900 text-sm truncate">{{ $log->title }}</div>
                     <div class="text-xs text-gray-500 truncate">{{ $log->original_filename }}</div>

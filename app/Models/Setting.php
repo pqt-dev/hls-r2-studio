@@ -18,6 +18,7 @@ class Setting extends Model
         'transcode_segment_seconds',
         'transcode_fps',
         'videos_per_page',
+        'display_timezone',
     ];
 
     protected $casts = [
@@ -35,6 +36,7 @@ class Setting extends Model
             'transcode_resolution' => '720',
             'transcode_segment_seconds' => 6,
             'videos_per_page' => 24,
+            'display_timezone' => 'Asia/Ho_Chi_Minh',
         ]);
     }
 
