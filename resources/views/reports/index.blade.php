@@ -25,10 +25,9 @@
         <span class="text-gray-500">Sort by:</span>
         @php
             $sortOptions = [
-                ['value' => 'priority', 'label' => 'Ưu tiên'],
-                ['value' => 'newest', 'label' => 'Mới nhất'],
-                ['value' => 'oldest', 'label' => 'Cũ nhất'],
-                ['value' => 'most_reported', 'label' => 'Nhiều báo cáo nhất'],
+                ['value' => 'newest', 'label' => 'Newest'],
+                ['value' => 'oldest', 'label' => 'Oldest'],
+                ['value' => 'most_reported', 'label' => 'Most reported'],
             ];
         @endphp
         @foreach ($sortOptions as $option)
