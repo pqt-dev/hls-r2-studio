@@ -119,45 +119,53 @@
 
 @push('scripts')
     <script>
-        document.addEventListener('click', function (event) {
-            const button = event.target.closest('.js-mark-resolved');
-            if (!button) {
-                return;
+        (function () {
+            window.__pageCleanup = function () {
+                document.removeEventListener('click', onDocumentClick);
+            };
+
+            function onDocumentClick(event) {
+                const button = event.target.closest('.js-mark-resolved');
+                if (!button) {
+                    return;
+                }
+
+                const url = button.dataset.url;
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+                fetch(url, {
+                    method: 'PUT',
+                    headers: {
+                        'X-CSRF-TOKEN': csrfToken,
+                        'Accept': 'application/json',
+                    },
+                })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Request failed');
+                        }
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        const row = button.closest('tr');
+
+                        const statusCell = row.querySelector('[data-status-cell]');
+                        statusCell.innerHTML = '<span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium bg-green-100 text-green-800">Resolved</span>';
+
+                        const resolvedAtLine = row.querySelector('[data-resolved-at-line]');
+                        resolvedAtLine.querySelector('[data-resolved-at-value]').textContent = data.resolved_at;
+                        resolvedAtLine.style.display = '';
+
+                        button.remove();
+
+                        row.parentNode.appendChild(row);
+                    })
+                    .catch(function () {
+                        alert('Failed to mark as resolved. Please try again.');
+                    });
             }
 
-            const url = button.dataset.url;
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-            fetch(url, {
-                method: 'PUT',
-                headers: {
-                    'X-CSRF-TOKEN': csrfToken,
-                    'Accept': 'application/json',
-                },
-            })
-                .then(function (response) {
-                    if (!response.ok) {
-                        throw new Error('Request failed');
-                    }
-                    return response.json();
-                })
-                .then(function (data) {
-                    const row = button.closest('tr');
-
-                    const statusCell = row.querySelector('[data-status-cell]');
-                    statusCell.innerHTML = '<span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium bg-green-100 text-green-800">Resolved</span>';
-
-                    const resolvedAtLine = row.querySelector('[data-resolved-at-line]');
-                    resolvedAtLine.querySelector('[data-resolved-at-value]').textContent = data.resolved_at;
-                    resolvedAtLine.style.display = '';
-
-                    button.remove();
-
-                    row.parentNode.appendChild(row);
-                })
-                .catch(function () {
-                    alert('Failed to mark as resolved. Please try again.');
-                });
-        });
+            document.addEventListener('click', onDocumentClick);
+        })();
     </script>
 @endpush
