@@ -177,6 +177,18 @@
             <video id="video-modal-player" class="w-full aspect-video" controls></video>
         </div>
     </div>
+
+    <div id="preview-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+        <div class="bg-white rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col">
+            <div class="flex items-center justify-between px-4 py-2 bg-gray-900 text-white">
+                <span id="preview-modal-title" class="text-sm font-medium"></span>
+                <button type="button" onclick="closePreviewModal()" class="text-gray-300 hover:text-white">
+                    <x-lucide-x class="w-5 h-5" />
+                </button>
+            </div>
+            <div id="preview-modal-body" class="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto p-4"></div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -212,6 +224,62 @@
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             video.play();
+        }
+
+        function openPreviewModal(images, title) {
+            const modal = document.getElementById('preview-modal');
+            const body = document.getElementById('preview-modal-body');
+            document.getElementById('preview-modal-title').textContent = title;
+            body.innerHTML = '';
+
+            images.forEach(function (image) {
+                const card = document.createElement('div');
+                card.className = 'flex flex-col rounded-lg border border-gray-200 overflow-hidden';
+
+                const label = document.createElement('div');
+                label.className = 'px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600';
+                label.textContent = image.label;
+
+                const link = document.createElement('a');
+                link.href = image.url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.className = 'block bg-gray-100';
+
+                const img = document.createElement('img');
+                img.src = image.url;
+                img.alt = image.label;
+                img.loading = 'lazy';
+                img.className = 'w-full h-56 object-contain';
+                link.appendChild(img);
+
+                const actions = document.createElement('div');
+                actions.className = 'px-3 py-2 border-t border-gray-200';
+
+                const copyButton = document.createElement('button');
+                copyButton.type = 'button';
+                copyButton.className = 'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100';
+                copyButton.textContent = 'Copy Link';
+                copyButton.addEventListener('click', function () {
+                    copyThumbnailUrl(copyButton, image.url);
+                });
+
+                actions.appendChild(copyButton);
+                card.appendChild(label);
+                card.appendChild(link);
+                card.appendChild(actions);
+                body.appendChild(card);
+            });
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+        }
+
+        function closePreviewModal() {
+            const modal = document.getElementById('preview-modal');
+            document.getElementById('preview-modal-body').innerHTML = '';
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
         }
 
         function copyVideoLink(button, url) {

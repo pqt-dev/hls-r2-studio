@@ -12,8 +12,26 @@
     $durationLabel = $video->duration ? sprintf('%02d:%02d', $minutes, $seconds) : '--:--';
 
     $thumbnailUrl = $video->thumbnail_path ? Storage::disk('r2')->url($video->thumbnail_path) : null;
-    $storyboardUrl = $video->storyboard_path ? Storage::disk('r2')->url($video->storyboard_path) : null;
     $playlistUrl = $video->playlist_path ? Storage::disk('r2')->url($video->playlist_path) : null;
+
+    // The candidate images a user can pick a feature image from: the
+    // thumbnail plus every storyboard grid that was generated. Videos
+    // processed before storyboards existed (or whose generation failed) may
+    // have some or all of these missing.
+    $previewImages = [];
+
+    if ($thumbnailUrl) {
+        $previewImages[] = ['label' => 'Thumbnail', 'url' => $thumbnailUrl];
+    }
+
+    foreach ($video->storyboards ?? [] as $gridKey => $storyboard) {
+        if (! empty($storyboard['path'])) {
+            $previewImages[] = [
+                'label' => 'Storyboard '.$gridKey,
+                'url' => Storage::disk('r2')->url($storyboard['path']),
+            ];
+        }
+    }
 @endphp
 
 <tr>
@@ -115,11 +133,11 @@
                 </button>
             @endif
 
-            @if ($storyboardUrl)
+            @if ($previewImages)
                 <button type="button"
-                        onclick="copyThumbnailUrl(this, {{ \Illuminate\Support\Js::from($storyboardUrl) }})"
+                        onclick="openPreviewModal({{ \Illuminate\Support\Js::from($previewImages) }}, {{ \Illuminate\Support\Js::from($video->title) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-images class="w-3.5 h-3.5" /> Copy Storyboard
+                    <x-lucide-images class="w-3.5 h-3.5" /> Preview
                 </button>
             @endif
 

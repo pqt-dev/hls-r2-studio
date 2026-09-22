@@ -16,8 +16,7 @@ class Video extends Model
         'disk_prefix',
         'playlist_path',
         'thumbnail_path',
-        'storyboard_path',
-        'storyboard_meta_path',
+        'storyboards',
         'duration',
         'error_message',
         'output_width',
@@ -35,6 +34,7 @@ class Video extends Model
         'output_height' => 'integer',
         'output_fps' => 'float',
         'output_bitrate_kbps' => 'integer',
+        'storyboards' => 'array',
     ];
 
     public function getFormattedSizeAttribute(): string
