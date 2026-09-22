@@ -196,177 +196,204 @@
             integrity="sha384-9v3HcdYrO3D+OPDTjZ40RXocgE4GtXVCd3/mCS62JsM93JXgI1afJVuwjFvsu6ni"
             crossorigin="anonymous"></script>
     <script>
-        let hlsInstance = null;
+        (function () {
+            let hlsInstance = null;
+            let statusRefreshTimer = null;
 
-        function confirmDelete(form) {
-            const message = @json($deleteFromR2 ? 'Delete this video? The file on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete this video?');
-            if (!confirm(message)) return false;
-            const btn = form.querySelector('button[type="submit"]');
-            btn.disabled = true;
-            btn.textContent = 'Deleting...';
-            btn.classList.add('opacity-60', 'cursor-not-allowed');
-            return true;
-        }
+            // Called by the soft-navigation module right before this page is
+            // swapped out, so the refresh timer never accumulates.
+            window.__pageCleanup = function () {
+                if (statusRefreshTimer !== null) {
+                    clearInterval(statusRefreshTimer);
+                    statusRefreshTimer = null;
+                }
+            };
 
-        function openVideoModal(src, title) {
-            const modal = document.getElementById('video-modal');
-            const video = document.getElementById('video-modal-player');
-            document.getElementById('video-modal-title').textContent = title;
-
-            if (Hls.isSupported()) {
-                hlsInstance = new Hls();
-                hlsInstance.loadSource(src);
-                hlsInstance.attachMedia(video);
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = src;
+            function confirmDelete(form) {
+                const message = @json($deleteFromR2 ? 'Delete this video? The file on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete this video?');
+                if (!confirm(message)) return false;
+                const btn = form.querySelector('button[type="submit"]');
+                btn.disabled = true;
+                btn.textContent = 'Deleting...';
+                btn.classList.add('opacity-60', 'cursor-not-allowed');
+                return true;
             }
 
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-            video.play();
-        }
+            function openVideoModal(src, title) {
+                const modal = document.getElementById('video-modal');
+                const video = document.getElementById('video-modal-player');
+                document.getElementById('video-modal-title').textContent = title;
 
-        function openPreviewModal(images, title) {
-            const modal = document.getElementById('preview-modal');
-            const body = document.getElementById('preview-modal-body');
-            document.getElementById('preview-modal-title').textContent = title;
-            body.innerHTML = '';
+                if (Hls.isSupported()) {
+                    hlsInstance = new Hls();
+                    hlsInstance.loadSource(src);
+                    hlsInstance.attachMedia(video);
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = src;
+                }
 
-            images.forEach(function (image) {
-                const card = document.createElement('div');
-                card.className = 'flex flex-col rounded-lg border border-gray-200 overflow-hidden';
-
-                const label = document.createElement('div');
-                label.className = 'px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600';
-                label.textContent = image.label;
-
-                const link = document.createElement('a');
-                link.href = image.url;
-                link.target = '_blank';
-                link.rel = 'noopener noreferrer';
-                link.className = 'block bg-gray-100';
-
-                const img = document.createElement('img');
-                img.src = image.url;
-                img.alt = image.label;
-                img.loading = 'lazy';
-                img.className = 'w-full h-56 object-contain';
-                link.appendChild(img);
-
-                const actions = document.createElement('div');
-                actions.className = 'px-3 py-2 border-t border-gray-200';
-
-                const copyButton = document.createElement('button');
-                copyButton.type = 'button';
-                copyButton.className = 'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100';
-                copyButton.textContent = 'Copy Link';
-                copyButton.addEventListener('click', function () {
-                    copyThumbnailUrl(copyButton, image.url);
-                });
-
-                actions.appendChild(copyButton);
-                card.appendChild(label);
-                card.appendChild(link);
-                card.appendChild(actions);
-                body.appendChild(card);
-            });
-
-            modal.classList.remove('hidden');
-            modal.classList.add('flex');
-        }
-
-        function closePreviewModal() {
-            const modal = document.getElementById('preview-modal');
-            document.getElementById('preview-modal-body').innerHTML = '';
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
-
-        function copyVideoLink(button, url) {
-            navigator.clipboard.writeText(url);
-
-            const originalHTML = button.innerHTML;
-            const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
-            const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
-
-            button.innerHTML = originalHTML.replace(/Copy Link/, 'Copied!');
-            button.classList.remove(...originalClasses);
-            button.classList.add(...successClasses);
-
-            setTimeout(function () {
-                button.innerHTML = originalHTML;
-                button.classList.remove(...successClasses);
-                button.classList.add(...originalClasses);
-            }, 1500);
-        }
-
-        function copyThumbnailUrl(button, url) {
-            navigator.clipboard.writeText(url);
-
-            const originalHTML = button.innerHTML;
-            const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
-            const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
-
-            button.innerHTML = originalHTML.replace(/Copy .+/, 'Copied!');
-            button.classList.remove(...originalClasses);
-            button.classList.add(...successClasses);
-
-            setTimeout(function () {
-                button.innerHTML = originalHTML;
-                button.classList.remove(...successClasses);
-                button.classList.add(...originalClasses);
-            }, 1500);
-        }
-
-        const selectAllCheckbox = document.getElementById('select-all-checkbox');
-        const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
-        const selectedCountEl = document.getElementById('selected-count');
-
-        function updateBulkDeleteState() {
-            const checked = document.querySelectorAll('.bulk-select-checkbox:checked');
-            selectedCountEl.textContent = checked.length;
-            bulkDeleteBtn.disabled = checked.length === 0;
-        }
-
-        document.querySelectorAll('.bulk-select-checkbox').forEach(function (cb) {
-            cb.addEventListener('change', updateBulkDeleteState);
-        });
-
-        if (selectAllCheckbox) {
-            selectAllCheckbox.addEventListener('change', function () {
-                document.querySelectorAll('.bulk-select-checkbox').forEach(function (cb) {
-                    cb.checked = selectAllCheckbox.checked;
-                });
-                updateBulkDeleteState();
-            });
-        }
-
-        function confirmBulkDelete() {
-            const count = document.querySelectorAll('.bulk-select-checkbox:checked').length;
-            const message = @json($deleteFromR2 ? 'Delete {COUNT} selected videos? The files on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete {COUNT} selected videos?');
-            return confirm(message.replace('{COUNT}', count));
-        }
-
-        function closeVideoModal() {
-            const modal = document.getElementById('video-modal');
-            const video = document.getElementById('video-modal-player');
-            video.pause();
-            video.removeAttribute('src');
-            video.load();
-
-            if (hlsInstance) {
-                hlsInstance.destroy();
-                hlsInstance = null;
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+                video.play();
             }
 
-            modal.classList.add('hidden');
-            modal.classList.remove('flex');
-        }
+            function openPreviewModal(images, title) {
+                const modal = document.getElementById('preview-modal');
+                const body = document.getElementById('preview-modal-body');
+                document.getElementById('preview-modal-title').textContent = title;
+                body.innerHTML = '';
 
-        @if ($hasActive)
-            setInterval(function () {
-                window.location.reload();
-            }, 5000);
-        @endif
+                images.forEach(function (image) {
+                    const card = document.createElement('div');
+                    card.className = 'flex flex-col rounded-lg border border-gray-200 overflow-hidden';
+
+                    const label = document.createElement('div');
+                    label.className = 'px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600';
+                    label.textContent = image.label;
+
+                    const link = document.createElement('a');
+                    link.href = image.url;
+                    link.target = '_blank';
+                    link.rel = 'noopener noreferrer';
+                    link.className = 'block bg-gray-100';
+
+                    const img = document.createElement('img');
+                    img.src = image.url;
+                    img.alt = image.label;
+                    img.loading = 'lazy';
+                    img.className = 'w-full h-56 object-contain';
+                    link.appendChild(img);
+
+                    const actions = document.createElement('div');
+                    actions.className = 'px-3 py-2 border-t border-gray-200';
+
+                    const copyButton = document.createElement('button');
+                    copyButton.type = 'button';
+                    copyButton.className = 'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100';
+                    copyButton.textContent = 'Copy Link';
+                    copyButton.addEventListener('click', function () {
+                        copyThumbnailUrl(copyButton, image.url);
+                    });
+
+                    actions.appendChild(copyButton);
+                    card.appendChild(label);
+                    card.appendChild(link);
+                    card.appendChild(actions);
+                    body.appendChild(card);
+                });
+
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+
+            function closePreviewModal() {
+                const modal = document.getElementById('preview-modal');
+                document.getElementById('preview-modal-body').innerHTML = '';
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+
+            function copyVideoLink(button, url) {
+                navigator.clipboard.writeText(url);
+
+                const originalHTML = button.innerHTML;
+                const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
+                const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
+
+                button.innerHTML = originalHTML.replace(/Copy Link/, 'Copied!');
+                button.classList.remove(...originalClasses);
+                button.classList.add(...successClasses);
+
+                setTimeout(function () {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove(...successClasses);
+                    button.classList.add(...originalClasses);
+                }, 1500);
+            }
+
+            function copyThumbnailUrl(button, url) {
+                navigator.clipboard.writeText(url);
+
+                const originalHTML = button.innerHTML;
+                const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
+                const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
+
+                button.innerHTML = originalHTML.replace(/Copy .+/, 'Copied!');
+                button.classList.remove(...originalClasses);
+                button.classList.add(...successClasses);
+
+                setTimeout(function () {
+                    button.innerHTML = originalHTML;
+                    button.classList.remove(...successClasses);
+                    button.classList.add(...originalClasses);
+                }, 1500);
+            }
+
+            const selectAllCheckbox = document.getElementById('select-all-checkbox');
+            const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+            const selectedCountEl = document.getElementById('selected-count');
+
+            function updateBulkDeleteState() {
+                const checked = document.querySelectorAll('.bulk-select-checkbox:checked');
+                selectedCountEl.textContent = checked.length;
+                bulkDeleteBtn.disabled = checked.length === 0;
+            }
+
+            document.querySelectorAll('.bulk-select-checkbox').forEach(function (cb) {
+                cb.addEventListener('change', updateBulkDeleteState);
+            });
+
+            if (selectAllCheckbox) {
+                selectAllCheckbox.addEventListener('change', function () {
+                    document.querySelectorAll('.bulk-select-checkbox').forEach(function (cb) {
+                        cb.checked = selectAllCheckbox.checked;
+                    });
+                    updateBulkDeleteState();
+                });
+            }
+
+            function confirmBulkDelete() {
+                const count = document.querySelectorAll('.bulk-select-checkbox:checked').length;
+                const message = @json($deleteFromR2 ? 'Delete {COUNT} selected videos? The files on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete {COUNT} selected videos?');
+                return confirm(message.replace('{COUNT}', count));
+            }
+
+            function closeVideoModal() {
+                const modal = document.getElementById('video-modal');
+                const video = document.getElementById('video-modal-player');
+                video.pause();
+                video.removeAttribute('src');
+                video.load();
+
+                if (hlsInstance) {
+                    hlsInstance.destroy();
+                    hlsInstance = null;
+                }
+
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+
+            @if ($hasActive)
+                statusRefreshTimer = setInterval(function () {
+                    // Refresh in place instead of reloading the document, so
+                    // an upload running in this tab is not aborted.
+                    if (window.softNav) {
+                        window.softNav.reload();
+                    }
+                }, 5000);
+            @endif
+
+            // Exposed globally because they are referenced from inline
+            // onclick/onsubmit attributes in the markup.
+            window.confirmDelete = confirmDelete;
+            window.confirmBulkDelete = confirmBulkDelete;
+            window.openVideoModal = openVideoModal;
+            window.closeVideoModal = closeVideoModal;
+            window.openPreviewModal = openPreviewModal;
+            window.closePreviewModal = closePreviewModal;
+            window.copyVideoLink = copyVideoLink;
+            window.copyThumbnailUrl = copyThumbnailUrl;
+        })();
     </script>
 @endpush
