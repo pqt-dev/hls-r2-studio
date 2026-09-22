@@ -100,4 +100,17 @@ return [
 
     'storyboard_tile_size' => (int) env('STORYBOARD_TILE_SIZE', 160),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Storyboard Timeout Multiplier
+    |--------------------------------------------------------------------------
+    |
+    | Multiplier applied to the video's duration (in seconds) to derive the
+    | ffmpeg process timeout for storyboard generation. See
+    | TranscodeVideoJob::generateStoryboard().
+    |
+    */
+
+    'storyboard_timeout_multiplier' => (int) env('STORYBOARD_TIMEOUT_MULTIPLIER', 2),
+
 ];
