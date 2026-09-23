@@ -2,7 +2,7 @@
 
 namespace Tests\Feature;
 
-use App\Jobs\TranscodeVideoJob;
+use App\Services\StoryboardGenerator;
 use Illuminate\Support\Facades\File;
 use ReflectionMethod;
 use Symfony\Component\Process\Process;
@@ -15,17 +15,9 @@ class TranscodeVideoJobStoryboardTest extends TestCase
      */
     private const GRID_SIZES = [3, 4, 5];
 
-    private function job(): TranscodeVideoJob
+    private function generateStoryboard(string $inputPath, string $tmpDir, ?float $duration): void
     {
-        return new TranscodeVideoJob(1, '/tmp/does-not-matter.mp4');
-    }
-
-    private function generateStoryboard(TranscodeVideoJob $job, string $inputPath, string $tmpDir, ?float $duration): void
-    {
-        $method = new ReflectionMethod(TranscodeVideoJob::class, 'generateStoryboard');
-        $closure = $method->getClosure($job);
-
-        $closure($inputPath, $tmpDir, $duration);
+        (new StoryboardGenerator)->generate($inputPath, $tmpDir, $duration, 1);
     }
 
     private function assertNoStoryboardOutput(string $tmpDir): void
@@ -52,7 +44,7 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         $tmpDir = sys_get_temp_dir().'/transcode_storyboard_test_'.uniqid();
         File::ensureDirectoryExists($tmpDir);
 
-        $this->generateStoryboard($this->job(), '/tmp/this-input-does-not-exist-'.uniqid().'.mp4', $tmpDir, null);
+        $this->generateStoryboard('/tmp/this-input-does-not-exist-'.uniqid().'.mp4', $tmpDir, null);
 
         $this->assertNoStoryboardOutput($tmpDir);
 
@@ -64,7 +56,7 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         $tmpDir = sys_get_temp_dir().'/transcode_storyboard_test_'.uniqid();
         File::ensureDirectoryExists($tmpDir);
 
-        $this->generateStoryboard($this->job(), '/tmp/this-input-does-not-exist-'.uniqid().'.mp4', $tmpDir, 0.0);
+        $this->generateStoryboard('/tmp/this-input-does-not-exist-'.uniqid().'.mp4', $tmpDir, 0.0);
 
         $this->assertNoStoryboardOutput($tmpDir);
 
@@ -79,7 +71,7 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         $this->expectException(\RuntimeException::class);
 
         try {
-            $this->generateStoryboard($this->job(), '/tmp/this-input-does-not-exist-'.uniqid().'.mp4', $tmpDir, 10.0);
+            $this->generateStoryboard('/tmp/this-input-does-not-exist-'.uniqid().'.mp4', $tmpDir, 10.0);
         } finally {
             $this->assertNoStoryboardOutput($tmpDir);
             $this->assertNoIntermediateFilesLeftBehind($tmpDir);
@@ -113,7 +105,7 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         $duration = 10.0;
         $tileSize = config('videos.storyboard_tile_size');
 
-        $this->generateStoryboard($this->job(), $inputPath, $tmpDir, $duration);
+        $this->generateStoryboard($inputPath, $tmpDir, $duration);
 
         foreach (self::GRID_SIZES as $size) {
             $imagePath = "{$tmpDir}/storyboard_{$size}x{$size}.jpg";
@@ -159,8 +151,8 @@ class TranscodeVideoJobStoryboardTest extends TestCase
      */
     private function chooseStoryboardFrames(array $candidates, int $totalTiles, float $duration): array
     {
-        $method = new ReflectionMethod(TranscodeVideoJob::class, 'chooseStoryboardFrames');
-        $closure = $method->getClosure($this->job());
+        $method = new ReflectionMethod(StoryboardGenerator::class, 'chooseStoryboardFrames');
+        $closure = $method->getClosure(new StoryboardGenerator);
 
         return $closure($candidates, $totalTiles, $duration);
     }
@@ -256,9 +248,6 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         File::put("{$tmpDir}/storyboard_5x5.jpg", 'x');
         File::put("{$tmpDir}/storyboard_5x5.json", '[]');
 
-        $method = new ReflectionMethod(TranscodeVideoJob::class, 'storyboardPaths');
-        $closure = $method->getClosure();
-
         $this->assertSame([
             '3x3' => [
                 'path' => '2026/09/22/test-1/storyboard_3x3.jpg',
@@ -268,7 +257,7 @@ class TranscodeVideoJobStoryboardTest extends TestCase
                 'path' => '2026/09/22/test-1/storyboard_5x5.jpg',
                 'meta_path' => '2026/09/22/test-1/storyboard_5x5.json',
             ],
-        ], $closure($tmpDir, '2026/09/22/test-1/'));
+        ], StoryboardGenerator::paths($tmpDir, '2026/09/22/test-1/'));
 
         File::deleteDirectory($tmpDir);
     }
@@ -278,10 +267,7 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         $tmpDir = sys_get_temp_dir().'/transcode_storyboard_test_'.uniqid();
         File::ensureDirectoryExists($tmpDir);
 
-        $method = new ReflectionMethod(TranscodeVideoJob::class, 'storyboardPaths');
-        $closure = $method->getClosure();
-
-        $this->assertNull($closure($tmpDir, '2026/09/22/test-1/'));
+        $this->assertNull(StoryboardGenerator::paths($tmpDir, '2026/09/22/test-1/'));
 
         File::deleteDirectory($tmpDir);
     }

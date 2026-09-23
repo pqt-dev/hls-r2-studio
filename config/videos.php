@@ -94,7 +94,7 @@ return [
     |--------------------------------------------------------------------------
     |
     | Width and height, in pixels, of each individual tile in the generated
-    | storyboard grid image. See TranscodeVideoJob::generateStoryboard().
+    | storyboard grid image. See StoryboardGenerator::generate().
     |
     */
 
@@ -107,10 +107,22 @@ return [
     |
     | Multiplier applied to the video's duration (in seconds) to derive the
     | ffmpeg process timeout for storyboard generation. See
-    | TranscodeVideoJob::generateStoryboard().
+    | StoryboardGenerator::generate().
     |
     */
 
     'storyboard_timeout_multiplier' => (int) env('STORYBOARD_TIMEOUT_MULTIPLIER', 2),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Media Bucket
+    |--------------------------------------------------------------------------
+    |
+    | Name of the separate R2 bucket that holds the original source videos,
+    | read by the one-off videos:backfill-storyboards command.
+    |
+    */
+
+    'media_bucket' => env('MEDIA_R2_BUCKET'),
 
 ];
