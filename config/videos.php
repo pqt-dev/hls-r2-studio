@@ -113,16 +113,4 @@ return [
 
     'storyboard_timeout_multiplier' => (int) env('STORYBOARD_TIMEOUT_MULTIPLIER', 2),
 
-    /*
-    |--------------------------------------------------------------------------
-    | Media Bucket
-    |--------------------------------------------------------------------------
-    |
-    | Name of the separate R2 bucket that holds the original source videos,
-    | read by the one-off videos:backfill-storyboards command.
-    |
-    */
-
-    'media_bucket' => env('MEDIA_R2_BUCKET'),
-
 ];
