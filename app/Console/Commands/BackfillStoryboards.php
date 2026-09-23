@@ -138,7 +138,7 @@ class BackfillStoryboards extends Command
     }
 
     /**
-     * Index every mp4 in the media bucket by its exact basename, which is what
+     * Index every file in the media bucket by its exact basename, which is what
      * the videos table stores as original_filename. A basename shared by two
      * different objects is kept as a list so the caller can refuse to guess.
      *
@@ -149,10 +149,6 @@ class BackfillStoryboards extends Command
         $index = [];
 
         foreach ($mediaDisk->allFiles() as $key) {
-            if (strtolower(pathinfo($key, PATHINFO_EXTENSION)) !== 'mp4') {
-                continue;
-            }
-
             $index[basename($key)][] = $key;
         }
 
