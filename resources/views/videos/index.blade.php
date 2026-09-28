@@ -186,7 +186,7 @@
                     <x-lucide-x class="w-5 h-5" />
                 </button>
             </div>
-            <div id="preview-modal-body" class="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto p-4"></div>
+            <div id="preview-modal-body" class="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto p-4 min-h-0"></div>
         </div>
     </div>
 @endsection
