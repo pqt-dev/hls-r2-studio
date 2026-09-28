@@ -14,6 +14,7 @@ Route::middleware('guest')->group(function () {
 
 // Public route: no auth, viewable inside an iframe on external sites.
 Route::get('/embed/{video}', [EmbedController::class, 'show'])->name('embed.show')->middleware('throttle:60,1');
+Route::get('/embed-videojs/{video}', [EmbedController::class, 'showVideoJs'])->name('embed.videojs')->middleware('throttle:60,1');
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
