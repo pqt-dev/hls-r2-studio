@@ -32,6 +32,7 @@
         (function () {
             var src = {{ \Illuminate\Support\Js::from($playlistUrl) }};
             var poster = {{ \Illuminate\Support\Js::from($thumbnailUrl) }};
+            var thumbnails = {{ \Illuminate\Support\Js::from($storyboardThumbnails) }};
 
             function playM3u8(video, url, art) {
                 if (Hls.isSupported()) {
@@ -52,7 +53,7 @@
                 }
             }
 
-            new Artplayer({
+            var config = {
                 container: '#embed-player',
                 url: src,
                 poster: poster || '',
@@ -60,7 +61,34 @@
                 customType: {
                     m3u8: playM3u8,
                 },
-            });
+                playbackRate: true,
+                controls: [
+                    {
+                        name: 'seekBackward',
+                        position: 'left',
+                        index: 5,
+                        html: '-10s',
+                        click: function () {
+                            this.currentTime = Math.max(0, this.currentTime - 10);
+                        },
+                    },
+                    {
+                        name: 'seekForward',
+                        position: 'left',
+                        index: 15,
+                        html: '+10s',
+                        click: function () {
+                            this.currentTime = Math.min(this.duration, this.currentTime + 10);
+                        },
+                    },
+                ],
+            };
+
+            if (thumbnails) {
+                config.thumbnails = thumbnails;
+            }
+
+            new Artplayer(config);
         })();
     </script>
 </body>
