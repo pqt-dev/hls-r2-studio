@@ -55,7 +55,10 @@
         </div>
     </td>
 
-    <td class="px-3 py-2 font-medium text-gray-900 max-w-xs truncate">{{ $video->title }}</td>
+    <td class="px-3 py-2 font-medium text-gray-900 max-w-xs">
+        <div class="truncate">{{ $video->title }}</div>
+        <div class="text-xs font-normal text-gray-400 truncate" title="{{ $video->disk_prefix ?? '—' }}">{{ $video->disk_prefix ?? '—' }}</div>
+    </td>
 
     <td class="px-3 py-2">
         <span
@@ -140,6 +143,12 @@
                     <x-lucide-images class="w-3.5 h-3.5" /> Preview
                 </button>
             @endif
+
+            <button type="button"
+                    onclick="openEditModal({{ $video->id }}, {{ \Illuminate\Support\Js::from($video->title) }})"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                <x-lucide-pencil class="w-3.5 h-3.5" /> Edit
+            </button>
 
             <form action="{{ route('videos.destroy', $video) }}" method="POST"
                   onsubmit="return confirmDelete(this)">

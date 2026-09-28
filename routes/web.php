@@ -19,6 +19,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/upload', [VideoController::class, 'create'])->name('videos.create');
     Route::delete('/videos/bulk-destroy', [VideoController::class, 'bulkDestroy'])->name('videos.bulk-destroy');
     Route::delete('/videos/{video}', [VideoController::class, 'destroy'])->name('videos.destroy');
+    Route::put('/videos/{video}', [VideoController::class, 'update'])->name('videos.update');
     Route::get('/logs', [VideoController::class, 'logs'])->name('logs.index');
 
     Route::post('/uploads/init', [VideoController::class, 'initUpload'])->name('uploads.init')->middleware('throttle:30,1');

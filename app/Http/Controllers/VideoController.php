@@ -531,6 +531,20 @@ class VideoController extends Controller
     }
 
     /**
+     * Update a video's title.
+     */
+    public function update(Request $request, Video $video)
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:255'],
+        ]);
+
+        $video->update($validated);
+
+        return redirect()->route('videos.index')->with('success', 'Video title has been updated.');
+    }
+
+    /**
      * Remove the video record and its files on R2.
      */
     public function destroy(Video $video)

@@ -189,6 +189,36 @@
             <div id="preview-modal-body" class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4"></div>
         </div>
     </div>
+
+    <div id="edit-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
+        <div class="bg-white rounded-xl overflow-hidden w-full max-w-md">
+            <div class="flex items-center justify-between px-4 py-2 bg-gray-900 text-white">
+                <span class="text-sm font-medium">Edit video</span>
+                <button type="button" onclick="closeEditModal()" class="text-gray-300 hover:text-white">
+                    <x-lucide-x class="w-5 h-5" />
+                </button>
+            </div>
+            <form id="edit-modal-form" method="POST" class="p-4 space-y-4">
+                @csrf
+                @method('PUT')
+                <div>
+                    <label for="edit-modal-title" class="block text-xs font-medium text-gray-700 mb-1">Title</label>
+                    <input type="text" name="title" id="edit-modal-title" required maxlength="255"
+                           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closeEditModal()"
+                            class="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                        Cancel
+                    </button>
+                    <button type="submit"
+                            class="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800">
+                        Save
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -291,6 +321,21 @@
                 modal.classList.add('hidden');
             }
 
+            function openEditModal(videoId, title) {
+                const modal = document.getElementById('edit-modal');
+                const form = document.getElementById('edit-modal-form');
+                form.action = '/videos/' + videoId;
+                document.getElementById('edit-modal-title').value = title;
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            }
+
+            function closeEditModal() {
+                const modal = document.getElementById('edit-modal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+
             function copyVideoLink(button, url) {
                 navigator.clipboard.writeText(url);
 
@@ -390,6 +435,8 @@
             window.closeVideoModal = closeVideoModal;
             window.openPreviewModal = openPreviewModal;
             window.closePreviewModal = closePreviewModal;
+            window.openEditModal = openEditModal;
+            window.closeEditModal = closeEditModal;
             window.copyVideoLink = copyVideoLink;
             window.copyThumbnailUrl = copyThumbnailUrl;
         })();
