@@ -14,11 +14,15 @@
     $thumbnailUrl = $video->thumbnail_path ? Storage::disk('r2')->url($video->thumbnail_path) : null;
     $playlistUrl = $video->playlist_path ? Storage::disk('r2')->url($video->playlist_path) : null;
 
+    $embedAspectRatio = ($video->output_width && $video->output_height)
+        ? "{$video->output_width} / {$video->output_height}"
+        : '16 / 9';
+
     $embedUrl = route('embed.show', $video);
-    $embedCode = '<iframe src="'.$embedUrl.'" width="640" height="360" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>';
+    $embedCode = '<iframe src="'.$embedUrl.'" style="width:100%; aspect-ratio:'.$embedAspectRatio.'; max-height:80vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
 
     $embedUrlVideoJs = route('embed.videojs', $video);
-    $embedCodeVideoJs = '<iframe src="'.$embedUrlVideoJs.'" width="640" height="360" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>';
+    $embedCodeVideoJs = '<iframe src="'.$embedUrlVideoJs.'" style="width:100%; aspect-ratio:'.$embedAspectRatio.'; max-height:80vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
 
     // The candidate images a user can pick a feature image from: the
     // thumbnail plus every storyboard grid that was generated. Videos
