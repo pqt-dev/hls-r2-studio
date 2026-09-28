@@ -142,7 +142,7 @@
                 <button type="button"
                         onclick="copyEmbedCode(this, {{ \Illuminate\Support\Js::from($embedCodeVideoJs) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-code class="w-3.5 h-3.5" /> Copy Embed (Video.js)
+                    <x-lucide-code class="w-3.5 h-3.5" /> Copy Embed (DPlayer)
                 </button>
             @endif
 
