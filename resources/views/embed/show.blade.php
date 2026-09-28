@@ -62,11 +62,14 @@
                     m3u8: playM3u8,
                 },
                 playbackRate: true,
+                setting: true,
+                fullscreen: true,
+                notice: false,
                 controls: [
                     {
                         name: 'seekBackward',
-                        position: 'left',
-                        index: 5,
+                        position: 'right',
+                        index: 45,
                         html: '-10s',
                         click: function () {
                             this.currentTime = Math.max(0, this.currentTime - 10);
@@ -74,8 +77,8 @@
                     },
                     {
                         name: 'seekForward',
-                        position: 'left',
-                        index: 15,
+                        position: 'right',
+                        index: 47,
                         html: '+10s',
                         click: function () {
                             this.currentTime = Math.min(this.duration, this.currentTime + 10);
@@ -88,7 +91,15 @@
                 config.thumbnails = thumbnails;
             }
 
-            new Artplayer(config);
+            var art = new Artplayer(config);
+
+            if (art.controls.volume) {
+                if (art.controls.fullscreen) {
+                    art.template.$controlsRight.insertBefore(art.controls.volume, art.controls.fullscreen);
+                } else {
+                    art.template.$controlsRight.appendChild(art.controls.volume);
+                }
+            }
         })();
     </script>
 </body>
