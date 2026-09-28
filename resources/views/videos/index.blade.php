@@ -178,15 +178,15 @@
         </div>
     </div>
 
-    <div id="preview-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
-        <div class="bg-white rounded-xl overflow-hidden w-full max-w-4xl max-h-[90vh] flex flex-col">
-            <div class="flex items-center justify-between px-4 py-2 bg-gray-900 text-white">
+    <div id="preview-modal" class="fixed inset-0 z-50 hidden overflow-y-auto bg-black/70 p-4">
+        <div class="bg-white rounded-xl overflow-hidden w-full max-w-4xl mx-auto my-8 flex flex-col">
+            <div class="flex items-center justify-between px-4 py-2 bg-gray-900 text-white sticky top-0">
                 <span id="preview-modal-title" class="text-sm font-medium"></span>
                 <button type="button" onclick="closePreviewModal()" class="text-gray-300 hover:text-white">
                     <x-lucide-x class="w-5 h-5" />
                 </button>
             </div>
-            <div id="preview-modal-body" class="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto p-4 min-h-0"></div>
+            <div id="preview-modal-body" class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4"></div>
         </div>
     </div>
 @endsection
@@ -283,14 +283,12 @@
                 });
 
                 modal.classList.remove('hidden');
-                modal.classList.add('flex');
             }
 
             function closePreviewModal() {
                 const modal = document.getElementById('preview-modal');
                 document.getElementById('preview-modal-body').innerHTML = '';
                 modal.classList.add('hidden');
-                modal.classList.remove('flex');
             }
 
             function copyVideoLink(button, url) {
