@@ -41,6 +41,7 @@
 
             var options = {
                 sources: [{ src: src, type: 'application/x-mpegURL' }],
+                fill: true,
                 playbackRates: [0.5, 1, 1.5, 2],
                 userActions: { doubleClick: false },
                 controlBar: {
