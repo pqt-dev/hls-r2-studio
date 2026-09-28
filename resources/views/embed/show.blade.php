@@ -13,32 +13,54 @@
             background: #000;
         }
 
-        video {
-            display: block;
+        #embed-player {
             width: 100%;
             height: 100%;
-            object-fit: contain;
         }
     </style>
 </head>
 <body>
-    <video id="embed-player" controls @if ($thumbnailUrl) poster="{{ $thumbnailUrl }}" @endif></video>
+    <div id="embed-player"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"
             integrity="sha384-9v3HcdYrO3D+OPDTjZ40RXocgE4GtXVCd3/mCS62JsM93JXgI1afJVuwjFvsu6ni"
             crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/artplayer/5.4.0/artplayer.min.js"
+            integrity="sha512-xHj/H3X0iw3K706GLkh5o4hCyGmRANttLU4My0OVpuv/js7LDRNFFVwazs6G9ANol8B2UzlcE35ltMPcHs3gnA=="
+            crossorigin="anonymous"></script>
     <script>
         (function () {
-            var video = document.getElementById('embed-player');
             var src = {{ \Illuminate\Support\Js::from($playlistUrl) }};
+            var poster = {{ \Illuminate\Support\Js::from($thumbnailUrl) }};
 
-            if (Hls.isSupported()) {
-                var hls = new Hls();
-                hls.loadSource(src);
-                hls.attachMedia(video);
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                video.src = src;
+            function playM3u8(video, url, art) {
+                if (Hls.isSupported()) {
+                    if (art.hls) {
+                        art.hls.destroy();
+                    }
+                    var hls = new Hls();
+                    hls.loadSource(url);
+                    hls.attachMedia(video);
+                    art.hls = hls;
+                    art.on('destroy', function () {
+                        hls.destroy();
+                    });
+                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                    video.src = url;
+                } else {
+                    art.notice.show = 'Unsupported playback format: m3u8';
+                }
             }
+
+            new Artplayer({
+                container: '#embed-player',
+                url: src,
+                poster: poster || '',
+                type: 'm3u8',
+                customType: {
+                    m3u8: playM3u8,
+                },
+            });
         })();
     </script>
 </body>
