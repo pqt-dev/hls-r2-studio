@@ -14,6 +14,9 @@
     $thumbnailUrl = $video->thumbnail_path ? Storage::disk('r2')->url($video->thumbnail_path) : null;
     $playlistUrl = $video->playlist_path ? Storage::disk('r2')->url($video->playlist_path) : null;
 
+    $embedUrl = route('embed.show', $video);
+    $embedCode = '<iframe src="'.$embedUrl.'" width="640" height="360" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>';
+
     // The candidate images a user can pick a feature image from: the
     // thumbnail plus every storyboard grid that was generated. Videos
     // processed before storyboards existed (or whose generation failed) may
@@ -125,6 +128,12 @@
                         onclick="copyVideoLink(this, {{ \Illuminate\Support\Js::from($video->public_url) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
                     <x-lucide-copy class="w-3.5 h-3.5" /> Copy Link
+                </button>
+
+                <button type="button"
+                        onclick="copyEmbedCode(this, {{ \Illuminate\Support\Js::from($embedCode) }})"
+                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
+                    <x-lucide-code class="w-3.5 h-3.5" /> Copy Embed
                 </button>
             @endif
 
