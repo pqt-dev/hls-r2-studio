@@ -20,6 +20,36 @@
             width: 100%;
             height: 100%;
         }
+
+        .video-js .vjs-control-bar {
+            background: linear-gradient(to top, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0.35) 60%, rgba(0, 0, 0, 0) 100%);
+            height: 4em;
+            padding-top: 1em;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        .video-js .vjs-control-bar .vjs-control,
+        .video-js .vjs-control-bar .vjs-button,
+        .video-js .vjs-time-control,
+        .video-js .vjs-menu-button .vjs-menu-content {
+            color: #F2E8D9;
+        }
+
+        .video-js .vjs-progress-holder {
+            background: rgba(255, 255, 255, 0.25);
+        }
+
+        .video-js .vjs-load-progress {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .video-js .vjs-play-progress {
+            background: #D9614A;
+        }
+
+        .video-js .vjs-play-progress:before {
+            color: #F2E8D9;
+        }
     </style>
 </head>
 <body>
@@ -52,7 +82,7 @@
                         'volumePanel',
                         'currentTimeDisplay',
                         'timeDivider',
-                        'durationDisplay',
+                        'remainingTimeDisplay',
                         'skipBackward',
                         'skipForward',
                         'progressControl',
