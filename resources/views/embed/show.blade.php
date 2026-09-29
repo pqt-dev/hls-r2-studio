@@ -35,7 +35,6 @@
     <script>
         (function () {
             var src = {{ \Illuminate\Support\Js::from($playlistUrl) }};
-            var poster = {{ \Illuminate\Support\Js::from($thumbnailUrl) }};
             var thumbnails = {{ \Illuminate\Support\Js::from($storyboardThumbnails) }};
 
             function playM3u8(video, url, art) {
@@ -60,7 +59,6 @@
             var config = {
                 container: '#embed-player',
                 url: src,
-                poster: poster || '',
                 type: 'm3u8',
                 customType: {
                     m3u8: playM3u8,

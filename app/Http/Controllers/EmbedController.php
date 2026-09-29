@@ -19,7 +19,6 @@ class EmbedController extends Controller
         $disk = Setting::current()->r2Disk();
 
         $playlistUrl = $disk->url($video->playlist_path);
-        $thumbnailUrl = $video->thumbnail_path ? $disk->url($video->thumbnail_path) : null;
 
         $storyboards = $video->storyboards ?? [];
         $tileSize = config('videos.storyboard_tile_size');
@@ -41,7 +40,7 @@ class EmbedController extends Controller
             }
         }
 
-        return view('embed.show', compact('video', 'playlistUrl', 'thumbnailUrl', 'storyboardThumbnails'));
+        return view('embed.show', compact('video', 'playlistUrl', 'storyboardThumbnails'));
     }
 
     /**
@@ -56,8 +55,7 @@ class EmbedController extends Controller
         $disk = Setting::current()->r2Disk();
 
         $playlistUrl = $disk->url($video->playlist_path);
-        $thumbnailUrl = $video->thumbnail_path ? $disk->url($video->thumbnail_path) : null;
 
-        return view('embed.videojs', compact('video', 'playlistUrl', 'thumbnailUrl'));
+        return view('embed.videojs', compact('video', 'playlistUrl'));
     }
 }

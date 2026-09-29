@@ -30,16 +30,11 @@
     <script>
         (function () {
             var src = {{ \Illuminate\Support\Js::from($playlistUrl) }};
-            var poster = {{ \Illuminate\Support\Js::from($thumbnailUrl) }};
 
             var video = {
                 url: src,
                 type: 'hls',
             };
-
-            if (poster) {
-                video.pic = poster;
-            }
 
             var dp = new DPlayer({
                 container: document.getElementById('embed-player'),
