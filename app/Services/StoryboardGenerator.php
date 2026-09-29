@@ -111,12 +111,10 @@ class StoryboardGenerator
         foreach (self::STORYBOARD_GRID_SIZES as $size) {
             $key = "{$size}x{$size}";
             $image = "storyboard_{$key}.jpg";
-            $meta = "storyboard_{$key}.json";
 
-            if (File::exists("{$tmpDir}/{$image}") && File::exists("{$tmpDir}/{$meta}")) {
+            if (File::exists("{$tmpDir}/{$image}")) {
                 $storyboards[$key] = [
                     'path' => $prefix.$image,
-                    'meta_path' => $prefix.$meta,
                 ];
             }
         }
@@ -386,7 +384,7 @@ class StoryboardGenerator
 
     /**
      * Compose one $size x $size storyboard grid from the chosen candidate
-     * frames and write its JSON tile metadata alongside it.
+     * frames.
      *
      * The chosen frames are a scattered subset of the candidate pool, so they
      * are first copied into a contiguously numbered sequence that ffmpeg's
@@ -439,22 +437,6 @@ class StoryboardGenerator
             }
         }
 
-        $tileDuration = $duration / $totalTiles;
-        $tiles = [];
-
-        for ($i = 0; $i < $totalTiles; $i++) {
-            $col = $i % $size;
-            $row = intdiv($i, $size);
-
-            $tiles[] = [
-                'start' => round($i * $tileDuration, 2),
-                'end' => round(($i + 1) * $tileDuration, 2),
-                'x' => $col * $tileSize,
-                'y' => $row * $tileSize,
-            ];
-        }
-
-        File::put("{$tmpDir}/storyboard_{$size}x{$size}.json", json_encode($tiles));
     }
 
     public static function buildSaturationMeasurementProcess(string $imagePath): Process

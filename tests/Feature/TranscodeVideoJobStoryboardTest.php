@@ -24,7 +24,6 @@ class TranscodeVideoJobStoryboardTest extends TestCase
     {
         foreach (self::GRID_SIZES as $size) {
             $this->assertFileDoesNotExist("{$tmpDir}/storyboard_{$size}x{$size}.jpg");
-            $this->assertFileDoesNotExist("{$tmpDir}/storyboard_{$size}x{$size}.json");
         }
     }
 
@@ -80,7 +79,7 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         }
     }
 
-    public function test_generate_storyboard_creates_every_grid_image_and_metadata_for_real_video(): void
+    public function test_generate_storyboard_creates_every_grid_image_for_real_video(): void
     {
         $tmpDir = sys_get_temp_dir().'/transcode_storyboard_test_'.uniqid();
         File::ensureDirectoryExists($tmpDir);
@@ -109,35 +108,13 @@ class TranscodeVideoJobStoryboardTest extends TestCase
 
         foreach (self::GRID_SIZES as $size) {
             $imagePath = "{$tmpDir}/storyboard_{$size}x{$size}.jpg";
-            $metaPath = "{$tmpDir}/storyboard_{$size}x{$size}.json";
 
             $this->assertFileExists($imagePath);
-            $this->assertFileExists($metaPath);
 
             $dimensions = getimagesize($imagePath);
             $this->assertNotFalse($dimensions);
             $this->assertSame($tileSize * $size, $dimensions[0], "{$size}x{$size} grid width");
             $this->assertSame($tileSize * $size, $dimensions[1], "{$size}x{$size} grid height");
-
-            $totalTiles = $size * $size;
-            $tileDuration = $duration / $totalTiles;
-
-            $meta = json_decode(File::get($metaPath), true);
-            $this->assertCount($totalTiles, $meta);
-
-            $this->assertEquals(0.0, $meta[0]['start']);
-            $this->assertSame(0, $meta[0]['x']);
-            $this->assertSame(0, $meta[0]['y']);
-
-            // Second tile is the next column of the first row; the tile at
-            // index $size starts the second row.
-            $this->assertSame($tileSize, $meta[1]['x']);
-            $this->assertSame(0, $meta[1]['y']);
-            $this->assertSame(0, $meta[$size]['x']);
-            $this->assertSame($tileSize, $meta[$size]['y']);
-
-            $this->assertEquals(round($tileDuration, 2), $meta[0]['end']);
-            $this->assertEquals(round($duration, 2), $meta[$totalTiles - 1]['end']);
         }
 
         $this->assertNoIntermediateFilesLeftBehind($tmpDir);
@@ -240,22 +217,17 @@ class TranscodeVideoJobStoryboardTest extends TestCase
         $tmpDir = sys_get_temp_dir().'/transcode_storyboard_test_'.uniqid();
         File::ensureDirectoryExists($tmpDir);
 
-        // Only the 3x3 and 5x5 grids made it; the 4x4 pair is incomplete and
-        // must be left out entirely rather than half recorded.
+        // Only the 3x3 and 5x5 grids made it; the 4x4 one must be left out
+        // entirely.
         File::put("{$tmpDir}/storyboard_3x3.jpg", 'x');
-        File::put("{$tmpDir}/storyboard_3x3.json", '[]');
-        File::put("{$tmpDir}/storyboard_4x4.jpg", 'x');
         File::put("{$tmpDir}/storyboard_5x5.jpg", 'x');
-        File::put("{$tmpDir}/storyboard_5x5.json", '[]');
 
         $this->assertSame([
             '3x3' => [
                 'path' => '2026/09/22/test-1/storyboard_3x3.jpg',
-                'meta_path' => '2026/09/22/test-1/storyboard_3x3.json',
             ],
             '5x5' => [
                 'path' => '2026/09/22/test-1/storyboard_5x5.jpg',
-                'meta_path' => '2026/09/22/test-1/storyboard_5x5.json',
             ],
         ], StoryboardGenerator::paths($tmpDir, '2026/09/22/test-1/'));
 
