@@ -162,7 +162,7 @@ php artisan admin:create admin --email=admin@example.com
 ```
 > Không truyền password trên dòng lệnh (tránh lộ qua lịch sử shell) — lệnh sẽ tự hỏi (`Enter password:`) và ẩn ký tự khi gõ. Password tối thiểu 8 ký tự. Muốn truyền trực tiếp vẫn được: `php artisan admin:create admin "mat-khau-manh" --email=admin@example.com`. Lệnh này upsert theo `username` — chạy lại với cùng username sẽ đổi mật khẩu tài khoản đó thay vì tạo trùng.
 
-Chạy ứng dụng — cần **ba tiến trình song song**:
+Chạy ứng dụng — cần **bốn tiến trình song song**:
 
 ```bash
 # Terminal 1
@@ -176,6 +176,11 @@ php artisan queue:work
 # ứng dụng vẫn hoạt động bình thường (khác với thiếu queue worker — thiếu queue worker
 # thì video hoàn toàn không xử lý được)
 php artisan schedule:work
+
+# Terminal 4 — bắt buộc để hiển thị tiến độ transcode theo thời gian thực trên trang Upload;
+# nếu thiếu, trang Upload vẫn hoạt động nhưng không cập nhật tiến độ live (phải tự reload để
+# xem trạng thái mới nhất)
+php artisan reverb:start
 ```
 
 Truy cập `http://localhost:8000/login`.
@@ -224,8 +229,19 @@ server {
     location ~ /\.(?!well-known).* {
         deny all;
     }
+
+    location /app/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "Upgrade";
+        proxy_set_header Host $host;
+        proxy_read_timeout 60s;
+    }
 }
 ```
+
+`REVERB_SERVER_HOST=127.0.0.1`/`REVERB_SERVER_PORT=8080` trong `.env` phải giữ nguyên như vậy (Reverb chỉ bind local, không bao giờ expose trực tiếp ra ngoài), còn `REVERB_HOST`/`REVERB_PORT`/`REVERB_SCHEME` phải đặt thành domain/443/https thật — cả kết nối Reverb phía server lẫn frontend build bằng Vite sẽ đi qua đúng path proxy này trên cùng cert HTTPS đã có, không cần mở thêm port nào trên firewall.
 
 Kích hoạt:
 
@@ -278,7 +294,37 @@ Kiểm tra: `sudo systemctl status hls-r2-studio-queue@1`, xem log: `sudo journa
 
 > **Lưu ý về `DB_QUEUE_RETRY_AFTER`**: `.env.example` đã có sẵn `DB_QUEUE_RETRY_AFTER=176400`. Giá trị này PHẢI luôn LỚN HƠN `--timeout` của queue worker (`172800`) — nếu không, database queue driver sẽ coi 1 job đang chạy hợp lệ là "đã chết" và cho worker khác nhận lại, gây xử lý trùng lặp. Đổi cái này thì phải đổi cái kia theo.
 
-**6. Chạy scheduler bền vững bằng systemd** (bắt buộc để 3 lệnh dọn rác tự động chạy hàng ngày, xem [Lưu ý khác](#lưu-ý-khác) — nếu thiếu, rác không tự dọn nhưng ứng dụng vẫn hoạt động bình thường)
+**6. Chạy Reverb (WebSocket) bền vững bằng systemd** (bắt buộc để hiển thị tiến độ transcode theo thời gian thực trên trang Upload; nếu thiếu, trang Upload vẫn hoạt động nhưng không cập nhật tiến độ live) — tạo file `/etc/systemd/system/hls-r2-studio-reverb.service` (1 instance duy nhất, không dùng template `@`):
+
+```bash
+sudo nano /etc/systemd/system/hls-r2-studio-reverb.service
+```
+
+```ini
+[Unit]
+Description=HLS R2 Studio Reverb (WebSocket)
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/hls-r2-studio
+ExecStart=/usr/bin/php artisan reverb:start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Bật chạy:
+
+```bash
+sudo systemctl enable --now hls-r2-studio-reverb
+```
+
+Kiểm tra: `sudo systemctl status hls-r2-studio-reverb`, xem log: `sudo journalctl -u hls-r2-studio-reverb -f`.
+
+**7. Chạy scheduler bền vững bằng systemd** (bắt buộc để 3 lệnh dọn rác tự động chạy hàng ngày, xem [Lưu ý khác](#lưu-ý-khác) — nếu thiếu, rác không tự dọn nhưng ứng dụng vẫn hoạt động bình thường)
 
 Tạo file `/etc/systemd/system/hls-r2-studio-scheduler.service` (không dùng template `@` — scheduler chỉ cần chạy 1 instance duy nhất):
 
@@ -310,13 +356,13 @@ sudo systemctl enable --now hls-r2-studio-scheduler
 
 Kiểm tra: `sudo systemctl status hls-r2-studio-scheduler`, xem log: `sudo journalctl -u hls-r2-studio-scheduler -f`.
 
-**7. Firewall**:
+**8. Firewall**:
 
 ```bash
 sudo ufw allow 80/tcp
 ```
 
-**8. Cập nhật code** — xem mục [Cập nhật / Deploy lại khi có code mới](#cập-nhật--deploy-lại-khi-có-code-mới) bên dưới.
+**9. Cập nhật code** — xem mục [Cập nhật / Deploy lại khi có code mới](#cập-nhật--deploy-lại-khi-có-code-mới) bên dưới.
 
 - Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn là việc cần tự làm thêm.
 
@@ -530,7 +576,51 @@ Kiểm tra: `systemctl status hls-r2-studio-queue@1`, xem log: `journalctl -u hl
 
 > **Lưu ý về `DB_QUEUE_RETRY_AFTER`**: `.env.example` đã có sẵn `DB_QUEUE_RETRY_AFTER=176400`, PHẢI luôn LỚN HƠN `--timeout` ở trên (`172800`) — nếu không, database queue driver sẽ coi 1 job đang chạy hợp lệ là "đã chết" và cho worker khác nhận lại, gây xử lý trùng lặp. Đổi cái này thì phải đổi cái kia theo.
 
-**Bước 17 — Chạy scheduler bằng systemd** (bắt buộc để 3 lệnh dọn rác tự động chạy hàng ngày, xem [Lưu ý khác](#lưu-ý-khác) — nếu thiếu, rác không tự dọn nhưng ứng dụng vẫn hoạt động bình thường; aaPanel KHÔNG tự quản lý việc này)
+**Bước 17 — Chạy Reverb (WebSocket) bằng systemd** (bắt buộc để hiển thị tiến độ transcode theo thời gian thực trên trang Upload; nếu thiếu, trang Upload vẫn hoạt động nhưng không cập nhật tiến độ live; aaPanel KHÔNG tự quản lý việc này)
+
+Tạo file:
+```bash
+nano /etc/systemd/system/hls-r2-studio-reverb.service
+```
+
+```ini
+[Unit]
+Description=HLS R2 Studio Reverb (WebSocket)
+After=network.target
+
+[Service]
+User=www
+WorkingDirectory=/www/wwwroot/ten-domain.com
+ExecStart=/www/server/php/84/bin/php artisan reverb:start
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Kích hoạt:
+```bash
+systemctl daemon-reload
+systemctl enable --now hls-r2-studio-reverb
+```
+
+Kiểm tra: `systemctl status hls-r2-studio-reverb`, xem log: `journalctl -u hls-r2-studio-reverb -f`.
+
+aaPanel chỉ hiển thị các tuỳ chọn GUI đơn giản cho Nginx, nhưng mỗi site aaPanel đều có tab **Config File** (配置文件) trong phần cài đặt site, hiển thị nguyên file cấu hình Nginx server block đầy đủ. Mở tab này, thêm block sau vào bên trong `server { }` đã có sẵn (giống hệt block dùng ở phần "Chạy production thật trên VPS"):
+```nginx
+location /app/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "Upgrade";
+    proxy_set_header Host $host;
+    proxy_read_timeout 60s;
+}
+```
+Lưu lại — aaPanel tự reload Nginx. Cách này tận dụng lại chính chứng chỉ SSL Let's Encrypt của site đã bật ở Bước 15, không cần mở thêm port/firewall nào.
+
+**Bước 18 — Chạy scheduler bằng systemd** (bắt buộc để 3 lệnh dọn rác tự động chạy hàng ngày, xem [Lưu ý khác](#lưu-ý-khác) — nếu thiếu, rác không tự dọn nhưng ứng dụng vẫn hoạt động bình thường; aaPanel KHÔNG tự quản lý việc này)
 
 Tạo file (không dùng template `@` như queue worker — scheduler chỉ cần chạy 1 instance duy nhất):
 ```bash
@@ -561,7 +651,7 @@ systemctl enable --now hls-r2-studio-scheduler
 
 Kiểm tra: `systemctl status hls-r2-studio-scheduler`, xem log: `journalctl -u hls-r2-studio-scheduler -f`.
 
-**Bước 18 — Kiểm tra**
+**Bước 19 — Kiểm tra**
 
 Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã tạo ở Bước 9, thử upload 1 video ngắn để xác nhận toàn bộ pipeline (upload → transcode → upload R2 → phát HLS) chạy hoàn chỉnh.
 
@@ -576,6 +666,7 @@ Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã
 | Trang trắng, lỗi `open_basedir restriction in effect` | Toggle "Anti-XSS attack" (open_basedir) đang bật, giới hạn PHP chỉ đọc được `public/` | Tắt toggle này trong site → Directory (Bước 12) |
 | `404 Not Found nginx` khi vào `/login` (nhưng trang chủ `/` vào được) | Thiếu rule rewrite URL đẹp cho Laravel | Bật URL rewrite template Laravel5 (Bước 13) |
 | Video kẹt ở "Đang xử lý" mãi không xong, log có `Job timed out` | Queue worker thiếu cờ `--timeout`, Laravel tự kill job sau 60s mặc định | Thêm `--timeout=172800` vào `ExecStart` của systemd unit (Bước 16) |
+| Trang Upload báo lỗi console `You must pass your app key when you instantiate Pusher` | Thiếu biến `VITE_REVERB_*` trong `.env` lúc `npm run build`, hoặc chưa cấu hình Reverb | Điền đủ `REVERB_*`/`VITE_REVERB_*` vào `.env` (Bước 8) rồi `npm run build` lại, đảm bảo đã chạy Reverb (Bước 17) |
 | `systemctl restart nginx`/`php-fpm-84` báo lỗi nhưng service vẫn đang chạy | Script khởi động kiểu LSB không xử lý đúng "restart" khi service đã chạy | Dùng `/etc/init.d/nginx reload` và `/etc/init.d/php-fpm-84 restart` thay vì `systemctl restart` |
 
 ## Chạy nhiều worker song song
@@ -594,10 +685,12 @@ git pull
 | Lệnh | Chỉ cần chạy khi nào |
 |---|---|
 | `composer install --no-dev` (dùng đúng bản PHP như hướng dẫn aaPanel nếu áp dụng) | `composer.json`/`composer.lock` thay đổi (có dependency mới) |
+| `npm install` | `package.json`/`package-lock.json` thay đổi (có dependency JS mới) |
 | `npm run build` | Có thay đổi trong `resources/css`, `resources/js`, hoặc file `.blade.php` (thêm/sửa class Tailwind) |
 | `php artisan migrate --force` | Có file migration mới trong `database/migrations/` |
 | `php artisan config:clear` | Đổi file `config/*.php` bất kỳ, hoặc thêm biến mới vào `.env` |
 | Restart queue worker (`systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2`, đổi tên service theo đúng phần deploy đã dùng ở trên) | `app/Jobs/TranscodeVideoJob.php` hoặc code xử lý hàng đợi thay đổi — PHP-FPM tự đọc code mới mỗi request nên các file PHP khác không cần restart gì, chỉ riêng queue worker giữ code cũ trong bộ nhớ tới khi restart |
+| Restart Reverb (`systemctl restart hls-r2-studio-reverb`) | `app/Events/*.php`, `config/reverb.php`, `config/broadcasting.php`, hoặc `resources/js/echo.js` thay đổi |
 | Restart scheduler | Hầu như KHÔNG BAO GIỜ cần, trừ khi sửa `routes/console.php` hoặc chính các lệnh cleanup trong `app/Console/Commands/` |
 
 ## Lưu ý khác
@@ -609,6 +702,7 @@ git pull
   * * * * * cd /path-to-project && php artisan schedule:run >> /dev/null 2>&1
   ```
   Nếu thiếu tiến trình này, rác (upload chunk bỏ dở, thư mục tạm băm HLS bị crash treo, file video mồ côi) sẽ không tự động được dọn, dù ứng dụng vẫn hoạt động bình thường.
+- Tiến độ transcode hiển thị theo thời gian thực trên trang Upload phụ thuộc vào tiến trình Reverb (`php artisan reverb:start`, xem Terminal 4 hoặc systemd unit `hls-r2-studio-reverb` ở trên). Nếu tiến trình này không chạy, trang Upload vẫn hoạt động bình thường nhưng không tự cập nhật tiến độ — phải tự reload trang để xem trạng thái mới nhất.
 - **Tuỳ chỉnh nâng cao** (không bắt buộc, có giá trị mặc định hợp lý — thêm vào `.env` nếu muốn đổi):
   ```env
   UPLOAD_ABANDONED_TTL_HOURS=24       # dọn upload chunk bỏ dở sau bao lâu
