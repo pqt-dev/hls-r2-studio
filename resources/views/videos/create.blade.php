@@ -466,7 +466,7 @@
                     transcodeBarWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5';
 
                     const transcodeBar = document.createElement('div');
-                    transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full transition-[width] duration-[500ms] ease-linear';
+                    transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full';
                     transcodeBar.style.width = '0%';
                     transcodeBarWrapper.appendChild(transcodeBar);
 
@@ -833,39 +833,72 @@
                     data.forEach(applyStatusSnapshot);
                 }
 
-                document.addEventListener('DOMContentLoaded', function () {
-                    if (window.Echo) {
-                        window.Echo.channel('videos').stopListening('.video.status-updated');
-                        window.Echo.channel('videos').listen('.video.status-updated', function (e) {
-                            applyStatusSnapshot({ id: e.videoId, status: e.status, stage: e.stage, progress: e.progress });
-                        });
+                function subscribeToVideoChannel() {
+                    if (!window.Echo) {
+                        return;
                     }
+
+                    window.Echo.channel('videos').stopListening('.video.status-updated');
+                    window.Echo.channel('videos').listen('.video.status-updated', function (e) {
+                        applyStatusSnapshot({ id: e.videoId, status: e.status, stage: e.stage, progress: e.progress });
+                    });
+                }
+
+                function handleConnectionStateChange(states) {
+                    console.log('[Echo] connection state changed:', states.previous, '->', states.current);
+
+                    if (states.current === 'connected') {
+                        reconnectAttempts = 0;
+                        subscribeToVideoChannel();
+                        resyncStatus();
+                        hasConnectedBefore = true;
+                    } else if (states.current === 'unavailable' || states.current === 'failed') {
+                        reconnectAttempts++;
+
+                        if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+                            appendLog('Lost real-time connection. Please reload the page to see the latest status.', 'text-red-600 font-medium');
+                            return;
+                        }
+
+                        const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
+
+                        setTimeout(function () {
+                            window.Echo.connector.pusher.connect();
+                        }, delay);
+                    }
+                }
+
+                function handleVisibilityChange() {
+                    if (document.visibilityState === 'visible') {
+                        resyncStatus();
+                    }
+                }
+
+                function initializeLiveUpdates() {
+                    subscribeToVideoChannel();
 
                     if (window.Echo && window.Echo.connector && window.Echo.connector.pusher) {
-                        window.Echo.connector.pusher.connection.bind('state_change', function (states) {
-                            console.log('[Echo] connection state changed:', states.previous, '->', states.current);
-
-                            if (states.current === 'connected') {
-                                reconnectAttempts = 0;
-                                resyncStatus();
-                                hasConnectedBefore = true;
-                            } else if (states.current === 'unavailable' || states.current === 'failed') {
-                                reconnectAttempts++;
-
-                                if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-                                    appendLog('Lost real-time connection. Please reload the page to see the latest status.', 'text-red-600 font-medium');
-                                    return;
-                                }
-
-                                const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
-
-                                setTimeout(function () {
-                                    window.Echo.connector.pusher.connect();
-                                }, delay);
-                            }
-                        });
+                        window.Echo.connector.pusher.connection.bind('state_change', handleConnectionStateChange);
                     }
-                });
+
+                    document.addEventListener('visibilitychange', handleVisibilityChange);
+                }
+
+                if (window.Echo) {
+                    initializeLiveUpdates();
+                } else {
+                    document.addEventListener('DOMContentLoaded', initializeLiveUpdates);
+                }
+
+                window.__pageCleanup = function () {
+                    if (window.Echo) {
+                        window.Echo.channel('videos').stopListening('.video.status-updated');
+                    }
+                    if (window.Echo && window.Echo.connector && window.Echo.connector.pusher) {
+                        window.Echo.connector.pusher.connection.unbind('state_change', handleConnectionStateChange);
+                    }
+                    document.removeEventListener('visibilitychange', handleVisibilityChange);
+                };
 
                 function applyStatusSnapshot(video) {
                     const entry = uploadedVideos[video.id];
