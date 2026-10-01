@@ -847,10 +847,7 @@
 
                             if (states.current === 'connected') {
                                 reconnectAttempts = 0;
-
-                                if (hasConnectedBefore) {
-                                    resyncStatus();
-                                }
+                                resyncStatus();
                                 hasConnectedBefore = true;
                             } else if (states.current === 'unavailable' || states.current === 'failed') {
                                 reconnectAttempts++;
