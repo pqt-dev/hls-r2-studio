@@ -238,14 +238,17 @@
 @push('scripts')
     <script>
         (function () {
-            function confirmDelete(form) {
-                const message = @json($deleteFromR2 ? 'Delete this video? The file on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete this video?');
-                if (!confirm(message)) return false;
-                const btn = form.querySelector('button[type="submit"]');
-                btn.disabled = true;
-                btn.textContent = 'Deleting...';
-                btn.classList.add('opacity-60', 'cursor-not-allowed');
-                return true;
+            function confirmDelete(form, title) {
+                const message = @json($deleteFromR2 ? 'Delete "{TITLE}"? The file on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete "{TITLE}"?');
+                window.confirmDialog({ title: 'Delete video', message: message.replace('{TITLE}', title), confirmText: 'Delete', danger: true }).then(function (ok) {
+                    if (!ok) return;
+                    const btn = form.querySelector('button[type="submit"]');
+                    btn.disabled = true;
+                    btn.textContent = 'Deleting...';
+                    btn.classList.add('opacity-60', 'cursor-not-allowed');
+                    form.submit();
+                });
+                return false;
             }
 
             let embedModalState = null;
@@ -419,7 +422,11 @@
             function confirmBulkDelete() {
                 const count = document.querySelectorAll('.bulk-select-checkbox:checked').length;
                 const message = @json($deleteFromR2 ? 'Delete {COUNT} selected videos? The files on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete {COUNT} selected videos?');
-                return confirm(message.replace('{COUNT}', count));
+                window.confirmDialog({ title: 'Delete selected videos', message: message.replace('{COUNT}', count), confirmText: 'Delete', danger: true }).then(function (ok) {
+                    if (!ok) return;
+                    document.getElementById('bulk-delete-form').submit();
+                });
+                return false;
             }
 
             document.getElementById('embed-modal-mute').addEventListener('change', refreshEmbedModal);

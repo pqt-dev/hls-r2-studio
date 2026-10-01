@@ -131,6 +131,127 @@
         </div>
     </div>
 
+    <div id="confirm-modal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/50 p-4">
+        <div class="bg-white rounded-2xl overflow-hidden w-full max-w-sm shadow-xl">
+            <div class="p-5">
+                <div class="flex items-start gap-3">
+                    <span id="confirm-modal-icon-wrap" class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-red-50">
+                        <x-lucide-triangle-alert id="confirm-modal-icon" class="w-5 h-5 text-red-600" />
+                    </span>
+                    <div class="flex-1 pt-0.5">
+                        <h3 id="confirm-modal-title" class="text-sm font-semibold text-gray-900"></h3>
+                        <p id="confirm-modal-message" class="mt-1 text-sm text-gray-500"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-2 px-5 py-3 bg-gray-50 border-t border-gray-200">
+                <button type="button" id="confirm-modal-cancel"
+                        class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                    Cancel
+                </button>
+                <button type="button" id="confirm-modal-confirm"
+                        class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+                    Confirm
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        (function () {
+            const modal = document.getElementById('confirm-modal');
+            const iconWrap = document.getElementById('confirm-modal-icon-wrap');
+            const icon = document.getElementById('confirm-modal-icon');
+            const titleEl = document.getElementById('confirm-modal-title');
+            const messageEl = document.getElementById('confirm-modal-message');
+            const cancelBtn = document.getElementById('confirm-modal-cancel');
+            const confirmBtn = document.getElementById('confirm-modal-confirm');
+
+            const dangerIconWrapClasses = ['bg-red-50'];
+            const dangerIconClasses = ['text-red-600'];
+            const dangerConfirmClasses = ['bg-red-600', 'hover:bg-red-700'];
+
+            const infoIconWrapClasses = ['bg-blue-50'];
+            const infoIconClasses = ['text-blue-700'];
+            const infoConfirmClasses = ['bg-blue-700', 'hover:bg-blue-800'];
+
+            let activeResolve = null;
+            let keydownHandler = null;
+
+            function close(result) {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+
+                if (keydownHandler) {
+                    document.removeEventListener('keydown', keydownHandler);
+                    keydownHandler = null;
+                }
+
+                if (activeResolve) {
+                    const resolve = activeResolve;
+                    activeResolve = null;
+                    resolve(result);
+                }
+            }
+
+            function confirmDialog(options) {
+                options = options || {};
+                const danger = options.danger !== false;
+
+                titleEl.textContent = options.title || '';
+                messageEl.textContent = options.message || '';
+                cancelBtn.textContent = options.cancelText || 'Cancel';
+                confirmBtn.textContent = options.confirmText || 'Confirm';
+
+                iconWrap.classList.remove(...dangerIconWrapClasses, ...infoIconWrapClasses);
+                icon.classList.remove(...dangerIconClasses, ...infoIconClasses);
+                confirmBtn.classList.remove(...dangerConfirmClasses, ...infoConfirmClasses);
+
+                if (danger) {
+                    iconWrap.classList.add(...dangerIconWrapClasses);
+                    icon.classList.add(...dangerIconClasses);
+                    confirmBtn.classList.add(...dangerConfirmClasses);
+                } else {
+                    iconWrap.classList.add(...infoIconWrapClasses);
+                    icon.classList.add(...infoIconClasses);
+                    confirmBtn.classList.add(...infoConfirmClasses);
+                }
+
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+
+                return new Promise(function (resolve) {
+                    activeResolve = resolve;
+
+                    keydownHandler = function (event) {
+                        if (event.key === 'Escape') {
+                            close(false);
+                        } else if (event.key === 'Enter') {
+                            close(true);
+                        }
+                    };
+                    document.addEventListener('keydown', keydownHandler);
+                });
+            }
+
+            cancelBtn.addEventListener('click', function () {
+                close(false);
+            });
+
+            confirmBtn.addEventListener('click', function () {
+                close(true);
+            });
+
+            modal.addEventListener('click', function (event) {
+                if (event.target === modal) {
+                    close(false);
+                }
+            });
+
+            window.confirmDialog = confirmDialog;
+        })();
+    </script>
+
     @stack('scripts')
 </body>
 </html>

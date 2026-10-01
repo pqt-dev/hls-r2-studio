@@ -4,7 +4,10 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Report;
+use App\Models\Video;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 
 class ReportController extends Controller
 {
@@ -18,22 +21,73 @@ class ReportController extends Controller
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
 
-        $existing = Report::where('page_url', $validated['page_url'])
-            ->where('status', 'new')
-            ->first();
+        $videoId = $this->resolveVideoIdFromPageUrl($validated['page_url']);
 
-        if ($existing) {
-            $existing->increment('report_count');
-            $existing->update(['last_reported_at' => now()]);
-        } else {
-            Report::create([
-                ...$validated,
-                'reporter_ip' => $request->ip(),
-                'report_count' => 1,
-                'last_reported_at' => now(),
-            ]);
-        }
+        DB::transaction(function () use ($validated, $request, $videoId) {
+            $existing = Report::where('page_url', $validated['page_url'])
+                ->where('status', 'new')
+                ->lockForUpdate()
+                ->first();
+
+            if ($existing) {
+                $existing->increment('report_count');
+                $existing->update([
+                    'last_reported_at' => now(),
+                    'reporter_ip' => $request->ip(),
+                ]);
+
+                return;
+            }
+
+            try {
+                Report::create([
+                    ...$validated,
+                    'video_id' => $videoId,
+                    'reporter_ip' => $request->ip(),
+                    'report_count' => 1,
+                    'last_reported_at' => now(),
+                ]);
+            } catch (QueryException $e) {
+                if (($e->errorInfo[1] ?? null) !== 1062 || ! str_contains($e->getMessage(), 'active_report_key')) {
+                    throw $e;
+                }
+
+                $existing = Report::where('page_url', $validated['page_url'])
+                    ->where('status', 'new')
+                    ->lockForUpdate()
+                    ->first();
+
+                $existing->increment('report_count');
+                $existing->update([
+                    'last_reported_at' => now(),
+                    'reporter_ip' => $request->ip(),
+                ]);
+            }
+        });
 
         return response()->json(['success' => true], 201);
+    }
+
+    private function resolveVideoIdFromPageUrl(string $pageUrl): ?int
+    {
+        $path = parse_url($pageUrl, PHP_URL_PATH);
+
+        if (! $path) {
+            return null;
+        }
+
+        $segments = array_values(array_filter(explode('/', $path), fn ($segment) => $segment !== ''));
+
+        if (count($segments) < 2 || $segments[count($segments) - 2] !== 'embed') {
+            return null;
+        }
+
+        $candidateId = $segments[count($segments) - 1];
+
+        if (! ctype_digit($candidateId)) {
+            return null;
+        }
+
+        return Video::whereKey((int) $candidateId)->exists() ? (int) $candidateId : null;
     }
 }

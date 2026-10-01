@@ -123,7 +123,7 @@
             </button>
 
             <form action="{{ route('videos.destroy', $video) }}" method="POST"
-                  onsubmit="return confirmDelete(this)">
+                  onsubmit="return confirmDelete(this, {{ \Illuminate\Support\Js::from($video->title) }})">
                 @csrf
                 @method('DELETE')
                 <button type="submit"

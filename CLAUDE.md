@@ -45,3 +45,7 @@ php artisan boost:install
 
 Boost replaces these bootstrap instructions with guidelines tailored to the application. After installation, read `AGENTS.md` again and continue with the user's original request using the generated guidelines.
 </laravel-boost-guidelines>
+
+## Communication style
+
+When asking the user to confirm a direction or decision, put the confirmation question as the very last line of the reply — nothing (no tool calls, no further text) after it. Lead with a short plain-language bullet summary of what's at stake; keep code snippets, diffs, and deep technical reasoning out of the confirmation ask itself (push detail after the summary, or only on request).

@@ -115,7 +115,6 @@
                 let currentQueueItems = [];
                 let isUploading = false;
                 const uploadedVideos = {};
-                let pollTimer = null;
 
                 const LOG_CACHE_KEY = 'hls_upload_log_cache';
                 const LOG_CACHE_MAX_VIDEOS = 5;
@@ -185,8 +184,20 @@
                 const transcodeStageLabels = {
                     queued: 'Queued',
                     transcoding: 'Transcoding',
+                    generating_thumbnail: 'Generating thumbnail',
+                    generating_storyboard: 'Generating storyboard',
                     uploading_r2: 'Uploading to R2',
                 };
+
+                const STAGES_WITHOUT_PERCENT = ['generating_thumbnail', 'generating_storyboard'];
+
+                function formatStageStatus(stage, progress) {
+                    const stageLabel = transcodeStageLabels[stage] || stage;
+                    if (STAGES_WITHOUT_PERCENT.includes(stage)) {
+                        return stageLabel;
+                    }
+                    return stageLabel + ' — ' + progress + '%';
+                }
 
                 window.addEventListener('beforeunload', function (e) {
                     if (isUploading) {
@@ -449,13 +460,13 @@
 
                     const transcodeLabel = document.createElement('p');
                     transcodeLabel.className = 'text-xs font-medium text-gray-500 mb-1';
-                    transcodeLabel.textContent = 'Processing:';
+                    transcodeLabel.textContent = 'Transcoding';
 
                     const transcodeBarWrapper = document.createElement('div');
                     transcodeBarWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5';
 
                     const transcodeBar = document.createElement('div');
-                    transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full transition-[width] duration-[1000ms] ease-linear';
+                    transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full transition-[width] duration-[500ms] ease-linear';
                     transcodeBar.style.width = '0%';
                     transcodeBarWrapper.appendChild(transcodeBar);
 
@@ -487,6 +498,10 @@
                     header.appendChild(nameEl);
                     header.appendChild(sizeEl);
 
+                    const uploadLabel = document.createElement('p');
+                    uploadLabel.className = 'text-xs font-medium text-gray-500 mb-1 mt-2';
+                    uploadLabel.textContent = 'Uploading';
+
                     const barWrapper = document.createElement('div');
                     barWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5 mt-2';
 
@@ -500,6 +515,7 @@
                     statusEl.textContent = 'Pending';
 
                     row.appendChild(header);
+                    row.appendChild(uploadLabel);
                     row.appendChild(barWrapper);
                     row.appendChild(statusEl);
 
@@ -532,7 +548,7 @@
 
                 function setItemProgress(item, percent) {
                     item.bar.style.width = percent + '%';
-                    item.statusEl.textContent = 'Uploading (' + percent + '%)';
+                    item.statusEl.textContent = 'Uploading — ' + percent + '%';
                 }
 
                 function setItemStatus(item, text) {
@@ -585,9 +601,9 @@
                         setItemProgress(item, Math.round((bytesSent / file.size) * 100));
                     }
 
-                    setItemStatus(item, 'Processing...');
+                    setItemStatus(item, 'Merging chunk');
                     const processingStartTime = new Date().toLocaleTimeString();
-                    appendLog('Processing ' + file.name + '...');
+                    appendLog('Finishing upload for ' + file.name + '...');
 
                     const completeData = await fetchWithRetry('/uploads/' + uploadId + '/complete', {
                         method: 'POST',
@@ -613,10 +629,9 @@
                         };
                         item.transcodeWrapper.classList.remove('hidden');
                         item.transcodeStatusEl.textContent = 'Queued for processing...';
-                        startPolling();
 
                         recordLogEntry(completeData.video_id, 'Uploading ' + file.name + '...', null, uploadStartTime);
-                        recordLogEntry(completeData.video_id, 'Processing ' + file.name + '...', null, processingStartTime);
+                        recordLogEntry(completeData.video_id, 'Finishing upload for ' + file.name + '...', null, processingStartTime);
                     }
 
                     setItemStatus(item, 'Done');
@@ -723,9 +738,8 @@
                         if (video.status === 'pending') {
                             item.transcodeStatusEl.textContent = 'Queued for processing...';
                         } else {
-                            const stageLabel = transcodeStageLabels[video.stage] || video.stage || 'Transcoding';
                             item.transcodeBar.style.width = (video.progress || 0) + '%';
-                            item.transcodeStatusEl.textContent = stageLabel + ' — ' + (video.progress || 0) + '%';
+                            item.transcodeStatusEl.textContent = formatStageStatus(video.stage || 'transcoding', video.progress || 0);
                         }
 
                         uploadedVideos[video.id] = {
@@ -738,10 +752,6 @@
                     });
 
                     updateQueueEmptyState();
-
-                    if (activeVideos.length > 0) {
-                        startPolling();
-                    }
                 }
 
                 @php
@@ -798,24 +808,16 @@
                     });
                 }
 
-                function stopPollingIfIdle() {
-                    if (activeVideoIds().length === 0 && pollTimer) {
-                        clearInterval(pollTimer);
-                        pollTimer = null;
-                    }
-                }
+                const MAX_RECONNECT_ATTEMPTS = 10;
+                const BASE_RECONNECT_DELAY_MS = 3000;
+                const MAX_RECONNECT_DELAY_MS = 30000;
+                let reconnectAttempts = 0;
 
-                function startPolling() {
-                    if (pollTimer) {
-                        return;
-                    }
-                    pollTimer = setInterval(pollStatus, 4000);
-                }
+                let hasConnectedBefore = false;
 
-                async function pollStatus() {
+                async function resyncStatus() {
                     const ids = activeVideoIds();
                     if (ids.length === 0) {
-                        stopPollingIfIdle();
                         return;
                     }
 
@@ -825,12 +827,48 @@
                             headers: { 'Accept': 'application/json' },
                         }, 1);
                     } catch (err) {
-                        return; // transient network error — next tick tries again
+                        return; // best-effort; the next reconnect (or the live WS event) will catch up
                     }
 
                     data.forEach(applyStatusSnapshot);
-                    stopPollingIfIdle();
                 }
+
+                document.addEventListener('DOMContentLoaded', function () {
+                    if (window.Echo) {
+                        window.Echo.channel('videos').stopListening('.video.status-updated');
+                        window.Echo.channel('videos').listen('.video.status-updated', function (e) {
+                            applyStatusSnapshot({ id: e.videoId, status: e.status, stage: e.stage, progress: e.progress });
+                        });
+                    }
+
+                    if (window.Echo && window.Echo.connector && window.Echo.connector.pusher) {
+                        window.Echo.connector.pusher.connection.bind('state_change', function (states) {
+                            console.log('[Echo] connection state changed:', states.previous, '->', states.current);
+
+                            if (states.current === 'connected') {
+                                reconnectAttempts = 0;
+
+                                if (hasConnectedBefore) {
+                                    resyncStatus();
+                                }
+                                hasConnectedBefore = true;
+                            } else if (states.current === 'unavailable' || states.current === 'failed') {
+                                reconnectAttempts++;
+
+                                if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
+                                    appendLog('Lost real-time connection. Please reload the page to see the latest status.', 'text-red-600 font-medium');
+                                    return;
+                                }
+
+                                const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
+
+                                setTimeout(function () {
+                                    window.Echo.connector.pusher.connect();
+                                }, delay);
+                            }
+                        });
+                    }
+                });
 
                 function applyStatusSnapshot(video) {
                     const entry = uploadedVideos[video.id];
@@ -861,13 +899,13 @@
                             item.transcodeStatusEl.textContent = 'Queued for processing...';
                         }
                     } else if (video.status === 'processing') {
-                        const stageLabel = transcodeStageLabels[video.stage] || video.stage;
                         if (progressChanged || stageChanged) {
-                            message = entry.title + ': ' + stageLabel + ' — ' + video.progress + '%';
+                            const statusText = formatStageStatus(video.stage, video.progress);
+                            message = entry.title + ': ' + statusText;
                             if (item) {
                                 item.transcodeWrapper.classList.remove('hidden');
                                 item.transcodeBar.style.width = video.progress + '%';
-                                item.transcodeStatusEl.textContent = stageLabel + ' — ' + video.progress + '%';
+                                item.transcodeStatusEl.textContent = statusText;
                             }
                         }
                     } else if (video.status === 'ready') {
