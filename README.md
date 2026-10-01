@@ -230,6 +230,10 @@ server {
         deny all;
     }
 
+    # Reverb cần proxy CẢ HAI path: /app/ cho WebSocket upgrade từ client,
+    # và /apps/ cho các request REST mà server dùng để publish event. Thiếu /apps/
+    # sẽ khiến broadcast âm thầm thất bại (event không bao giờ tới được client đang
+    # kết nối) trong khi kết nối WebSocket vẫn trông như hoạt động bình thường.
     location /app/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -237,6 +241,11 @@ server {
         proxy_set_header Connection "Upgrade";
         proxy_set_header Host $host;
         proxy_read_timeout 60s;
+    }
+
+    location /apps/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
     }
 }
 ```
@@ -607,7 +616,7 @@ systemctl enable --now hls-r2-studio-reverb
 
 Kiểm tra: `systemctl status hls-r2-studio-reverb`, xem log: `journalctl -u hls-r2-studio-reverb -f`.
 
-aaPanel chỉ hiển thị các tuỳ chọn GUI đơn giản cho Nginx, nhưng mỗi site aaPanel đều có tab **Config File** (配置文件) trong phần cài đặt site, hiển thị nguyên file cấu hình Nginx server block đầy đủ. Mở tab này, thêm block sau vào bên trong `server { }` đã có sẵn (giống hệt block dùng ở phần "Chạy production thật trên VPS"):
+aaPanel chỉ hiển thị các tuỳ chọn GUI đơn giản cho Nginx, nhưng mỗi site aaPanel đều có tab **Config File** (配置文件) trong phần cài đặt site, hiển thị nguyên file cấu hình Nginx server block đầy đủ. Mở tab này, thêm 2 block sau vào bên trong `server { }` đã có sẵn (giống hệt block dùng ở phần "Chạy production thật trên VPS") — Reverb cần proxy CẢ HAI path: `/app/` cho WebSocket upgrade từ client, và `/apps/` cho các request REST mà server dùng để publish event. Thiếu `/apps/` sẽ khiến broadcast âm thầm thất bại (event không bao giờ tới được client đang kết nối) trong khi kết nối WebSocket vẫn trông như hoạt động bình thường:
 ```nginx
 location /app/ {
     proxy_pass http://127.0.0.1:8080;
@@ -616,6 +625,11 @@ location /app/ {
     proxy_set_header Connection "Upgrade";
     proxy_set_header Host $host;
     proxy_read_timeout 60s;
+}
+
+location /apps/ {
+    proxy_pass http://127.0.0.1:8080;
+    proxy_set_header Host $host;
 }
 ```
 Lưu lại — aaPanel tự reload Nginx. Cách này tận dụng lại chính chứng chỉ SSL Let's Encrypt của site đã bật ở Bước 15, không cần mở thêm port/firewall nào.
@@ -667,6 +681,7 @@ Mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin đã
 | `404 Not Found nginx` khi vào `/login` (nhưng trang chủ `/` vào được) | Thiếu rule rewrite URL đẹp cho Laravel | Bật URL rewrite template Laravel5 (Bước 13) |
 | Video kẹt ở "Đang xử lý" mãi không xong, log có `Job timed out` | Queue worker thiếu cờ `--timeout`, Laravel tự kill job sau 60s mặc định | Thêm `--timeout=172800` vào `ExecStart` của systemd unit (Bước 16) |
 | Trang Upload báo lỗi console `You must pass your app key when you instantiate Pusher` | Thiếu biến `VITE_REVERB_*` trong `.env` lúc `npm run build`, hoặc chưa cấu hình Reverb | Điền đủ `REVERB_*`/`VITE_REVERB_*` vào `.env` (Bước 8) rồi `npm run build` lại, đảm bảo đã chạy Reverb (Bước 17) |
+| WebSocket kết nối được nhưng tiến độ transcode không bao giờ cập nhật live; dispatch event qua tinker báo lỗi `Pusher error: 404 Not Found` | Thiếu `location /apps/` trong cấu hình reverse-proxy Reverb (chỉ có `/app/` cho client, thiếu `/apps/` cho server publish event) | Thêm `location /apps/` proxy sang cùng port Reverb (xem cấu hình Nginx ở bước Reverb) |
 | `systemctl restart nginx`/`php-fpm-84` báo lỗi nhưng service vẫn đang chạy | Script khởi động kiểu LSB không xử lý đúng "restart" khi service đã chạy | Dùng `/etc/init.d/nginx reload` và `/etc/init.d/php-fpm-84 restart` thay vì `systemctl restart` |
 
 ## Chạy nhiều worker song song
