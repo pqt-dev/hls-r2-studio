@@ -9,57 +9,87 @@
 </head>
 <body class="bg-white text-gray-800">
     <div class="flex min-h-screen">
-        <aside class="w-64 shrink-0 bg-emerald-50 text-gray-700 border-r border-gray-200 flex flex-col">
-            <div class="px-6 py-5 border-b border-gray-200 flex items-center gap-2.5">
-                <div class="w-8 h-8 rounded-lg bg-emerald-700 flex items-center justify-center shrink-0">
-                    <x-lucide-clapperboard class="w-4 h-4 text-white" />
+        <aside class="w-64 shrink-0 bg-gray-50 text-gray-700 border-r border-gray-200 flex flex-col">
+            <div class="px-6 py-5 border-b border-gray-200 flex items-center gap-3 bg-gradient-to-br from-cyan-50 via-teal-50 to-white">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center shrink-0 shadow-sm">
+                    <x-lucide-cloud class="w-5 h-5 text-white" />
                 </div>
-                <span class="text-lg font-semibold text-gray-900">HLS R2 Studio</span>
+                <div class="leading-tight">
+                    <div class="text-base font-extrabold text-gray-900 tracking-tight">HLS R2 Studio</div>
+                    <div class="text-[11px] text-gray-500">Cloud Video Platform</div>
+                </div>
             </div>
-            <nav class="flex-1 px-3 py-4">
-                <p class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Overview</p>
-                <div class="space-y-1 mb-4">
-                    <a href="{{ route('dashboard.overview') }}"
-                       class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('dashboard.overview') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
-                        <x-lucide-layout-dashboard class="w-4 h-4 shrink-0" /> Overview
-                    </a>
-                    <a href="{{ route('logs.index') }}"
-                       class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('logs.index') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
-                        <x-lucide-scroll-text class="w-4 h-4 shrink-0" /> Logs
-                    </a>
+            <nav class="flex-1 px-3 py-4 space-y-4">
+                <div>
+                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Dashboard</p>
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 space-y-1">
+                        <a href="{{ route('dashboard.overview') }}"
+                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('dashboard.overview') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-rose-50">
+                                <x-lucide-layout-dashboard class="w-4 h-4 text-rose-600" />
+                            </span>
+                            Overview
+                        </a>
+                        <a href="{{ route('logs.index') }}"
+                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('logs.index') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-amber-50">
+                                <x-lucide-scroll-text class="w-4 h-4 text-amber-600" />
+                            </span>
+                            Logs
+                        </a>
+                    </div>
                 </div>
 
-                <p class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Video</p>
-                <div class="space-y-1">
-                    <a href="{{ route('videos.index') }}"
-                       class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('videos.index') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
-                        <x-lucide-video class="w-4 h-4 shrink-0" /> Videos
-                    </a>
-                    <a href="{{ route('videos.create') }}"
-                       class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('videos.create') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
-                        <x-lucide-upload class="w-4 h-4 shrink-0" /> Upload Video
-                    </a>
+                <div>
+                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Video</p>
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 space-y-1">
+                        <a href="{{ route('videos.index') }}"
+                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('videos.index') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-sky-50">
+                                <x-lucide-video class="w-4 h-4 text-sky-600" />
+                            </span>
+                            Videos
+                        </a>
+                        <a href="{{ route('videos.create') }}"
+                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('videos.create') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-blue-50">
+                                <x-lucide-upload class="w-4 h-4 text-blue-600" />
+                            </span>
+                            Upload Video
+                        </a>
+                    </div>
                 </div>
 
-                <p class="px-3 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">System</p>
-                <div class="space-y-1">
-                    <a href="{{ route('reports.index') }}"
-                       class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('reports.index') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
-                        <x-lucide-flag class="w-4 h-4 shrink-0" /> Reports
-                    </a>
-                    <a href="{{ route('settings.edit') }}"
-                       class="flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium {{ request()->routeIs('settings.edit') ? 'bg-emerald-700 text-white' : 'text-gray-700 hover:bg-emerald-100 hover:text-gray-900' }}">
-                        <x-lucide-settings class="w-4 h-4 shrink-0" /> Settings
-                    </a>
+                <div>
+                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">System</p>
+                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 space-y-1">
+                        <a href="{{ route('reports.index') }}"
+                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('reports.index') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
+                                <x-lucide-flag class="w-4 h-4 text-gray-600" />
+                            </span>
+                            Reports
+                        </a>
+                        <a href="{{ route('settings.edit') }}"
+                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('settings.edit') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
+                                <x-lucide-settings class="w-4 h-4 text-gray-600" />
+                            </span>
+                            Settings
+                        </a>
+                    </div>
                 </div>
             </nav>
 
-            <div class="px-3 py-4 border-t border-gray-200">
+            <div class="px-3 py-4">
                 <form action="{{ route('logout') }}" method="POST">
                     @csrf
                     <button type="submit"
-                            class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-700">
-                        <x-lucide-log-out class="w-4 h-4 shrink-0" /> Log out ({{ auth()->user()->username }})
+                            class="flex w-full items-center gap-2.5 rounded-xl bg-white border border-gray-200 shadow-sm px-2.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                        <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-red-50">
+                            <x-lucide-log-out class="w-4 h-4 text-red-600" />
+                        </span>
+                        Log out ({{ auth()->user()->username }})
                     </button>
                 </form>
             </div>

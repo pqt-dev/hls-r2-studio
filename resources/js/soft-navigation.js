@@ -14,8 +14,8 @@
  * and the periodic reload used by the video list).
  */
 
-const ACTIVE_CLASSES = ['bg-emerald-700', 'text-white'];
-const INACTIVE_CLASSES = ['text-gray-700', 'hover:bg-emerald-100', 'hover:text-gray-900'];
+const ACTIVE_CLASSES = ['bg-blue-50', 'text-blue-700'];
+const INACTIVE_CLASSES = ['text-gray-700', 'hover:bg-gray-50'];
 
 let navigationToken = 0;
 let navigating = false;

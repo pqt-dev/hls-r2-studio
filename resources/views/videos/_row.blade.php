@@ -19,10 +19,6 @@
         : '16 / 9';
 
     $embedUrl = route('embed.show', $video);
-    $embedCode = '<iframe src="'.$embedUrl.'" style="width:100%; aspect-ratio:'.$embedAspectRatio.'; max-height:60vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
-
-    $embedUrlVideoJs = route('embed.videojs', $video);
-    $embedCodeVideoJs = '<iframe src="'.$embedUrlVideoJs.'" style="width:100%; aspect-ratio:'.$embedAspectRatio.'; max-height:60vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
 
     // The candidate images a user can pick a feature image from: the
     // thumbnail plus every storyboard grid that was generated. Videos
@@ -48,7 +44,7 @@
     @if ($selectable ?? false)
         <td class="px-3 py-2">
             <input type="checkbox" name="selected_ids[]" value="{{ $video->id }}"
-                   class="bulk-select-checkbox w-5 h-5 rounded border-gray-400 text-emerald-600 focus:ring-emerald-500 cursor-pointer"
+                   class="bulk-select-checkbox w-5 h-5 rounded border-gray-400 text-blue-600 focus:ring-blue-500 cursor-pointer"
                    form="bulk-delete-form">
         </td>
     @else
@@ -97,7 +93,7 @@
             @endphp
             <div class="flex flex-col gap-1 mt-1 w-40">
                 <div class="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
-                    <div class="h-full rounded-full bg-emerald-600" style="width: {{ $video->progress }}%"></div>
+                    <div class="h-full rounded-full bg-blue-600" style="width: {{ $video->progress }}%"></div>
                 </div>
                 <p class="text-xs text-gray-500">{{ $stageLabel }} — {{ $video->progress }}%</p>
             </div>
@@ -109,6 +105,12 @@
     <td class="px-3 py-2 text-gray-500">{{ $durationLabel }}</td>
 
     <td class="px-3 py-2 text-gray-500">{{ $video->formatted_size }}</td>
+
+    <td class="px-3 py-2">
+        <span class="inline-flex items-center gap-1.5 text-xs text-gray-600" title="Cloudflare R2">
+            <x-lucide-cloud class="w-4 h-4 text-orange-500" /> R2
+        </span>
+    </td>
 
     <td class="px-3 py-2 text-gray-500 text-xs">
         @if ($video->output_width && $video->output_height)
@@ -126,35 +128,9 @@
         <div class="inline-flex items-center gap-2">
             @if ($video->status === 'ready' && $playlistUrl)
                 <button type="button"
-                        onclick="openVideoModal({{ \Illuminate\Support\Js::from($playlistUrl) }}, {{ \Illuminate\Support\Js::from($video->title) }})"
-                        class="inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800">
-                    <x-lucide-eye class="w-3.5 h-3.5" /> View
-                </button>
-
-                <button type="button"
-                        onclick="copyVideoLink(this, {{ \Illuminate\Support\Js::from($video->public_url) }})"
+                        onclick="openEmbedModal({{ \Illuminate\Support\Js::from($embedUrl) }}, {{ \Illuminate\Support\Js::from($video->public_url) }}, {{ \Illuminate\Support\Js::from($embedAspectRatio) }}, {{ \Illuminate\Support\Js::from($video->title) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-copy class="w-3.5 h-3.5" /> Copy Link
-                </button>
-
-                <button type="button"
-                        onclick="copyEmbedCode(this, {{ \Illuminate\Support\Js::from($embedCode) }})"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-code class="w-3.5 h-3.5" /> Copy Embed
-                </button>
-
-                <button type="button"
-                        onclick="copyEmbedCode(this, {{ \Illuminate\Support\Js::from($embedCodeVideoJs) }})"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-code class="w-3.5 h-3.5" /> Copy Embed (Vidstack)
-                </button>
-            @endif
-
-            @if ($thumbnailUrl)
-                <button type="button"
-                        onclick="copyThumbnailUrl(this, {{ \Illuminate\Support\Js::from($thumbnailUrl) }})"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-copy class="w-3.5 h-3.5" /> Copy Thumbnail
+                    <x-lucide-code class="w-3.5 h-3.5" /> Embed
                 </button>
             @endif
 
@@ -162,7 +138,7 @@
                 <button type="button"
                         onclick="openPreviewModal({{ \Illuminate\Support\Js::from($previewImages) }}, {{ \Illuminate\Support\Js::from($video->title) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-images class="w-3.5 h-3.5" /> Preview
+                    <x-lucide-images class="w-3.5 h-3.5" /> Images
                 </button>
             @endif
 

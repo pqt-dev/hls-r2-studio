@@ -4,13 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Setting;
 use App\Models\Video;
+use Illuminate\Http\Request;
 
 class EmbedController extends Controller
 {
     /**
      * Display a standalone player page for embedding a video via iframe.
      */
-    public function show(Video $video)
+    public function show(Request $request, Video $video)
     {
         if ($video->status !== 'ready') {
             abort(404);
@@ -19,6 +20,9 @@ class EmbedController extends Controller
         $disk = Setting::current()->r2Disk();
 
         $playlistUrl = $disk->url($video->playlist_path);
+
+        $autoplay = $request->boolean('autoplay');
+        $muted = $request->boolean('muted') || $autoplay; // browsers require muted for unattended autoplay to actually work
 
         $storyboards = $video->storyboards ?? [];
         $tileSize = config('videos.storyboard_tile_size');
@@ -40,22 +44,6 @@ class EmbedController extends Controller
             }
         }
 
-        return view('embed.show', compact('video', 'playlistUrl', 'storyboardThumbnails'));
-    }
-
-    /**
-     * Display a standalone Video.js player page for embedding a video via iframe.
-     */
-    public function showVideoJs(Video $video)
-    {
-        if ($video->status !== 'ready') {
-            abort(404);
-        }
-
-        $disk = Setting::current()->r2Disk();
-
-        $playlistUrl = $disk->url($video->playlist_path);
-
-        return view('embed.videojs', compact('video', 'playlistUrl'));
+        return view('embed.show', compact('video', 'playlistUrl', 'storyboardThumbnails', 'autoplay', 'muted'));
     }
 }

@@ -10,9 +10,9 @@
             <input type="hidden" name="status" value="{{ request()->query('status') }}">
         @endif
         <input type="text" name="search" value="{{ $search }}" placeholder="Search by video name or filename..."
-               class="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600">
+               class="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
         <button type="submit"
-                class="inline-flex items-center rounded-lg bg-emerald-700 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-800">
+                class="inline-flex items-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
             Search
         </button>
     </form>
@@ -30,7 +30,7 @@
         @endphp
         @foreach ($tabs as $tab)
             <a href="{{ route('videos.index', array_filter(['status' => $tab['value'], 'search' => $search])) }}"
-               class="px-3 py-2 text-sm font-medium border-b-2 {{ $currentStatus === $tab['value'] ? 'border-emerald-700 text-emerald-700' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
+               class="px-3 py-2 text-sm font-medium border-b-2 {{ $currentStatus === $tab['value'] ? 'border-blue-700 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
                 {{ $tab['label'] }}
             </a>
         @endforeach
@@ -53,6 +53,7 @@
                                 <th class="px-3 py-2 text-left">Status</th>
                                 <th class="px-3 py-2 text-left">Duration</th>
                                 <th class="px-3 py-2 text-left">Size</th>
+                                <th class="px-3 py-2 text-left">Source</th>
                                 <th class="px-3 py-2 text-left">Details</th>
                                 <th class="px-3 py-2 text-left">Upload Date</th>
                                 <th class="px-3 py-2 text-right">Actions</th>
@@ -82,6 +83,7 @@
                             <th class="px-3 py-2 text-left">Status</th>
                             <th class="px-3 py-2 text-left">Duration</th>
                             <th class="px-3 py-2 text-left">Size</th>
+                            <th class="px-3 py-2 text-left">Source</th>
                             <th class="px-3 py-2 text-left">Details</th>
                             <th class="px-3 py-2 text-left">Upload Date</th>
                             <th class="px-3 py-2 text-right">Actions</th>
@@ -100,18 +102,18 @@
     <div>
         <div class="flex items-center justify-between mb-3">
             <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide inline-flex items-center gap-2"><x-lucide-circle-check class="w-4 h-4 text-emerald-600" /> Completed</h2>
-            @if ($completedVideos->isNotEmpty())
-                <div class="flex items-center gap-3">
-                    <label class="flex items-center gap-1.5 text-xs text-gray-600">
-                        <input type="checkbox" id="select-all-checkbox" class="w-4 h-4 rounded border-gray-300 text-emerald-600 focus:ring-emerald-500">
-                        Select all (this page)
-                    </label>
+            <div class="flex items-center gap-3">
+                <button type="button" onclick="if (window.softNav) { window.softNav.reload(); } else { window.location.reload(); }"
+                        class="inline-flex items-center gap-2 rounded-lg bg-white border border-gray-200 shadow-sm px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                    <x-lucide-refresh-cw class="w-4 h-4" /> Refresh
+                </button>
+                @if ($completedVideos->isNotEmpty())
                     <button type="submit" form="bulk-delete-form" id="bulk-delete-btn" disabled
                             class="inline-flex items-center rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed">
                         Delete Selected (<span id="selected-count">0</span>)
                     </button>
-                </div>
-            @endif
+                @endif
+            </div>
         </div>
         <form id="bulk-delete-form" action="{{ route('videos.bulk-destroy') }}" method="POST" onsubmit="return confirmBulkDelete()">
             @csrf
@@ -119,13 +121,13 @@
         </form>
         @if ($completedVideos->isEmpty())
             <div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500">
-                No completed videos yet. <a href="{{ route('videos.create') }}" class="text-emerald-700 underline">Upload your first video</a>.
+                No completed videos yet. <a href="{{ route('videos.create') }}" class="text-blue-700 underline">Upload your first video</a>.
             </div>
         @else
             <form method="GET" class="mb-3 flex items-center justify-end gap-2 text-xs text-gray-600">
                 <label for="per_page">Videos per page:</label>
                 <select name="per_page" id="per_page" onchange="this.form.submit()"
-                        class="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-600">
+                        class="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-600">
                     @foreach ($allowedPerPage as $option)
                         <option value="{{ $option }}" @selected($perPage == $option)>{{ $option }}</option>
                     @endforeach
@@ -135,12 +137,15 @@
                 <table class="min-w-full divide-y divide-gray-200 text-sm">
                     <thead class="bg-gray-50">
                         <tr>
-                            <th class="w-10 px-3 py-2"></th>
+                            <th class="w-10 px-3 py-2">
+                                <input type="checkbox" id="select-all-checkbox" class="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500 cursor-pointer">
+                            </th>
                             <th class="px-3 py-2 text-left">Thumbnail</th>
                             <th class="px-3 py-2 text-left">Video Name</th>
                             <th class="px-3 py-2 text-left">Status</th>
                             <th class="px-3 py-2 text-left">Duration</th>
                             <th class="px-3 py-2 text-left">Size</th>
+                            <th class="px-3 py-2 text-left">Source</th>
                             <th class="px-3 py-2 text-left">Details</th>
                             <th class="px-3 py-2 text-left">Upload Date</th>
                             <th class="px-3 py-2 text-right">Actions</th>
@@ -153,7 +158,7 @@
                             @if ($currentDate !== $lastDate)
                                 @php $lastDate = $currentDate; @endphp
                                 <tr>
-                                    <td colspan="9" class="px-3 py-2 bg-gray-50 text-xs font-medium text-gray-400 uppercase tracking-wide">{{ $currentDate }}</td>
+                                    <td colspan="10" class="px-3 py-2 bg-gray-50 text-xs font-medium text-gray-400 uppercase tracking-wide">{{ $currentDate }}</td>
                                 </tr>
                             @endif
                             @include('videos._row', ['video' => $video, 'selectable' => true])
@@ -166,15 +171,70 @@
     </div>
     @endif
 
-    <div id="video-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/70 p-4">
-        <div class="bg-black rounded-xl overflow-hidden w-full max-w-3xl">
-            <div class="flex items-center justify-between px-4 py-2 bg-gray-900 text-white">
-                <span id="video-modal-title" class="text-sm font-medium"></span>
-                <button type="button" onclick="closeVideoModal()" class="text-gray-300 hover:text-white">
+    <div id="embed-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4">
+        <div class="bg-white rounded-2xl overflow-hidden w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
+            <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
+                <div>
+                    <h3 class="text-base font-semibold text-gray-900">Player / Embed</h3>
+                    <p id="embed-modal-title" class="text-xs text-gray-500"></p>
+                </div>
+                <button type="button" onclick="closeEmbedModal()" class="text-gray-400 hover:text-gray-600">
                     <x-lucide-x class="w-5 h-5" />
                 </button>
             </div>
-            <video id="video-modal-player" class="w-full aspect-video" controls></video>
+
+            <div class="p-5 space-y-4">
+                <div class="rounded-xl overflow-hidden bg-black">
+                    <iframe id="embed-modal-preview" class="w-full aspect-video" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Embed URL</label>
+                    <div class="flex gap-2">
+                        <input id="embed-modal-url" type="text" readonly
+                               class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700 bg-gray-50">
+                        <button type="button" onclick="copyModalField('embed-modal-url', this)"
+                                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 shrink-0">
+                            <x-lucide-copy class="w-3.5 h-3.5" /> Copy
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Link m3u8 / play</label>
+                    <div class="flex gap-2">
+                        <input id="embed-modal-m3u8" type="text" readonly
+                               class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700 bg-gray-50">
+                        <button type="button" onclick="copyModalField('embed-modal-m3u8', this)"
+                                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 shrink-0">
+                            <x-lucide-copy class="w-3.5 h-3.5" /> Copy
+                        </button>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-medium text-gray-700">Iframe code</label>
+                        <div class="flex items-center gap-3 text-xs text-gray-600">
+                            <label class="inline-flex items-center gap-1.5">
+                                <input id="embed-modal-mute" type="checkbox" class="rounded text-blue-600 focus:ring-blue-500">
+                                Mute
+                            </label>
+                            <label class="inline-flex items-center gap-1.5">
+                                <input id="embed-modal-autoplay" type="checkbox" class="rounded text-blue-600 focus:ring-blue-500">
+                                Autoplay
+                            </label>
+                        </div>
+                    </div>
+                    <textarea id="embed-modal-code" readonly rows="3"
+                              class="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono text-gray-700 bg-gray-50 resize-none"></textarea>
+                    <p class="mt-1 text-xs text-gray-400">Browsers may block autoplay with sound unless Mute is also enabled.</p>
+                    <button type="button" onclick="copyModalField('embed-modal-code', this)"
+                            class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800">
+                        <x-lucide-copy class="w-3.5 h-3.5" /> Copy Iframe Code
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -204,7 +264,7 @@
                 <div>
                     <label for="edit-modal-title" class="block text-xs font-medium text-gray-700 mb-1">Title</label>
                     <input type="text" name="title" id="edit-modal-title" required maxlength="255"
-                           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500">
+                           class="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 </div>
                 <div class="flex justify-end gap-2">
                     <button type="button" onclick="closeEditModal()"
@@ -212,7 +272,7 @@
                         Cancel
                     </button>
                     <button type="submit"
-                            class="rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800">
+                            class="rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700">
                         Save
                     </button>
                 </div>
@@ -222,12 +282,8 @@
 @endsection
 
 @push('scripts')
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/hls.js/1.5.17/hls.min.js"
-            integrity="sha384-9v3HcdYrO3D+OPDTjZ40RXocgE4GtXVCd3/mCS62JsM93JXgI1afJVuwjFvsu6ni"
-            crossorigin="anonymous"></script>
     <script>
         (function () {
-            let hlsInstance = null;
             let statusRefreshTimer = null;
 
             // Called by the soft-navigation module right before this page is
@@ -249,22 +305,65 @@
                 return true;
             }
 
-            function openVideoModal(src, title) {
-                const modal = document.getElementById('video-modal');
-                const video = document.getElementById('video-modal-player');
-                document.getElementById('video-modal-title').textContent = title;
+            let embedModalState = null;
 
-                if (Hls.isSupported()) {
-                    hlsInstance = new Hls();
-                    hlsInstance.loadSource(src);
-                    hlsInstance.attachMedia(video);
-                } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                    video.src = src;
-                }
+            function buildEmbedIframeCode(embedUrl, aspectRatio, muted, autoplay) {
+                const params = [];
+                if (autoplay) params.push('autoplay=1');
+                if (muted) params.push('muted=1');
+                const src = embedUrl + (params.length ? '?' + params.join('&') : '');
+                return '<iframe src="' + src + '" style="width:100%; aspect-ratio:' + aspectRatio + '; max-height:60vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
+            }
 
+            function refreshEmbedModal() {
+                if (!embedModalState) return;
+                const muted = document.getElementById('embed-modal-mute').checked;
+                const autoplay = document.getElementById('embed-modal-autoplay').checked;
+
+                const params = [];
+                if (autoplay) params.push('autoplay=1');
+                if (muted) params.push('muted=1');
+                const previewSrc = embedModalState.embedUrl + (params.length ? '?' + params.join('&') : '');
+
+                document.getElementById('embed-modal-preview').src = previewSrc;
+                document.getElementById('embed-modal-code').value = buildEmbedIframeCode(embedModalState.embedUrl, embedModalState.aspectRatio, muted, autoplay);
+            }
+
+            function openEmbedModal(embedUrl, publicUrl, aspectRatio, title) {
+                embedModalState = { embedUrl: embedUrl, aspectRatio: aspectRatio };
+
+                document.getElementById('embed-modal-title').textContent = title;
+                document.getElementById('embed-modal-url').value = embedUrl;
+                document.getElementById('embed-modal-m3u8').value = publicUrl;
+                document.getElementById('embed-modal-mute').checked = false;
+                document.getElementById('embed-modal-autoplay').checked = false;
+
+                refreshEmbedModal();
+
+                const modal = document.getElementById('embed-modal');
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
-                video.play();
+            }
+
+            function closeEmbedModal() {
+                document.getElementById('embed-modal-preview').src = '';
+                embedModalState = null;
+
+                const modal = document.getElementById('embed-modal');
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+
+            function copyModalField(elementId, button) {
+                const el = document.getElementById(elementId);
+                navigator.clipboard.writeText(el.value);
+
+                const originalHTML = button.innerHTML;
+                button.innerHTML = originalHTML.replace(/Copy.*/, 'Copied!');
+
+                setTimeout(function () {
+                    button.innerHTML = originalHTML;
+                }, 1500);
             }
 
             function openPreviewModal(images, title) {
@@ -336,55 +435,16 @@
                 modal.classList.remove('flex');
             }
 
-            function copyVideoLink(button, url) {
-                navigator.clipboard.writeText(url);
-
-                const originalHTML = button.innerHTML;
-                const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
-                const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
-
-                button.innerHTML = originalHTML.replace(/Copy Link/, 'Copied!');
-                button.classList.remove(...originalClasses);
-                button.classList.add(...successClasses);
-
-                setTimeout(function () {
-                    button.innerHTML = originalHTML;
-                    button.classList.remove(...successClasses);
-                    button.classList.add(...originalClasses);
-                }, 1500);
-            }
-
             function copyThumbnailUrl(button, url) {
                 navigator.clipboard.writeText(url);
 
-                const originalHTML = button.innerHTML;
                 const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
                 const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
 
-                button.innerHTML = originalHTML.replace(/Copy .+/, 'Copied!');
                 button.classList.remove(...originalClasses);
                 button.classList.add(...successClasses);
 
                 setTimeout(function () {
-                    button.innerHTML = originalHTML;
-                    button.classList.remove(...successClasses);
-                    button.classList.add(...originalClasses);
-                }, 1500);
-            }
-
-            function copyEmbedCode(button, embedHtml) {
-                navigator.clipboard.writeText(embedHtml);
-
-                const originalHTML = button.innerHTML;
-                const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
-                const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
-
-                button.innerHTML = originalHTML.replace(/Copy .+/, 'Copied!');
-                button.classList.remove(...originalClasses);
-                button.classList.add(...successClasses);
-
-                setTimeout(function () {
-                    button.innerHTML = originalHTML;
                     button.classList.remove(...successClasses);
                     button.classList.add(...originalClasses);
                 }, 1500);
@@ -419,22 +479,6 @@
                 return confirm(message.replace('{COUNT}', count));
             }
 
-            function closeVideoModal() {
-                const modal = document.getElementById('video-modal');
-                const video = document.getElementById('video-modal-player');
-                video.pause();
-                video.removeAttribute('src');
-                video.load();
-
-                if (hlsInstance) {
-                    hlsInstance.destroy();
-                    hlsInstance = null;
-                }
-
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-            }
-
             @if ($hasActive)
                 statusRefreshTimer = setInterval(function () {
                     // Refresh in place instead of reloading the document, so
@@ -445,19 +489,21 @@
                 }, 5000);
             @endif
 
+            document.getElementById('embed-modal-mute').addEventListener('change', refreshEmbedModal);
+            document.getElementById('embed-modal-autoplay').addEventListener('change', refreshEmbedModal);
+
             // Exposed globally because they are referenced from inline
             // onclick/onsubmit attributes in the markup.
             window.confirmDelete = confirmDelete;
             window.confirmBulkDelete = confirmBulkDelete;
-            window.openVideoModal = openVideoModal;
-            window.closeVideoModal = closeVideoModal;
             window.openPreviewModal = openPreviewModal;
             window.closePreviewModal = closePreviewModal;
             window.openEditModal = openEditModal;
             window.closeEditModal = closeEditModal;
-            window.copyVideoLink = copyVideoLink;
             window.copyThumbnailUrl = copyThumbnailUrl;
-            window.copyEmbedCode = copyEmbedCode;
+            window.openEmbedModal = openEmbedModal;
+            window.closeEmbedModal = closeEmbedModal;
+            window.copyModalField = copyModalField;
         })();
     </script>
 @endpush

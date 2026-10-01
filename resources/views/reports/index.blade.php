@@ -15,7 +15,7 @@
         @endphp
         @foreach ($tabs as $tab)
             <a href="{{ route('reports.index', array_filter(['status' => $tab['value'], 'sort' => $sort])) }}"
-               class="px-3 py-2 text-sm font-medium border-b-2 {{ $status === $tab['value'] ? 'border-emerald-700 text-emerald-700' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
+               class="px-3 py-2 text-sm font-medium border-b-2 {{ $status === $tab['value'] ? 'border-blue-700 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
                 {{ $tab['label'] }}
             </a>
         @endforeach
@@ -32,7 +32,7 @@
         @endphp
         @foreach ($sortOptions as $option)
             <a href="{{ route('reports.index', array_filter(['status' => $status, 'sort' => $option['value']])) }}"
-               class="px-2 py-1 rounded-md font-medium {{ $sort === $option['value'] ? 'bg-emerald-700 text-white' : 'text-gray-500 hover:text-gray-700' }}">
+               class="px-2 py-1 rounded-md font-medium {{ $sort === $option['value'] ? 'bg-blue-50 border border-blue-200 text-blue-700' : 'text-gray-500 hover:text-gray-700' }}">
                 {{ $option['label'] }}
             </a>
         @endforeach
@@ -101,7 +101,7 @@
                             <td class="px-3 py-2 text-right whitespace-nowrap" data-actions-cell>
                                 @if ($report->status === 'new')
                                     <button type="button"
-                                            class="js-mark-resolved inline-flex items-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-800"
+                                            class="js-mark-resolved inline-flex items-center gap-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700"
                                             data-report-id="{{ $report->id }}"
                                             data-url="{{ route('reports.resolve', $report) }}">
                                         Mark Resolved

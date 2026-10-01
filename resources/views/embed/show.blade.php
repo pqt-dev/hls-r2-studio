@@ -69,6 +69,8 @@
                 fullscreenWeb: true,
                 pip: true,
                 notice: false,
+                autoplay: {{ \Illuminate\Support\Js::from($autoplay) }},
+                muted: {{ \Illuminate\Support\Js::from($muted) }},
                 controls: [
                     {
                         name: 'seekBackward',

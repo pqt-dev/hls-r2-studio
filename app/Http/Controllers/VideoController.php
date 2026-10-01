@@ -521,13 +521,14 @@ class VideoController extends Controller
      */
     public function logs()
     {
-        $logs = Video::orderBy('created_at', 'desc')->paginate(30);
-
         $totalCount = Video::count();
         $successCount = Video::where('status', 'ready')->count();
         $errorCount = Video::where('status', 'failed')->count();
 
-        return view('logs.index', compact('logs', 'totalCount', 'successCount', 'errorCount'));
+        $successLogs = Video::where('status', 'ready')->orderBy('created_at', 'desc')->limit(50)->get();
+        $errorLogs = Video::where('status', 'failed')->orderBy('created_at', 'desc')->limit(50)->get();
+
+        return view('logs.index', compact('totalCount', 'successCount', 'errorCount', 'successLogs', 'errorLogs'));
     }
 
     /**
