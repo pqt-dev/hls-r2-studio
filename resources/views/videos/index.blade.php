@@ -6,107 +6,63 @@
 
 @section('content')
     <form method="GET" action="{{ route('videos.index') }}" class="mb-4 flex items-center gap-2">
-        @if (request()->query('status'))
-            <input type="hidden" name="status" value="{{ request()->query('status') }}">
-        @endif
         <input type="text" name="search" value="{{ $search }}" placeholder="Search by video name or filename..."
                class="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
         <button type="submit"
                 class="inline-flex items-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
             Search
         </button>
-    </form>
 
-    <div class="flex gap-2 mb-4 border-b border-gray-200">
-        @php
-            $tabs = [
-                ['value' => null, 'label' => 'All'],
-                ['value' => 'pending', 'label' => 'Pending'],
-                ['value' => 'processing', 'label' => 'Processing'],
-                ['value' => 'ready', 'label' => 'Completed'],
-                ['value' => 'failed', 'label' => 'Failed'],
-            ];
-            $currentStatus = request()->query('status');
-        @endphp
-        @foreach ($tabs as $tab)
-            <a href="{{ route('videos.index', array_filter(['status' => $tab['value'], 'search' => $search])) }}"
-               class="px-3 py-2 text-sm font-medium border-b-2 {{ $currentStatus === $tab['value'] ? 'border-blue-700 text-blue-700' : 'border-transparent text-gray-500 hover:text-gray-700' }}">
-                {{ $tab['label'] }}
-            </a>
-        @endforeach
-    </div>
+        <input type="hidden" name="range" id="date-filter-range-input" value="{{ $range }}">
+        <input type="hidden" name="date_from" id="date-filter-from-input" value="{{ $dateFromInput }}">
+        <input type="hidden" name="date_to" id="date-filter-to-input" value="{{ $dateToInput }}">
 
-    @if ($status)
-        <div>
-            @if ($filteredVideos->isEmpty())
-                <div class="rounded-2xl border border-dashed border-gray-300 bg-white p-10 text-center text-gray-500">
-                    No videos found.
+        <div id="date-filter" class="relative">
+            <button type="button" id="date-filter-toggle"
+                    class="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                <span id="date-filter-label">{{ $rangeLabel }}</span>
+                <x-lucide-chevron-down class="w-4 h-4" />
+            </button>
+
+            <div id="date-filter-panel" class="hidden absolute left-0 z-20 mt-1 w-60 rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+                <ul class="text-sm text-gray-700">
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="all">All time</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="custom">Custom</button></li>
+                    <li class="my-1 border-t border-gray-200"></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="today">Today</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="yesterday">Yesterday</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="this_week">This week (Sun - Today)</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="last_7_days">Last 7 days</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="last_week">Last week (Sun - Sat)</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="last_28_days">Last 28 days</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="last_30_days">Last 30 days</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="this_month">This month</button></li>
+                    <li><button type="button" class="date-filter-option w-full rounded-md px-3 py-1.5 text-left hover:bg-gray-50" data-range="last_month">Last month</button></li>
+                </ul>
+
+                <div id="date-filter-custom-panel" class="hidden border-t border-gray-200 p-2 space-y-2">
+                    <div>
+                        <label for="date-filter-custom-from" class="block text-xs font-medium text-gray-700 mb-1">From</label>
+                        <input type="date" id="date-filter-custom-from" value="{{ $dateFromInput }}"
+                               class="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+                    </div>
+                    <div>
+                        <label for="date-filter-custom-to" class="block text-xs font-medium text-gray-700 mb-1">To</label>
+                        <input type="date" id="date-filter-custom-to" value="{{ $dateToInput }}"
+                               class="w-full rounded-lg border border-gray-300 px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+                    </div>
+                    <button type="button" id="date-filter-custom-apply"
+                            class="w-full rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 text-sm font-medium text-blue-700">
+                        Apply
+                    </button>
                 </div>
-            @else
-                <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-                    <table class="min-w-full divide-y divide-gray-200 text-sm">
-                        <thead class="bg-gray-50">
-                            <tr>
-                                <th class="w-10 px-3 py-2"></th>
-                                <th class="px-3 py-2 text-left">Thumbnail</th>
-                                <th class="px-3 py-2 text-left">Video Name</th>
-                                <th class="px-3 py-2 text-left">Status</th>
-                                <th class="px-3 py-2 text-left">Duration</th>
-                                <th class="px-3 py-2 text-left">Size</th>
-                                <th class="px-3 py-2 text-left">Source</th>
-                                <th class="px-3 py-2 text-left">Details</th>
-                                <th class="px-3 py-2 text-left">Upload Date</th>
-                                <th class="px-3 py-2 text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-gray-100">
-                            @foreach ($filteredVideos as $video)
-                                @include('videos._row', ['video' => $video])
-                            @endforeach
-                        </tbody>
-                    </table>
-                </div>
-                <div class="mt-4">{{ $filteredVideos->appends(request()->query())->links() }}</div>
-            @endif
-        </div>
-    @else
-    @if ($activeVideos->isNotEmpty())
-        <div class="mb-8">
-            <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3 inline-flex items-center gap-2"><x-lucide-loader-circle class="w-4 h-4 text-amber-500" /> Processing / Queue ({{ $activeVideos->count() }})</h2>
-            <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-                <table class="min-w-full divide-y divide-gray-200 text-sm">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th class="w-10 px-3 py-2"></th>
-                            <th class="px-3 py-2 text-left">Thumbnail</th>
-                            <th class="px-3 py-2 text-left">Video Name</th>
-                            <th class="px-3 py-2 text-left">Status</th>
-                            <th class="px-3 py-2 text-left">Duration</th>
-                            <th class="px-3 py-2 text-left">Size</th>
-                            <th class="px-3 py-2 text-left">Source</th>
-                            <th class="px-3 py-2 text-left">Details</th>
-                            <th class="px-3 py-2 text-left">Upload Date</th>
-                            <th class="px-3 py-2 text-right">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-gray-100">
-                        @foreach ($activeVideos as $video)
-                            @include('videos._row', ['video' => $video])
-                        @endforeach
-                    </tbody>
-                </table>
             </div>
         </div>
-    @endif
+    </form>
 
     <div>
-        <div class="flex items-center justify-between mb-3">
-            <h2 class="text-sm font-semibold text-gray-500 uppercase tracking-wide inline-flex items-center gap-2"><x-lucide-circle-check class="w-4 h-4 text-emerald-600" /> Completed</h2>
+        <div class="flex items-center justify-end mb-3">
             <div class="flex items-center gap-3">
-                <button type="button" onclick="if (window.softNav) { window.softNav.reload(); } else { window.location.reload(); }"
-                        class="inline-flex items-center gap-2 rounded-lg bg-white border border-gray-200 shadow-sm px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                    <x-lucide-refresh-cw class="w-4 h-4" /> Refresh
-                </button>
                 @if ($completedVideos->isNotEmpty())
                     <button type="submit" form="bulk-delete-form" id="bulk-delete-btn" disabled
                             class="inline-flex items-center rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 disabled:opacity-40 disabled:cursor-not-allowed">
@@ -124,14 +80,21 @@
                 No completed videos yet. <a href="{{ route('videos.create') }}" class="text-blue-700 underline">Upload your first video</a>.
             </div>
         @else
-            <form method="GET" class="mb-3 flex items-center justify-end gap-2 text-xs text-gray-600">
-                <label for="per_page">Videos per page:</label>
-                <select name="per_page" id="per_page" onchange="this.form.submit()"
-                        class="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-600">
-                    @foreach ($allowedPerPage as $option)
-                        <option value="{{ $option }}" @selected($perPage == $option)>{{ $option }}</option>
-                    @endforeach
-                </select>
+            <form method="GET" class="mb-3 flex items-center justify-between gap-2 text-xs text-gray-600">
+                <span>{{ $completedVideos->total() }} {{ Str::plural('video', $completedVideos->total()) }}</span>
+                <div class="flex items-center gap-2">
+                    <input type="hidden" name="search" value="{{ request()->query('search') }}">
+                    <input type="hidden" name="range" value="{{ request()->query('range') }}">
+                    <input type="hidden" name="date_from" value="{{ request()->query('date_from') }}">
+                    <input type="hidden" name="date_to" value="{{ request()->query('date_to') }}">
+                    <label for="per_page">Videos per page:</label>
+                    <select name="per_page" id="per_page" onchange="this.form.submit()"
+                            class="rounded-lg border border-gray-300 px-2 py-1 text-xs focus:outline-none focus:ring-2 focus:ring-blue-600">
+                        @foreach ($allowedPerPage as $option)
+                            <option value="{{ $option }}" @selected($perPage == $option)>{{ $option }}</option>
+                        @endforeach
+                    </select>
+                </div>
             </form>
             <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
                 <table class="min-w-full divide-y divide-gray-200 text-sm">
@@ -152,24 +115,15 @@
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-100">
-                        @php $lastDate = null; @endphp
                         @foreach ($completedVideos as $video)
-                            @php $currentDate = $video->created_at->toDisplay('d/m/Y'); @endphp
-                            @if ($currentDate !== $lastDate)
-                                @php $lastDate = $currentDate; @endphp
-                                <tr>
-                                    <td colspan="10" class="px-3 py-2 bg-gray-50 text-xs font-medium text-gray-400 uppercase tracking-wide">{{ $currentDate }}</td>
-                                </tr>
-                            @endif
                             @include('videos._row', ['video' => $video, 'selectable' => true])
                         @endforeach
                     </tbody>
                 </table>
             </div>
-            <div class="mt-4">{{ $completedVideos->appends(request()->query())->links() }}</div>
+            <div class="mt-4">{{ $completedVideos->appends(request()->query())->links('partials.pagination') }}</div>
         @endif
     </div>
-    @endif
 
     <div id="embed-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50 p-4">
         <div class="bg-white rounded-2xl overflow-hidden w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
@@ -284,17 +238,6 @@
 @push('scripts')
     <script>
         (function () {
-            let statusRefreshTimer = null;
-
-            // Called by the soft-navigation module right before this page is
-            // swapped out, so the refresh timer never accumulates.
-            window.__pageCleanup = function () {
-                if (statusRefreshTimer !== null) {
-                    clearInterval(statusRefreshTimer);
-                    statusRefreshTimer = null;
-                }
-            };
-
             function confirmDelete(form) {
                 const message = @json($deleteFromR2 ? 'Delete this video? The file on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete this video?');
                 if (!confirm(message)) return false;
@@ -479,18 +422,71 @@
                 return confirm(message.replace('{COUNT}', count));
             }
 
-            @if ($hasActive)
-                statusRefreshTimer = setInterval(function () {
-                    // Refresh in place instead of reloading the document, so
-                    // an upload running in this tab is not aborted.
-                    if (window.softNav) {
-                        window.softNav.reload();
-                    }
-                }, 5000);
-            @endif
-
             document.getElementById('embed-modal-mute').addEventListener('change', refreshEmbedModal);
             document.getElementById('embed-modal-autoplay').addEventListener('change', refreshEmbedModal);
+
+            const dateFilter = document.getElementById('date-filter');
+            const dateFilterToggle = document.getElementById('date-filter-toggle');
+            const dateFilterPanel = document.getElementById('date-filter-panel');
+            const dateFilterCustomPanel = document.getElementById('date-filter-custom-panel');
+            const dateFilterRangeInput = document.getElementById('date-filter-range-input');
+            const dateFilterFromInput = document.getElementById('date-filter-from-input');
+            const dateFilterToInput = document.getElementById('date-filter-to-input');
+            const dateFilterCustomFrom = document.getElementById('date-filter-custom-from');
+            const dateFilterCustomTo = document.getElementById('date-filter-custom-to');
+            const dateFilterCustomApply = document.getElementById('date-filter-custom-apply');
+
+            function openDateFilterPanel() {
+                dateFilterPanel.classList.remove('hidden');
+            }
+
+            function closeDateFilterPanel() {
+                dateFilterPanel.classList.add('hidden');
+                dateFilterCustomPanel.classList.add('hidden');
+            }
+
+            if (dateFilterToggle) {
+                dateFilterToggle.addEventListener('click', function () {
+                    if (dateFilterPanel.classList.contains('hidden')) {
+                        openDateFilterPanel();
+                    } else {
+                        closeDateFilterPanel();
+                    }
+                });
+
+                document.querySelectorAll('.date-filter-option').forEach(function (option) {
+                    option.addEventListener('click', function () {
+                        const range = option.getAttribute('data-range');
+
+                        if (range === 'custom') {
+                            dateFilterCustomPanel.classList.remove('hidden');
+                            return;
+                        }
+
+                        dateFilterRangeInput.value = range;
+                        dateFilterFromInput.value = '';
+                        dateFilterToInput.value = '';
+                        dateFilterToggle.closest('form').submit();
+                    });
+                });
+
+                dateFilterCustomApply.addEventListener('click', function () {
+                    if (!dateFilterCustomFrom.value || !dateFilterCustomTo.value) {
+                        return;
+                    }
+
+                    dateFilterRangeInput.value = 'custom';
+                    dateFilterFromInput.value = dateFilterCustomFrom.value;
+                    dateFilterToInput.value = dateFilterCustomTo.value;
+                    dateFilterToggle.closest('form').submit();
+                });
+
+                document.addEventListener('click', function (event) {
+                    if (!dateFilter.contains(event.target)) {
+                        closeDateFilterPanel();
+                    }
+                });
+            }
 
             // Exposed globally because they are referenced from inline
             // onclick/onsubmit attributes in the markup.

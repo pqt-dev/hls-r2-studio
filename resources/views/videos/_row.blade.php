@@ -1,7 +1,5 @@
 @php
     $badge = match ($video->status) {
-        'pending' => ['bg-yellow-100 text-yellow-800', 'Pending'],
-        'processing' => ['bg-amber-100 text-amber-800', 'Processing'],
         'ready' => ['bg-green-100 text-green-800', 'Ready'],
         'failed' => ['bg-red-100 text-red-800', 'Failed'],
         default => ['bg-gray-100 text-gray-800', $video->status],
@@ -73,33 +71,8 @@
             @endif
             class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium {{ $badge[0] }}"
         >
-            @if ($video->status === 'processing')
-                <svg class="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
-                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"></path>
-                </svg>
-            @endif
             {{ $badge[1] }}
         </span>
-
-        @if ($video->status === 'processing')
-            @php
-                $stageLabel = match ($video->stage) {
-                    'queued' => 'Queued',
-                    'transcoding' => 'Transcoding',
-                    'uploading_r2' => 'Uploading to R2',
-                    default => $video->stage,
-                };
-            @endphp
-            <div class="flex flex-col gap-1 mt-1 w-40">
-                <div class="h-1.5 w-full rounded-full bg-gray-200 overflow-hidden">
-                    <div class="h-full rounded-full bg-blue-600" style="width: {{ $video->progress }}%"></div>
-                </div>
-                <p class="text-xs text-gray-500">{{ $stageLabel }} — {{ $video->progress }}%</p>
-            </div>
-        @elseif ($video->status === 'pending')
-            <p class="text-xs text-gray-500 mt-1">Waiting in queue...</p>
-        @endif
     </td>
 
     <td class="px-3 py-2 text-gray-500">{{ $durationLabel }}</td>
@@ -108,7 +81,8 @@
 
     <td class="px-3 py-2">
         <span class="inline-flex items-center gap-1.5 text-xs text-gray-600" title="Cloudflare R2">
-            <x-lucide-cloud class="w-4 h-4 text-orange-500" /> R2
+            <img src="{{ asset('img/cloudflare.png') }}" alt="Cloudflare" class="w-4 h-4">
+            R2
         </span>
     </td>
 

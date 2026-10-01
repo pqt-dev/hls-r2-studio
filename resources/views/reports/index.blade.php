@@ -113,7 +113,7 @@
                 </tbody>
             </table>
         </div>
-        <div class="mt-4">{{ $reports->appends(request()->query())->links() }}</div>
+        <div class="mt-4">{{ $reports->appends(request()->query())->links('partials.pagination') }}</div>
     @endif
 @endsection
 

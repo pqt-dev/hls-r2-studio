@@ -113,4 +113,20 @@ return [
 
     'storyboard_timeout_multiplier' => (int) env('STORYBOARD_TIMEOUT_MULTIPLIER', 2),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Transcode Stage Labels
+    |--------------------------------------------------------------------------
+    |
+    | Human-readable labels for each transcode stage, used both when building
+    | persisted log messages (TranscodeVideoJob) and in the create video view.
+    |
+    */
+
+    'transcode_stage_labels' => [
+        'queued' => 'Queued',
+        'transcoding' => 'Transcoding',
+        'uploading_r2' => 'Uploading to R2',
+    ],
+
 ];

@@ -70,7 +70,7 @@
             </div>
         </a>
 
-        <a href="{{ route('videos.index', ['status' => 'ready']) }}" class="group rounded-2xl bg-white border border-gray-200 shadow-sm p-4 block hover:border-emerald-300 hover:shadow-md transition">
+        <a href="{{ route('videos.index') }}" class="group rounded-2xl bg-white border border-gray-200 shadow-sm p-4 block hover:border-emerald-300 hover:shadow-md transition">
             <div class="flex items-center justify-between mb-3">
                 <div class="w-11 h-11 rounded-full flex items-center justify-center bg-emerald-50">
                     <x-lucide-circle-check class="w-5 h-5 text-emerald-600" />
@@ -84,7 +84,7 @@
             </div>
         </a>
 
-        <a href="{{ route('videos.index', ['status' => 'processing']) }}" class="group rounded-2xl bg-white border border-gray-200 shadow-sm p-4 block hover:border-amber-300 hover:shadow-md transition">
+        <a href="{{ route('videos.index') }}" class="group rounded-2xl bg-white border border-gray-200 shadow-sm p-4 block hover:border-amber-300 hover:shadow-md transition">
             <div class="flex items-center justify-between mb-3">
                 <div class="w-11 h-11 rounded-full flex items-center justify-center bg-amber-50">
                     <x-lucide-loader-circle class="w-5 h-5 text-amber-600" />
@@ -99,7 +99,7 @@
         </a>
 
         @if ($failedCount > 0)
-            <a href="{{ route('videos.index', ['status' => 'failed']) }}" class="group rounded-2xl bg-white border border-gray-200 shadow-sm p-4 block hover:border-rose-300 hover:shadow-md transition">
+            <a href="{{ route('videos.index') }}" class="group rounded-2xl bg-white border border-gray-200 shadow-sm p-4 block hover:border-rose-300 hover:shadow-md transition">
                 <div class="flex items-center justify-between mb-3">
                     <div class="w-11 h-11 rounded-full flex items-center justify-center bg-rose-50">
                         <x-lucide-circle-x class="w-5 h-5 text-rose-600" />

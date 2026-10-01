@@ -5,14 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>@yield('title', 'HLS R2 Studio')</title>
+    <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-white text-gray-800">
     <div class="flex min-h-screen">
         <aside class="w-64 shrink-0 bg-gray-50 text-gray-700 border-r border-gray-200 flex flex-col">
             <div class="px-6 py-5 border-b border-gray-200 flex items-center gap-3 bg-gradient-to-br from-cyan-50 via-teal-50 to-white">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-sky-400 to-blue-600 flex items-center justify-center shrink-0 shadow-sm">
-                    <x-lucide-cloud class="w-5 h-5 text-white" />
+                <div class="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm p-1.5">
+                    <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-full h-full">
                 </div>
                 <div class="leading-tight">
                     <div class="text-base font-extrabold text-gray-900 tracking-tight">HLS R2 Studio</div>

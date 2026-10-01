@@ -6,9 +6,11 @@ use App\Jobs\TranscodeVideoJob;
 use App\Models\Setting;
 use App\Models\Video;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class VideoController extends Controller
 {
@@ -19,11 +21,82 @@ class VideoController extends Controller
     {
         $request->validate([
             'search' => ['nullable', 'string'],
-            'status' => ['nullable', 'in:pending,processing,ready,failed'],
+            'range' => ['nullable', 'string', Rule::in([
+                'all', 'today', 'yesterday', 'this_week', 'last_7_days', 'last_week',
+                'last_28_days', 'last_30_days', 'this_month', 'last_month', 'custom',
+            ])],
+            'date_from' => ['required_if:range,custom', 'nullable', 'date'],
+            'date_to' => ['required_if:range,custom', 'nullable', 'date', 'after_or_equal:date_from'],
         ]);
 
         $search = $request->query('search');
-        $status = $request->query('status');
+
+        $range = $request->query('range', 'all');
+        if (! in_array($range, [
+            'all', 'today', 'yesterday', 'this_week', 'last_7_days', 'last_week',
+            'last_28_days', 'last_30_days', 'this_month', 'last_month', 'custom',
+        ], true)) {
+            $range = 'all';
+        }
+
+        $today = Carbon::now()->startOfDay();
+        $dateFrom = null;
+        $dateTo = null;
+        $rangeLabel = 'All time';
+
+        switch ($range) {
+            case 'today':
+                $dateFrom = $today->copy();
+                $dateTo = $today->copy()->endOfDay();
+                $rangeLabel = 'Today';
+                break;
+            case 'yesterday':
+                $dateFrom = $today->copy()->subDay();
+                $dateTo = $today->copy()->subDay()->endOfDay();
+                $rangeLabel = 'Yesterday';
+                break;
+            case 'this_week':
+                $dateFrom = $today->copy()->startOfWeek(Carbon::SUNDAY);
+                $dateTo = $today->copy()->endOfDay();
+                $rangeLabel = 'This week (Sun - Today)';
+                break;
+            case 'last_7_days':
+                $dateFrom = $today->copy()->subDays(6);
+                $dateTo = $today->copy()->endOfDay();
+                $rangeLabel = 'Last 7 days';
+                break;
+            case 'last_week':
+                $dateFrom = $today->copy()->subWeek()->startOfWeek(Carbon::SUNDAY);
+                $dateTo = $today->copy()->subWeek()->endOfWeek(Carbon::SATURDAY);
+                $rangeLabel = 'Last week (Sun - Sat)';
+                break;
+            case 'last_28_days':
+                $dateFrom = $today->copy()->subDays(27);
+                $dateTo = $today->copy()->endOfDay();
+                $rangeLabel = 'Last 28 days';
+                break;
+            case 'last_30_days':
+                $dateFrom = $today->copy()->subDays(29);
+                $dateTo = $today->copy()->endOfDay();
+                $rangeLabel = 'Last 30 days';
+                break;
+            case 'this_month':
+                $dateFrom = $today->copy()->startOfMonth();
+                $dateTo = $today->copy()->endOfDay();
+                $rangeLabel = 'This month';
+                break;
+            case 'last_month':
+                $lastMonth = $today->copy()->subMonthNoOverflow();
+                $dateFrom = $lastMonth->copy()->startOfMonth();
+                $dateTo = $lastMonth->copy()->endOfMonth();
+                $rangeLabel = 'Last month';
+                break;
+            case 'custom':
+                $dateFrom = Carbon::parse($request->query('date_from'))->startOfDay();
+                $dateTo = Carbon::parse($request->query('date_to'))->endOfDay();
+                $rangeLabel = $dateFrom->toDisplay('d/m/Y').' → '.$dateTo->toDisplay('d/m/Y');
+                break;
+        }
 
         $applySearch = function ($query) use ($search) {
             if ($search) {
@@ -34,7 +107,13 @@ class VideoController extends Controller
             }
         };
 
-        $allowedPerPage = [12, 24, 48, 100];
+        $applyDateRange = function ($query) use ($dateFrom, $dateTo) {
+            if ($dateFrom && $dateTo) {
+                $query->whereBetween('created_at', [$dateFrom, $dateTo]);
+            }
+        };
+
+        $allowedPerPage = [10, 20, 50, 100];
         $perPage = Setting::current()->videos_per_page;
         if (in_array((int) $request->query('per_page'), $allowedPerPage, true)) {
             $perPage = (int) $request->query('per_page');
@@ -42,33 +121,9 @@ class VideoController extends Controller
 
         $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
 
-        if ($status) {
-            $filteredVideos = Video::where('status', $status)
-                ->tap($applySearch)
-                ->orderBy('created_at', 'desc')
-                ->paginate($perPage);
-
-            $disk = Setting::current()->r2Disk();
-
-            foreach ($filteredVideos as $video) {
-                if ($video->status === 'ready') {
-                    $video->public_url = $disk->url($video->playlist_path);
-                }
-            }
-
-            $hasActive = $filteredVideos->contains(fn ($video) => in_array($video->status, ['pending', 'processing'], true));
-
-            return view('videos.index', compact('filteredVideos', 'status', 'search', 'deleteFromR2', 'perPage', 'allowedPerPage', 'hasActive'));
-        }
-
-        $activeVideos = Video::whereIn('status', ['pending', 'processing'])
-            ->tap($applySearch)
-            ->orderBy('created_at', 'asc')
-            ->limit(100)
-            ->get();
-
         $completedVideos = Video::whereIn('status', ['ready', 'failed'])
             ->tap($applySearch)
+            ->tap($applyDateRange)
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
@@ -80,9 +135,20 @@ class VideoController extends Controller
             }
         }
 
-        $hasActive = $activeVideos->isNotEmpty();
+        $dateFromInput = $range === 'custom' ? $request->query('date_from') : null;
+        $dateToInput = $range === 'custom' ? $request->query('date_to') : null;
 
-        return view('videos.index', compact('activeVideos', 'completedVideos', 'deleteFromR2', 'perPage', 'allowedPerPage', 'status', 'search', 'hasActive'));
+        return view('videos.index', compact(
+            'completedVideos',
+            'deleteFromR2',
+            'perPage',
+            'allowedPerPage',
+            'search',
+            'range',
+            'rangeLabel',
+            'dateFromInput',
+            'dateToInput'
+        ));
     }
 
     /**
@@ -151,7 +217,40 @@ class VideoController extends Controller
      */
     public function create()
     {
-        return view('videos.create');
+        $activeVideos = Video::whereIn('status', ['pending', 'processing'])
+            ->orderBy('created_at', 'asc')
+            ->limit(100)
+            ->get();
+
+        $recentVideos = Video::orderBy('created_at', 'desc')->limit(5)->get()->reverse()->values();
+
+        return view('videos.create', compact('activeVideos', 'recentVideos'));
+    }
+
+    /**
+     * Return the current status/stage/progress of the given video ids, for
+     * client-side polling.
+     */
+    public function status(Request $request)
+    {
+        $request->validate([
+            'ids' => ['required', 'string'],
+        ]);
+
+        $ids = array_filter(array_map(
+            fn ($id) => (int) trim($id),
+            explode(',', $request->query('ids'))
+        ), fn ($id) => $id > 0);
+
+        $ids = array_slice(array_values(array_unique($ids)), 0, 50);
+
+        if ($ids === []) {
+            return response()->json([]);
+        }
+
+        $videos = Video::whereIn('id', $ids)->get(['id', 'status', 'stage', 'progress']);
+
+        return response()->json($videos);
     }
 
     /**
@@ -513,7 +612,11 @@ class VideoController extends Controller
             ], 500);
         }
 
-        return response()->json(['redirect' => route('videos.index')]);
+        return response()->json([
+            'redirect' => route('videos.index'),
+            'video_id' => $video->id,
+            'video_title' => $video->title,
+        ]);
     }
 
     /**

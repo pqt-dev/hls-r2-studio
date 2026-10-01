@@ -24,11 +24,11 @@
                 <label for="video" class="block text-sm font-medium text-gray-700 mb-1">Video File</label>
                 <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
                 <div id="dropzone"
-                     class="rounded-2xl border-2 border-dashed border-gray-300 px-6 py-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/40 transition-colors">
+                     class="rounded-2xl border-2 border-dashed border-gray-300 px-6 py-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/40">
                     <div class="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
                         <x-lucide-cloud-upload class="w-8 h-8 text-blue-700" />
                     </div>
-                    <p class="text-sm text-gray-600 mb-3">Drag and drop video here, or</p>
+                    <p id="dropzone-instruction" class="text-sm text-gray-600 mb-3">Drag and drop video here, or</p>
                     <span class="pointer-events-none inline-flex items-center gap-2 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
                         <x-lucide-upload class="w-4 h-4" /> Choose Video File
                     </span>
@@ -39,17 +39,15 @@
 
             <div id="upload-error" class="hidden rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm"></div>
 
-            <div id="upload-summary" class="hidden rounded-lg bg-gray-50 border border-gray-200 text-gray-800 px-4 py-3 text-sm">
-                <p id="upload-summary-text"></p>
-                <a href="{{ route('videos.index') }}" class="mt-2 inline-flex items-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
-                    View Video List
-                </a>
-            </div>
-
             <button type="submit" id="upload-submit"
                     class="inline-flex items-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
                 Upload
             </button>
+
+            <div id="upload-warning" class="hidden rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm flex items-center gap-2">
+                <x-lucide-triangle-alert class="w-4 h-4 shrink-0" />
+                Please do not reload or close this tab while the upload is in progress.
+            </div>
 
             <div id="upload-progress-card" class="rounded-2xl border border-gray-200 overflow-hidden">
                 <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between">
@@ -66,14 +64,24 @@
             </div>
 
             <div class="rounded-2xl border border-gray-200 overflow-hidden">
-                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2">
+                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between">
                     <h3 class="text-sm font-semibold text-blue-700 inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Log</h3>
+                    <button type="button" id="clear-log-btn"
+                            class="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                        <x-lucide-trash-2 class="w-3.5 h-3.5" /> Clear log
+                    </button>
                 </div>
                 <div class="p-4">
                     <div id="upload-log" class="font-mono text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto">
                         <p class="text-gray-400" data-log-placeholder>Ready.</p>
                     </div>
                 </div>
+            </div>
+
+            <div id="upload-summary" class="hidden">
+                <a href="{{ route('videos.index') }}" class="inline-flex items-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
+                    View Video List
+                </a>
             </div>
         </form>
     </div>
@@ -94,16 +102,98 @@
                 const selectedFilesList = document.getElementById('selected-files-list');
                 const errorBox = document.getElementById('upload-error');
                 const summaryBox = document.getElementById('upload-summary');
-                const summaryText = document.getElementById('upload-summary-text');
                 const logBox = document.getElementById('upload-log');
+                const uploadWarning = document.getElementById('upload-warning');
 
                 const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const allowedExtensions = ['mp4', 'mov', 'mkv', 'avi', 'webm'];
                 const maxSizeBytes = parseInt(form.dataset.maxSizeMb, 10) * 1024 * 1024;
                 const CHUNK_SIZE = parseInt(form.dataset.chunkSizeMb, 10) * 1024 * 1024;
                 const FILE_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="m10 11 5 3-5 3v-6Z"/></svg>';
+                const TRASH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
 
                 let currentQueueItems = [];
+                let isUploading = false;
+                const uploadedVideos = {};
+                let pollTimer = null;
+
+                const LOG_CACHE_KEY = 'hls_upload_log_cache';
+                const LOG_CACHE_MAX_VIDEOS = 5;
+                const LOG_DISMISSED_KEY = 'hls_upload_log_dismissed';
+
+                function loadLogCache() {
+                    try {
+                        const raw = localStorage.getItem(LOG_CACHE_KEY);
+                        if (!raw) {
+                            return { order: [], entries: {} };
+                        }
+                        const parsed = JSON.parse(raw);
+                        return { order: parsed.order || [], entries: parsed.entries || {} };
+                    } catch (e) {
+                        return { order: [], entries: {} };
+                    }
+                }
+
+                function saveLogCache(cache) {
+                    try {
+                        localStorage.setItem(LOG_CACHE_KEY, JSON.stringify(cache));
+                    } catch (e) {
+                        // localStorage unavailable (private mode, quota, etc.) — cache is best-effort only
+                    }
+                }
+
+                function loadDismissedLog() {
+                    try {
+                        const raw = localStorage.getItem(LOG_DISMISSED_KEY);
+                        if (!raw) {
+                            return [];
+                        }
+                        const parsed = JSON.parse(raw);
+                        return Array.isArray(parsed) ? parsed : [];
+                    } catch (e) {
+                        return [];
+                    }
+                }
+
+                function saveDismissedLog(ids) {
+                    try {
+                        localStorage.setItem(LOG_DISMISSED_KEY, JSON.stringify(ids));
+                    } catch (e) {
+                        // localStorage unavailable (private mode, quota, etc.) — cache is best-effort only
+                    }
+                }
+
+                function recordLogEntry(videoId, message, logClass, time) {
+                    const cache = loadLogCache();
+                    const key = String(videoId);
+
+                    if (!cache.entries[key]) {
+                        cache.entries[key] = [];
+                        cache.order.push(key);
+                    }
+
+                    cache.entries[key].push({ message: message, logClass: logClass || null, time: time });
+
+                    while (cache.order.length > LOG_CACHE_MAX_VIDEOS) {
+                        const evicted = cache.order.shift();
+                        delete cache.entries[evicted];
+                    }
+
+                    saveLogCache(cache);
+                }
+
+                const transcodeStageLabels = {
+                    queued: 'Queued',
+                    transcoding: 'Transcoding',
+                    uploading_r2: 'Uploading to R2',
+                };
+
+                window.addEventListener('beforeunload', function (e) {
+                    if (isUploading) {
+                        e.preventDefault();
+                        e.returnValue = '';
+                    }
+                });
 
                 function showError(message) {
                     errorBox.textContent = message;
@@ -117,20 +207,18 @@
 
                 function hideSummary() {
                     summaryBox.classList.add('hidden');
-                    summaryText.textContent = '';
                 }
 
-                function appendLog(message, extraClass) {
+                function appendLog(message, extraClass, time) {
                     const placeholder = logBox.querySelector('[data-log-placeholder]');
                     if (placeholder) {
                         placeholder.remove();
                     }
-                    const time = new Date().toLocaleTimeString();
                     const line = document.createElement('p');
                     if (extraClass) {
                         line.className = extraClass;
                     }
-                    line.textContent = '[' + time + '] ' + message;
+                    line.textContent = '[' + (time || new Date().toLocaleTimeString()) + '] ' + message;
                     logBox.appendChild(line);
                     logBox.scrollTop = logBox.scrollHeight;
                 }
@@ -201,7 +289,7 @@
 
                     selectedFilesList.classList.remove('hidden');
 
-                    files.forEach(function (file) {
+                    files.forEach(function (file, index) {
                         const row = document.createElement('div');
                         row.className = 'flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2 border border-gray-200';
 
@@ -223,10 +311,32 @@
                         sizeEl.className = 'text-gray-400 ml-2 shrink-0';
                         sizeEl.textContent = formatSize(file.size);
 
+                        const removeBtn = document.createElement('button');
+                        removeBtn.type = 'button';
+                        removeBtn.className = 'text-gray-400 hover:text-red-600 shrink-0 ml-2';
+                        removeBtn.innerHTML = TRASH_ICON_SVG;
+                        removeBtn.setAttribute('aria-label', 'Remove ' + file.name);
+                        removeBtn.addEventListener('click', function () {
+                            removeSelectedFile(index);
+                        });
+
                         row.appendChild(leftWrap);
                         row.appendChild(sizeEl);
+                        row.appendChild(removeBtn);
                         selectedFilesList.appendChild(row);
                     });
+                }
+
+                function removeSelectedFile(index) {
+                    const dataTransfer = new DataTransfer();
+                    Array.from(fileInput.files).forEach(function (file, i) {
+                        if (i !== index) {
+                            dataTransfer.items.add(file);
+                        }
+                    });
+                    fileInput.files = dataTransfer.files;
+                    updateTitleVisibility();
+                    renderSelectedFilesList();
                 }
 
                 function hideSelectedFilesList() {
@@ -243,19 +353,45 @@
                     fileInput.click();
                 });
 
-                dropzone.addEventListener('dragover', function (e) {
+                const dropzoneInstruction = document.getElementById('dropzone-instruction');
+                const DROPZONE_DEFAULT_TEXT = 'Drag and drop video here, or';
+                const DROPZONE_DRAGGING_TEXT = 'Drop your video here';
+
+                function setDropzoneDragging(isDragging) {
+                    if (isDragging) {
+                        dropzone.style.borderColor = '#60a5fa';
+                        dropzone.style.backgroundColor = 'rgba(239, 246, 255, 0.4)';
+                        dropzoneInstruction.textContent = DROPZONE_DRAGGING_TEXT;
+                    } else {
+                        dropzone.style.borderColor = '';
+                        dropzone.style.backgroundColor = '';
+                        dropzoneInstruction.textContent = DROPZONE_DEFAULT_TEXT;
+                    }
+                }
+
+                function isPointerOverDropzone(e) {
+                    const rect = dropzone.getBoundingClientRect();
+                    return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+                }
+
+                window.addEventListener('dragover', function (e) {
                     e.preventDefault();
-                    dropzone.classList.add('border-blue-400', 'bg-blue-50/40');
+                    setDropzoneDragging(isPointerOverDropzone(e));
                 });
 
-                dropzone.addEventListener('dragleave', function (e) {
-                    e.preventDefault();
-                    dropzone.classList.remove('border-blue-400', 'bg-blue-50/40');
+                window.addEventListener('dragleave', function (e) {
+                    if (!e.relatedTarget) {
+                        setDropzoneDragging(false);
+                    }
                 });
 
-                dropzone.addEventListener('drop', function (e) {
+                window.addEventListener('drop', function (e) {
                     e.preventDefault();
-                    dropzone.classList.remove('border-blue-400', 'bg-blue-50/40');
+                    setDropzoneDragging(false);
+
+                    if (!isPointerOverDropzone(e)) {
+                        return;
+                    }
 
                     const droppedFiles = e.dataTransfer.files;
                     if (!droppedFiles || droppedFiles.length === 0) {
@@ -286,6 +422,19 @@
                     }
                 });
 
+                const clearLogBtn = document.getElementById('clear-log-btn');
+
+                clearLogBtn.addEventListener('click', function () {
+                    saveLogCache({ order: [], entries: {} });
+
+                    const visibleIds = recentVideos.map(function (video) {
+                        return String(video.id);
+                    }).concat(Object.keys(uploadedVideos));
+                    saveDismissedLog(Array.from(new Set(visibleIds)));
+
+                    logBox.innerHTML = '<p class="text-gray-400" data-log-placeholder>Ready.</p>';
+                });
+
                 function updateQueueEmptyState() {
                     if (queueList.children.length === 0) {
                         queueEmptyPlaceholder.classList.remove('hidden');
@@ -294,52 +443,86 @@
                     }
                 }
 
+                function createTranscodeSection() {
+                    const transcodeWrapper = document.createElement('div');
+                    transcodeWrapper.className = 'hidden mt-2 pt-2 border-t border-gray-100';
+
+                    const transcodeLabel = document.createElement('p');
+                    transcodeLabel.className = 'text-xs font-medium text-gray-500 mb-1';
+                    transcodeLabel.textContent = 'Processing:';
+
+                    const transcodeBarWrapper = document.createElement('div');
+                    transcodeBarWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5';
+
+                    const transcodeBar = document.createElement('div');
+                    transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full transition-[width] duration-[1000ms] ease-linear';
+                    transcodeBar.style.width = '0%';
+                    transcodeBarWrapper.appendChild(transcodeBar);
+
+                    const transcodeStatusEl = document.createElement('p');
+                    transcodeStatusEl.className = 'mt-1 text-xs text-gray-500';
+
+                    transcodeWrapper.appendChild(transcodeLabel);
+                    transcodeWrapper.appendChild(transcodeBarWrapper);
+                    transcodeWrapper.appendChild(transcodeStatusEl);
+
+                    return { wrapper: transcodeWrapper, bar: transcodeBar, statusEl: transcodeStatusEl };
+                }
+
+                function createQueueRow(name, size) {
+                    const row = document.createElement('div');
+                    row.className = 'rounded-lg border border-gray-200 p-3';
+
+                    const header = document.createElement('div');
+                    header.className = 'flex items-center justify-between text-sm';
+
+                    const nameEl = document.createElement('span');
+                    nameEl.className = 'font-medium text-gray-800 truncate mr-2';
+                    nameEl.textContent = name;
+
+                    const sizeEl = document.createElement('span');
+                    sizeEl.className = 'text-gray-500 text-xs whitespace-nowrap';
+                    sizeEl.textContent = formatSize(size);
+
+                    header.appendChild(nameEl);
+                    header.appendChild(sizeEl);
+
+                    const barWrapper = document.createElement('div');
+                    barWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5 mt-2';
+
+                    const bar = document.createElement('div');
+                    bar.className = 'bg-blue-600 h-2.5 rounded-full transition-[width] duration-300 ease-linear';
+                    bar.style.width = '0%';
+                    barWrapper.appendChild(bar);
+
+                    const statusEl = document.createElement('p');
+                    statusEl.className = 'mt-1 text-xs text-gray-500';
+                    statusEl.textContent = 'Pending';
+
+                    row.appendChild(header);
+                    row.appendChild(barWrapper);
+                    row.appendChild(statusEl);
+
+                    const transcodeSection = createTranscodeSection();
+                    row.appendChild(transcodeSection.wrapper);
+
+                    return {
+                        row: row,
+                        bar: bar,
+                        statusEl: statusEl,
+                        cleared: false,
+                        transcodeWrapper: transcodeSection.wrapper,
+                        transcodeBar: transcodeSection.bar,
+                        transcodeStatusEl: transcodeSection.statusEl,
+                    };
+                }
+
                 function buildQueueUI(files) {
-                    queueList.innerHTML = '';
-
                     const items = files.map(function (file) {
-                        const row = document.createElement('div');
-                        row.className = 'rounded-lg border border-gray-200 p-3';
-
-                        const header = document.createElement('div');
-                        header.className = 'flex items-center justify-between text-sm';
-
-                        const nameEl = document.createElement('span');
-                        nameEl.className = 'font-medium text-gray-800 truncate mr-2';
-                        nameEl.textContent = file.name;
-
-                        const sizeEl = document.createElement('span');
-                        sizeEl.className = 'text-gray-500 text-xs whitespace-nowrap';
-                        sizeEl.textContent = formatSize(file.size);
-
-                        header.appendChild(nameEl);
-                        header.appendChild(sizeEl);
-
-                        const barWrapper = document.createElement('div');
-                        barWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5 mt-2';
-
-                        const bar = document.createElement('div');
-                        bar.className = 'bg-blue-600 h-2.5 rounded-full';
-                        bar.style.width = '0%';
-
-                        barWrapper.appendChild(bar);
-
-                        const statusEl = document.createElement('p');
-                        statusEl.className = 'mt-1 text-xs text-gray-500';
-                        statusEl.textContent = 'Pending';
-
-                        row.appendChild(header);
-                        row.appendChild(barWrapper);
-                        row.appendChild(statusEl);
-                        queueList.appendChild(row);
-
-                        return {
-                            file: file,
-                            row: row,
-                            bar: bar,
-                            statusEl: statusEl,
-                            cleared: false,
-                        };
+                        const item = createQueueRow(file.name, file.size);
+                        item.file = file;
+                        queueList.appendChild(item.row);
+                        return item;
                     });
 
                     updateQueueEmptyState();
@@ -361,6 +544,7 @@
                     const title = fileInput.files.length > 1 ? '' : titleInput.value;
 
                     setItemStatus(item, 'Uploading...');
+                    const uploadStartTime = new Date().toLocaleTimeString();
                     appendLog('Uploading ' + file.name + '...');
 
                     const initData = await fetchWithRetry('/uploads/init', {
@@ -402,9 +586,10 @@
                     }
 
                     setItemStatus(item, 'Processing...');
+                    const processingStartTime = new Date().toLocaleTimeString();
                     appendLog('Processing ' + file.name + '...');
 
-                    await fetchWithRetry('/uploads/' + uploadId + '/complete', {
+                    const completeData = await fetchWithRetry('/uploads/' + uploadId + '/complete', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
@@ -418,8 +603,25 @@
                         }),
                     }, 1);
 
+                    if (completeData && completeData.video_id) {
+                        uploadedVideos[completeData.video_id] = {
+                            title: completeData.video_title || file.name,
+                            item: item,
+                            status: 'pending',
+                            stage: null,
+                            progress: 0,
+                        };
+                        item.transcodeWrapper.classList.remove('hidden');
+                        item.transcodeStatusEl.textContent = 'Queued for processing...';
+                        startPolling();
+
+                        recordLogEntry(completeData.video_id, 'Uploading ' + file.name + '...', null, uploadStartTime);
+                        recordLogEntry(completeData.video_id, 'Processing ' + file.name + '...', null, processingStartTime);
+                    }
+
                     setItemStatus(item, 'Done');
-                    appendLog(file.name + ' uploaded successfully.');
+
+                    return completeData && completeData.video_id ? completeData.video_id : null;
                 }
 
                 form.addEventListener('submit', async function (e) {
@@ -452,13 +654,19 @@
 
                     submitButton.disabled = true;
                     fileInput.disabled = true;
+                    isUploading = true;
+                    uploadWarning.classList.remove('hidden');
 
                     appendLog('Starting upload of ' + files.length + ' file(s).');
 
                     hideSelectedFilesList();
 
                     const items = buildQueueUI(files);
-                    currentQueueItems = items;
+                    currentQueueItems = currentQueueItems.concat(items);
+
+                    const consideredCount = items.filter(function (item) {
+                        return !item.cleared;
+                    }).length;
 
                     let successCount = 0;
 
@@ -467,8 +675,12 @@
                             continue;
                         }
                         try {
-                            await uploadFile(item);
+                            const videoId = await uploadFile(item);
                             successCount++;
+                            appendLog(item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')', 'text-blue-600 font-medium');
+                            if (videoId) {
+                                recordLogEntry(videoId, item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')', 'text-blue-600 font-medium', new Date().toLocaleTimeString());
+                            }
                         } catch (err) {
                             setItemStatus(item, 'Error: ' + (err.message || 'An error occurred during upload.'));
                             appendLog(item.file.name + ' failed: ' + (err.message || 'An error occurred during upload.'));
@@ -477,15 +689,209 @@
 
                     submitButton.disabled = false;
                     fileInput.disabled = false;
+                    isUploading = false;
+                    uploadWarning.classList.add('hidden');
 
-                    const consideredCount = items.filter(function (item) {
-                        return !item.cleared;
-                    }).length;
-
-                    summaryText.textContent = 'Successfully uploaded ' + successCount + '/' + consideredCount + ' videos.';
                     summaryBox.classList.remove('hidden');
                     appendLog('Upload finished: ' + successCount + '/' + consideredCount + ' succeeded.', 'text-blue-600 font-medium');
                 });
+
+                function hydrateActiveVideos() {
+                    @php
+                        $activeVideosForJs = $activeVideos->map(function ($video) {
+                            return [
+                                'id' => $video->id,
+                                'title' => $video->title,
+                                'original_filename' => $video->original_filename,
+                                'original_size_bytes' => $video->original_size_bytes,
+                                'status' => $video->status,
+                                'stage' => $video->stage,
+                                'progress' => $video->progress,
+                            ];
+                        });
+                    @endphp
+                    const activeVideos = @json($activeVideosForJs);
+
+                    activeVideos.forEach(function (video) {
+                        const item = createQueueRow(video.title || video.original_filename, video.original_size_bytes || 0);
+                        item.bar.style.width = '100%';
+                        item.statusEl.textContent = 'Done';
+                        queueList.appendChild(item.row);
+                        currentQueueItems.push(item);
+
+                        item.transcodeWrapper.classList.remove('hidden');
+                        if (video.status === 'pending') {
+                            item.transcodeStatusEl.textContent = 'Queued for processing...';
+                        } else {
+                            const stageLabel = transcodeStageLabels[video.stage] || video.stage || 'Transcoding';
+                            item.transcodeBar.style.width = (video.progress || 0) + '%';
+                            item.transcodeStatusEl.textContent = stageLabel + ' — ' + (video.progress || 0) + '%';
+                        }
+
+                        uploadedVideos[video.id] = {
+                            title: video.title || video.original_filename,
+                            item: item,
+                            status: video.status,
+                            stage: video.stage,
+                            progress: video.progress,
+                        };
+                    });
+
+                    updateQueueEmptyState();
+
+                    if (activeVideos.length > 0) {
+                        startPolling();
+                    }
+                }
+
+                @php
+                    $recentVideosForJs = $recentVideos->map(function ($video) {
+                        return [
+                            'id' => $video->id,
+                            'title' => $video->title,
+                            'original_filename' => $video->original_filename,
+                            'status' => $video->status,
+                            'created_at' => optional($video->created_at)->toDisplay('H:i:s'),
+                            'updated_at' => optional($video->updated_at)->toDisplay('H:i:s'),
+                        ];
+                    });
+                @endphp
+                const recentVideos = @json($recentVideosForJs);
+
+                function hydrateRecentLog() {
+                    const cache = loadLogCache();
+                    const dismissedIds = loadDismissedLog();
+
+                    recentVideos.forEach(function (video) {
+                        const idKey = String(video.id);
+                        const cached = cache.entries[idKey];
+
+                        if (cached && cached.length > 0) {
+                            cached.forEach(function (entry) {
+                                appendLog(entry.message, entry.logClass, entry.time);
+                            });
+                            return;
+                        }
+
+                        if (dismissedIds.includes(idKey)) {
+                            return;
+                        }
+
+                        const name = video.title || video.original_filename;
+                        appendLog(name + ' uploaded successfully.', 'text-blue-600 font-medium', video.created_at);
+
+                        if (video.status === 'ready') {
+                            appendLog(name + ' finished transcoding.', 'text-orange-600 font-medium', video.updated_at);
+                        } else if (video.status === 'failed') {
+                            appendLog(name + ' failed to process.', null, video.updated_at);
+                        }
+                    });
+                }
+
+                hydrateActiveVideos();
+                hydrateRecentLog();
+
+                function activeVideoIds() {
+                    return Object.keys(uploadedVideos).filter(function (id) {
+                        const v = uploadedVideos[id];
+                        return v.status === 'pending' || v.status === 'processing';
+                    });
+                }
+
+                function stopPollingIfIdle() {
+                    if (activeVideoIds().length === 0 && pollTimer) {
+                        clearInterval(pollTimer);
+                        pollTimer = null;
+                    }
+                }
+
+                function startPolling() {
+                    if (pollTimer) {
+                        return;
+                    }
+                    pollTimer = setInterval(pollStatus, 4000);
+                }
+
+                async function pollStatus() {
+                    const ids = activeVideoIds();
+                    if (ids.length === 0) {
+                        stopPollingIfIdle();
+                        return;
+                    }
+
+                    let data;
+                    try {
+                        data = await fetchWithRetry('/videos/status?ids=' + ids.join(','), {
+                            headers: { 'Accept': 'application/json' },
+                        }, 1);
+                    } catch (err) {
+                        return; // transient network error — next tick tries again
+                    }
+
+                    data.forEach(applyStatusSnapshot);
+                    stopPollingIfIdle();
+                }
+
+                function applyStatusSnapshot(video) {
+                    const entry = uploadedVideos[video.id];
+                    if (!entry) {
+                        return;
+                    }
+
+                    const item = entry.item;
+                    const statusChanged = entry.status !== video.status;
+                    const progressChanged = entry.progress !== video.progress;
+                    const stageChanged = entry.stage !== video.stage;
+
+                    if (!statusChanged && !progressChanged && !stageChanged) {
+                        return;
+                    }
+
+                    entry.status = video.status;
+                    entry.stage = video.stage;
+                    entry.progress = video.progress;
+
+                    let message = null;
+                    let logClass = null;
+
+                    if (video.status === 'pending') {
+                        message = entry.title + ' is queued for processing.';
+                        if (item) {
+                            item.transcodeWrapper.classList.remove('hidden');
+                            item.transcodeStatusEl.textContent = 'Queued for processing...';
+                        }
+                    } else if (video.status === 'processing') {
+                        const stageLabel = transcodeStageLabels[video.stage] || video.stage;
+                        if (progressChanged || stageChanged) {
+                            message = entry.title + ': ' + stageLabel + ' — ' + video.progress + '%';
+                            if (item) {
+                                item.transcodeWrapper.classList.remove('hidden');
+                                item.transcodeBar.style.width = video.progress + '%';
+                                item.transcodeStatusEl.textContent = stageLabel + ' — ' + video.progress + '%';
+                            }
+                        }
+                    } else if (video.status === 'ready') {
+                        message = entry.title + ' finished transcoding.';
+                        logClass = 'text-orange-600 font-medium';
+                        if (item) {
+                            item.row.remove();
+                            currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
+                            updateQueueEmptyState();
+                        }
+                    } else if (video.status === 'failed') {
+                        message = entry.title + ' failed to process.';
+                        if (item) {
+                            item.row.remove();
+                            currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
+                            updateQueueEmptyState();
+                        }
+                    }
+
+                    if (message) {
+                        appendLog(message, logClass);
+                        recordLogEntry(video.id, message, logClass, new Date().toLocaleTimeString());
+                    }
+                }
             })();
         </script>
     @endpush

@@ -200,9 +200,9 @@
                     <select name="videos_per_page" id="videos_per_page"
                             class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
                         @php $currentVideosPerPage = old('videos_per_page', $settings->videos_per_page); @endphp
-                        <option value="12" @selected($currentVideosPerPage == 12)>12</option>
-                        <option value="24" @selected($currentVideosPerPage == 24)>24</option>
-                        <option value="48" @selected($currentVideosPerPage == 48)>48</option>
+                        <option value="10" @selected($currentVideosPerPage == 10)>10</option>
+                        <option value="20" @selected($currentVideosPerPage == 20)>20</option>
+                        <option value="50" @selected($currentVideosPerPage == 50)>50</option>
                         <option value="100" @selected($currentVideosPerPage == 100)>100</option>
                     </select>
                     @error('videos_per_page')

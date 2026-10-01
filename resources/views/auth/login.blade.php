@@ -5,14 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>HLS R2 Studio — Admin Login</title>
+    <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-gradient-to-br from-blue-50 via-white to-sky-50 text-gray-800">
     <div class="min-h-screen flex items-center justify-center p-4">
         <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
             <div class="flex flex-col items-center text-center mb-6">
-                <div class="w-12 h-12 rounded-2xl bg-blue-700 flex items-center justify-center mb-3">
-                    <x-lucide-clapperboard class="w-6 h-6 text-white" />
+                <div class="w-12 h-12 rounded-2xl bg-white border border-gray-200 flex items-center justify-center mb-3 shadow-sm p-2">
+                    <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-full h-full">
                 </div>
                 <h1 class="text-lg font-semibold text-gray-900 mb-1">HLS R2 Studio</h1>
                 <p class="text-xs text-gray-500">Admin Login</p>

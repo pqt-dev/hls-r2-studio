@@ -31,13 +31,20 @@ class Setting extends Model
 
     public static function current(): self
     {
-        return static::firstOrCreate(['id' => 1], [
+        $settings = static::firstOrCreate(['id' => 1], [
             'delete_from_r2_on_destroy' => true,
             'transcode_resolution' => '720',
             'transcode_segment_seconds' => 6,
-            'videos_per_page' => 24,
+            'videos_per_page' => 10,
             'display_timezone' => 'Asia/Ho_Chi_Minh',
         ]);
+
+        if (! in_array($settings->videos_per_page, [10, 20, 50, 100], true)) {
+            $settings->videos_per_page = 10;
+            $settings->save();
+        }
+
+        return $settings;
     }
 
     public function effectiveR2Config(): array
