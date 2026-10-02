@@ -38,9 +38,9 @@ class ReportController extends Controller
             ->orderByRaw("CASE WHEN status = 'resolved' THEN 1 ELSE 0 END ASC");
 
         match ($sort) {
-            'oldest' => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END ASC")->orderBy('id', 'asc'),
-            'most_reported' => $query->orderBy('report_count', 'desc')->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END DESC")->orderBy('id', 'desc'),
-            default => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END DESC")->orderBy('id', 'desc'), // 'newest'
+            'oldest' => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE last_reported_at END ASC")->orderBy('id', 'asc'),
+            'most_reported' => $query->orderBy('report_count', 'desc')->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE last_reported_at END DESC")->orderBy('id', 'desc'),
+            default => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE last_reported_at END DESC")->orderBy('id', 'desc'), // 'newest'
         };
 
         $reports = $query->paginate(Setting::current()->videos_per_page);

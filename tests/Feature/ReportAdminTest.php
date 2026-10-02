@@ -316,6 +316,62 @@ class ReportAdminTest extends TestCase
         $this->assertSame([$resolvedRecentlyButCreatedLongAgo->id, $resolvedLongAgoButCreatedRecently->id], $ids);
     }
 
+    public function test_index_sorts_by_newest_uses_last_reported_at_for_duplicate_submissions(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        $reportA = Report::create([
+            'page_url' => 'https://toicovl.com/duplicate-bumped-newest',
+            'reason' => 'other',
+            'status' => 'new',
+        ]);
+        $reportA->forceFill(['created_at' => now()->subDays(5)])->save();
+        $reportB = Report::create([
+            'page_url' => 'https://toicovl.com/not-bumped-newest',
+            'reason' => 'other',
+            'status' => 'new',
+        ]);
+        $reportB->forceFill(['created_at' => now()->subDays(1)])->save();
+
+        // Simulate a duplicate submission bumping report A's last_reported_at
+        // while leaving its created_at untouched.
+        $reportA->forceFill(['last_reported_at' => now()])->save();
+
+        $response = $this->get('/reports?sort=newest');
+
+        $response->assertOk();
+        $ids = $response->viewData('reports')->pluck('id')->all();
+        $this->assertSame([$reportA->id, $reportB->id], $ids);
+    }
+
+    public function test_index_sorts_by_oldest_uses_last_reported_at_for_duplicate_submissions(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        $reportC = Report::create([
+            'page_url' => 'https://toicovl.com/duplicate-bumped-oldest',
+            'reason' => 'other',
+            'status' => 'new',
+        ]);
+        $reportC->forceFill(['created_at' => now()->subDays(5)])->save();
+        $reportD = Report::create([
+            'page_url' => 'https://toicovl.com/not-bumped-oldest',
+            'reason' => 'other',
+            'status' => 'new',
+        ]);
+        $reportD->forceFill(['created_at' => now()->subDays(1)])->save();
+
+        // Simulate a duplicate submission bumping report C's last_reported_at
+        // while leaving its created_at untouched, so it no longer looks oldest.
+        $reportC->forceFill(['last_reported_at' => now()])->save();
+
+        $response = $this->get('/reports?sort=oldest');
+
+        $response->assertOk();
+        $ids = $response->viewData('reports')->pluck('id')->all();
+        $this->assertSame([$reportD->id, $reportC->id], $ids);
+    }
+
     public function test_index_orders_resolved_group_by_resolved_at_asc_for_oldest_sort(): void
     {
         $this->actingAs(User::factory()->create(['username' => 'tester']));
