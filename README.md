@@ -5,10 +5,12 @@
 ## Mục lục
 
 - [Chức năng chính](#chức-năng-chính)
-- [Cấu trúc dữ liệu](#cấu-trúc-dữ-liệu)
 - [Cách cài đặt](#cách-cài-đặt)
   - [Cài đặt trên VPS thuần (không qua panel)](#cài-đặt-trên-vps-thuần-không-qua-panel)
+    - [Cập nhật / deploy lại khi có code mới (VPS thuần)](#cập-nhật--deploy-lại-khi-có-code-mới-vps-thuần)
   - [Deploy qua aaPanel](#deploy-qua-aapanel)
+    - [Cập nhật / deploy lại khi có code mới (aaPanel)](#cập-nhật--deploy-lại-khi-có-code-mới-aapanel)
+- [Cấu trúc dữ liệu](#cấu-trúc-dữ-liệu)
 - [Một số tình huống gặp lỗi, cách xử lý, Q&A](#một-số-tình-huống-gặp-lỗi-cách-xử-lý-qa)
 
 ## Chức năng chính
@@ -27,16 +29,6 @@
 **Lưu ý**: URL public của video phụ thuộc vào việc bạn tự cấu hình bucket R2 public (custom domain hoặc `r2.dev` URL) trên Cloudflare dashboard rồi điền vào `R2_URL` (hoặc trường `r2_url` trong trang Cài đặt). Code không tự động public hoá bucket.
 
 Tính năng Report: trang phát video công khai (kể cả đặt ở domain khác) gửi lỗi về `POST /api/reports`. Muốn cho domain khác gọi API này, thêm domain đó vào `allowed_origins` trong `config/cors.php`.
-
-## Cấu trúc dữ liệu
-
-**`videos`** — mỗi dòng là 1 video: tiêu đề, tên/dung lượng file gốc, trạng thái xử lý (`status`: pending/processing/ready/failed, `stage`: queued/transcoding/uploading_r2/ready/failed, `progress` %), đường dẫn tới file HLS/thumbnail/storyboard trên R2, thông số kỹ thuật video output thật (độ phân giải, fps, bitrate, codec, thời lượng), và lỗi nếu xử lý thất bại.
-
-**`settings`** — bảng cấu hình, luôn chỉ có 1 dòng duy nhất (`id = 1`, lấy qua `Setting::current()`): thông tin R2 (có thể override biến `.env`), có xoá file trên R2 khi xoá video không, cấu hình transcode mặc định (độ phân giải/segment/fps), số video hiển thị mỗi trang, múi giờ hiển thị.
-
-**`users`** — tài khoản đăng nhập admin (username + password), theo cơ chế Auth chuẩn của Laravel.
-
-**`reports`** — báo lỗi phát video gửi từ trang public: URL trang đang phát, ghi chú người báo, IP, trạng thái (`new`/`resolved`), số lần bị báo trùng cùng URL (`report_count`), thời điểm báo gần nhất và thời điểm admin xử lý xong.
 
 ## Cách cài đặt
 
@@ -87,6 +79,20 @@ REVERB_HOST=domain-thật-của-bạn
 REVERB_PORT=443
 REVERB_SCHEME=https
 ```
+
+> Sinh 3 giá trị trên bằng 1 trong 2 cách:
+> ```bash
+> php artisan tinker --execute="echo Str::random(20);"   # REVERB_APP_KEY
+> php artisan tinker --execute="echo Str::random(32);"   # REVERB_APP_SECRET
+> php artisan tinker --execute="echo random_int(100000, 999999);"   # REVERB_APP_ID
+> ```
+> hoặc không cần `tinker`:
+> ```bash
+> openssl rand -hex 10   # REVERB_APP_ID
+> openssl rand -hex 20   # REVERB_APP_KEY
+> openssl rand -hex 32   # REVERB_APP_SECRET
+> ```
+> Không cần đăng ký ở đâu — chỉ cần 3 giá trị khác nhau và đủ ngẫu nhiên để client/server Reverb bắt tay với nhau.
 
 > Chỉ cần điền `FFMPEG_BINARY`/`FFPROBE_BINARY` nếu `which ffmpeg`/`which ffprobe` không trả về gì (không có sẵn trong `$PATH`).
 
@@ -361,6 +367,20 @@ REVERB_PORT=443
 REVERB_SCHEME=https
 ```
 
+> Sinh 3 giá trị trên bằng 1 trong 2 cách:
+> ```bash
+> /www/server/php/84/bin/php artisan tinker --execute="echo Str::random(20);"   # REVERB_APP_KEY
+> /www/server/php/84/bin/php artisan tinker --execute="echo Str::random(32);"   # REVERB_APP_SECRET
+> /www/server/php/84/bin/php artisan tinker --execute="echo random_int(100000, 999999);"   # REVERB_APP_ID
+> ```
+> hoặc không cần `tinker`:
+> ```bash
+> openssl rand -hex 10   # REVERB_APP_ID
+> openssl rand -hex 20   # REVERB_APP_KEY
+> openssl rand -hex 32   # REVERB_APP_SECRET
+> ```
+> Không cần đăng ký ở đâu — chỉ cần 3 giá trị khác nhau và đủ ngẫu nhiên để client/server Reverb bắt tay với nhau.
+
 **9. Sinh key, tạo bảng, tạo admin**
 
 ```bash
@@ -524,6 +544,16 @@ git pull
 | Restart scheduler | Gần như không bao giờ cần, trừ khi sửa `routes/console.php` hoặc lệnh cleanup |
 
 Không chắc có cần lệnh nào không thì cứ chạy hết — không hại gì.
+
+## Cấu trúc dữ liệu
+
+**`videos`** — mỗi dòng là 1 video: tiêu đề, tên/dung lượng file gốc, trạng thái xử lý (`status`: pending/processing/ready/failed, `stage`: queued/transcoding/uploading_r2/ready/failed, `progress` %), đường dẫn tới file HLS/thumbnail/storyboard trên R2, thông số kỹ thuật video output thật (độ phân giải, fps, bitrate, codec, thời lượng), và lỗi nếu xử lý thất bại.
+
+**`settings`** — bảng cấu hình, luôn chỉ có 1 dòng duy nhất (`id = 1`, lấy qua `Setting::current()`): thông tin R2 (có thể override biến `.env`), có xoá file trên R2 khi xoá video không, cấu hình transcode mặc định (độ phân giải/segment/fps), số video hiển thị mỗi trang, múi giờ hiển thị.
+
+**`users`** — tài khoản đăng nhập admin (username + password), theo cơ chế Auth chuẩn của Laravel.
+
+**`reports`** — báo lỗi phát video gửi từ trang public: URL trang đang phát, ghi chú người báo, IP, trạng thái (`new`/`resolved`), số lần bị báo trùng cùng URL (`report_count`), thời điểm báo gần nhất và thời điểm admin xử lý xong.
 
 ## Một số tình huống gặp lỗi, cách xử lý, Q&A
 

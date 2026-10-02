@@ -116,6 +116,12 @@
                 let isUploading = false;
                 const uploadedVideos = {};
 
+                window.__uploadQueueRegistry = window.__uploadQueueRegistry || {};
+
+                function generateQueueId() {
+                    return 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+                }
+
                 const LOG_CACHE_KEY = 'hls_upload_log_cache';
                 const LOG_CACHE_MAX_VIDEOS = 5;
                 const LOG_DISMISSED_KEY = 'hls_upload_log_dismissed';
@@ -424,6 +430,9 @@
                         if (!item.cleared && item.statusEl.textContent === 'Pending') {
                             item.cleared = true;
                             item.row.remove();
+                            if (item.queueId) {
+                                delete window.__uploadQueueRegistry[item.queueId];
+                            }
                             clearedCount++;
                         }
                     });
@@ -468,11 +477,14 @@
                     const transcodeBar = document.createElement('div');
                     transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full';
                     transcodeBar.style.width = '0%';
+                    transcodeBar.dataset.role = 'transcode-bar';
                     transcodeBarWrapper.appendChild(transcodeBar);
 
                     const transcodeStatusEl = document.createElement('p');
                     transcodeStatusEl.className = 'mt-1 text-xs text-gray-500';
+                    transcodeStatusEl.dataset.role = 'transcode-status';
 
+                    transcodeWrapper.dataset.role = 'transcode-wrapper';
                     transcodeWrapper.appendChild(transcodeLabel);
                     transcodeWrapper.appendChild(transcodeBarWrapper);
                     transcodeWrapper.appendChild(transcodeStatusEl);
@@ -480,9 +492,12 @@
                     return { wrapper: transcodeWrapper, bar: transcodeBar, statusEl: transcodeStatusEl };
                 }
 
-                function createQueueRow(name, size) {
+                function createQueueRow(name, size, queueId) {
                     const row = document.createElement('div');
                     row.className = 'rounded-lg border border-gray-200 p-3';
+                    if (queueId) {
+                        row.dataset.queueId = queueId;
+                    }
 
                     const header = document.createElement('div');
                     header.className = 'flex items-center justify-between text-sm';
@@ -508,10 +523,12 @@
                     const bar = document.createElement('div');
                     bar.className = 'bg-blue-600 h-2.5 rounded-full transition-[width] duration-300 ease-linear';
                     bar.style.width = '0%';
+                    bar.dataset.role = 'upload-bar';
                     barWrapper.appendChild(bar);
 
                     const statusEl = document.createElement('p');
                     statusEl.className = 'mt-1 text-xs text-gray-500';
+                    statusEl.dataset.role = 'upload-status';
                     statusEl.textContent = 'Pending';
 
                     row.appendChild(header);
@@ -530,14 +547,29 @@
                         transcodeWrapper: transcodeSection.wrapper,
                         transcodeBar: transcodeSection.bar,
                         transcodeStatusEl: transcodeSection.statusEl,
+                        queueId: queueId || null,
                     };
                 }
 
                 function buildQueueUI(files) {
                     const items = files.map(function (file) {
-                        const item = createQueueRow(file.name, file.size);
+                        const queueId = generateQueueId();
+                        const item = createQueueRow(file.name, file.size, queueId);
                         item.file = file;
                         queueList.appendChild(item.row);
+
+                        window.__uploadQueueRegistry[queueId] = {
+                            queueId: queueId,
+                            title: file.name,
+                            size: file.size,
+                            status: 'pending',
+                            uploadPercent: 0,
+                            statusText: 'Pending',
+                            videoId: null,
+                            stage: null,
+                            progress: 0,
+                        };
+
                         return item;
                     });
 
@@ -546,13 +578,42 @@
                     return items;
                 }
 
+                function findLiveQueueRow(queueId) {
+                    return queueId ? document.querySelector('[data-queue-id="' + queueId + '"]') : null;
+                }
+
                 function setItemProgress(item, percent) {
-                    item.bar.style.width = percent + '%';
-                    item.statusEl.textContent = 'Uploading — ' + percent + '%';
+                    const liveRow = findLiveQueueRow(item.queueId);
+                    const bar = liveRow ? liveRow.querySelector('[data-role="upload-bar"]') : item.bar;
+                    const statusEl = liveRow ? liveRow.querySelector('[data-role="upload-status"]') : item.statusEl;
+                    const text = 'Uploading — ' + percent + '%';
+
+                    if (bar) {
+                        bar.style.width = percent + '%';
+                    }
+                    if (statusEl) {
+                        statusEl.textContent = text;
+                    }
+
+                    if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
+                        const entry = window.__uploadQueueRegistry[item.queueId];
+                        entry.status = 'uploading';
+                        entry.uploadPercent = percent;
+                        entry.statusText = text;
+                    }
                 }
 
                 function setItemStatus(item, text) {
-                    item.statusEl.textContent = text;
+                    const liveRow = findLiveQueueRow(item.queueId);
+                    const statusEl = liveRow ? liveRow.querySelector('[data-role="upload-status"]') : item.statusEl;
+
+                    if (statusEl) {
+                        statusEl.textContent = text;
+                    }
+
+                    if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
+                        window.__uploadQueueRegistry[item.queueId].statusText = text;
+                    }
                 }
 
                 async function uploadFile(item) {
@@ -560,6 +621,9 @@
                     const title = fileInput.files.length > 1 ? '' : titleInput.value;
 
                     setItemStatus(item, 'Uploading...');
+                    if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
+                        window.__uploadQueueRegistry[item.queueId].status = 'uploading';
+                    }
                     const uploadStartTime = new Date().toLocaleTimeString();
                     appendLog('Uploading ' + file.name + '...');
 
@@ -626,9 +690,26 @@
                             status: 'pending',
                             stage: null,
                             progress: 0,
+                            queueId: item.queueId,
                         };
-                        item.transcodeWrapper.classList.remove('hidden');
-                        item.transcodeStatusEl.textContent = 'Queued for processing...';
+
+                        const liveRowAfterComplete = findLiveQueueRow(item.queueId);
+                        const transcodeWrapper = liveRowAfterComplete ? liveRowAfterComplete.querySelector('[data-role="transcode-wrapper"]') : item.transcodeWrapper;
+                        const transcodeStatusEl = liveRowAfterComplete ? liveRowAfterComplete.querySelector('[data-role="transcode-status"]') : item.transcodeStatusEl;
+                        if (transcodeWrapper) {
+                            transcodeWrapper.classList.remove('hidden');
+                        }
+                        if (transcodeStatusEl) {
+                            transcodeStatusEl.textContent = 'Queued for processing...';
+                        }
+
+                        if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
+                            const regEntry = window.__uploadQueueRegistry[item.queueId];
+                            regEntry.videoId = completeData.video_id;
+                            regEntry.status = 'pending';
+                            regEntry.stage = null;
+                            regEntry.progress = 0;
+                        }
 
                         recordLogEntry(completeData.video_id, 'Uploading ' + file.name + '...', null, uploadStartTime);
                         recordLogEntry(completeData.video_id, 'Finishing upload for ' + file.name + '...', null, processingStartTime);
@@ -699,6 +780,9 @@
                         } catch (err) {
                             setItemStatus(item, 'Error: ' + (err.message || 'An error occurred during upload.'));
                             appendLog(item.file.name + ' failed: ' + (err.message || 'An error occurred during upload.'));
+                            if (item.queueId) {
+                                delete window.__uploadQueueRegistry[item.queueId];
+                            }
                         }
                     }
 
@@ -754,6 +838,83 @@
                     updateQueueEmptyState();
                 }
 
+                // Builds (or reuses, if already present in the live DOM) the uploadedVideos[videoId]
+                // entry for a registry entry that already has a videoId. Shared by rebuildQueueFromRegistry()
+                // (adoption at script startup) and applyStatusSnapshot() (adoption on the fly, when a status
+                // update arrives for a video this script instance doesn't know about yet).
+                function adoptRegistryEntry(registryEntry) {
+                    let item;
+                    const liveRow = findLiveQueueRow(registryEntry.queueId);
+
+                    if (liveRow) {
+                        item = {
+                            row: liveRow,
+                            bar: liveRow.querySelector('[data-role="upload-bar"]'),
+                            statusEl: liveRow.querySelector('[data-role="upload-status"]'),
+                            transcodeWrapper: liveRow.querySelector('[data-role="transcode-wrapper"]'),
+                            transcodeBar: liveRow.querySelector('[data-role="transcode-bar"]'),
+                            transcodeStatusEl: liveRow.querySelector('[data-role="transcode-status"]'),
+                            cleared: false,
+                            queueId: registryEntry.queueId,
+                        };
+                    } else {
+                        item = createQueueRow(registryEntry.title, registryEntry.size, registryEntry.queueId);
+                        queueList.appendChild(item.row);
+                        currentQueueItems.push(item);
+                    }
+
+                    item.bar.style.width = '100%';
+                    item.statusEl.textContent = 'Done';
+                    item.transcodeWrapper.classList.remove('hidden');
+
+                    if (registryEntry.status === 'pending') {
+                        item.transcodeStatusEl.textContent = 'Queued for processing...';
+                    } else {
+                        item.transcodeBar.style.width = (registryEntry.progress || 0) + '%';
+                        item.transcodeStatusEl.textContent = formatStageStatus(registryEntry.stage || 'transcoding', registryEntry.progress || 0);
+                    }
+
+                    const entry = {
+                        title: registryEntry.title,
+                        item: item,
+                        status: registryEntry.status,
+                        stage: registryEntry.stage || null,
+                        progress: registryEntry.progress || 0,
+                        queueId: registryEntry.queueId,
+                    };
+
+                    uploadedVideos[registryEntry.videoId] = entry;
+
+                    return entry;
+                }
+
+                function rebuildQueueFromRegistry() {
+                    const registry = window.__uploadQueueRegistry;
+
+                    Object.keys(registry).forEach(function (queueId) {
+                        const entry = registry[queueId];
+
+                        // Already rendered via hydrateActiveVideos() from server-side DB state — avoid duplicating the row.
+                        if (entry.videoId && uploadedVideos[entry.videoId]) {
+                            return;
+                        }
+
+                        if (entry.videoId) {
+                            adoptRegistryEntry(entry);
+                            return;
+                        }
+
+                        const item = createQueueRow(entry.title, entry.size, queueId);
+                        queueList.appendChild(item.row);
+                        currentQueueItems.push(item);
+
+                        item.bar.style.width = (entry.uploadPercent || 0) + '%';
+                        item.statusEl.textContent = entry.statusText || 'Pending';
+                    });
+
+                    updateQueueEmptyState();
+                }
+
                 @php
                     $recentVideosForJs = $recentVideos->map(function ($video) {
                         return [
@@ -799,13 +960,26 @@
                 }
 
                 hydrateActiveVideos();
+                rebuildQueueFromRegistry();
                 hydrateRecentLog();
 
                 function activeVideoIds() {
-                    return Object.keys(uploadedVideos).filter(function (id) {
+                    const ids = Object.keys(uploadedVideos).filter(function (id) {
                         const v = uploadedVideos[id];
                         return v.status === 'pending' || v.status === 'processing';
                     });
+
+                    // Registry entries that already have a videoId but haven't been adopted into
+                    // uploadedVideos yet (see adoptRegistryEntry()) must still be included here, so a
+                    // manual resyncStatus() (e.g. the visibilitychange handler) can also trigger adoption
+                    // and catch-up, not just a live broadcast event.
+                    Object.values(window.__uploadQueueRegistry).forEach(function (registryEntry) {
+                        if (registryEntry.videoId && !uploadedVideos[registryEntry.videoId]) {
+                            ids.push(String(registryEntry.videoId));
+                        }
+                    });
+
+                    return Array.from(new Set(ids));
                 }
 
                 const MAX_RECONNECT_ATTEMPTS = 10;
@@ -901,7 +1075,18 @@
                 };
 
                 function applyStatusSnapshot(video) {
-                    const entry = uploadedVideos[video.id];
+                    let entry = uploadedVideos[video.id];
+
+                    if (!entry) {
+                        const registryEntry = Object.values(window.__uploadQueueRegistry).find(function (r) {
+                            return r.videoId === video.id;
+                        });
+
+                        if (registryEntry) {
+                            entry = adoptRegistryEntry(registryEntry);
+                        }
+                    }
+
                     if (!entry) {
                         return;
                     }
@@ -919,39 +1104,83 @@
                     entry.stage = video.stage;
                     entry.progress = video.progress;
 
+                    if (entry.queueId && window.__uploadQueueRegistry[entry.queueId]) {
+                        const regEntry = window.__uploadQueueRegistry[entry.queueId];
+                        regEntry.status = video.status;
+                        regEntry.stage = video.stage;
+                        regEntry.progress = video.progress;
+                    }
+
+                    function liveTranscodeEls() {
+                        if (!item) {
+                            return {};
+                        }
+                        const liveRow = findLiveQueueRow(item.queueId);
+                        return {
+                            row: liveRow || item.row,
+                            wrapper: liveRow ? liveRow.querySelector('[data-role="transcode-wrapper"]') : item.transcodeWrapper,
+                            bar: liveRow ? liveRow.querySelector('[data-role="transcode-bar"]') : item.transcodeBar,
+                            statusEl: liveRow ? liveRow.querySelector('[data-role="transcode-status"]') : item.transcodeStatusEl,
+                        };
+                    }
+
                     let message = null;
                     let logClass = null;
 
                     if (video.status === 'pending') {
                         message = entry.title + ' is queued for processing.';
                         if (item) {
-                            item.transcodeWrapper.classList.remove('hidden');
-                            item.transcodeStatusEl.textContent = 'Queued for processing...';
+                            const els = liveTranscodeEls();
+                            if (els.wrapper) {
+                                els.wrapper.classList.remove('hidden');
+                            }
+                            if (els.statusEl) {
+                                els.statusEl.textContent = 'Queued for processing...';
+                            }
                         }
                     } else if (video.status === 'processing') {
                         if (progressChanged || stageChanged) {
                             const statusText = formatStageStatus(video.stage, video.progress);
                             message = entry.title + ': ' + statusText;
                             if (item) {
-                                item.transcodeWrapper.classList.remove('hidden');
-                                item.transcodeBar.style.width = video.progress + '%';
-                                item.transcodeStatusEl.textContent = statusText;
+                                const els = liveTranscodeEls();
+                                if (els.wrapper) {
+                                    els.wrapper.classList.remove('hidden');
+                                }
+                                if (els.bar) {
+                                    els.bar.style.width = video.progress + '%';
+                                }
+                                if (els.statusEl) {
+                                    els.statusEl.textContent = statusText;
+                                }
                             }
                         }
                     } else if (video.status === 'ready') {
                         message = entry.title + ' finished transcoding.';
                         logClass = 'text-orange-600 font-medium';
                         if (item) {
-                            item.row.remove();
+                            const els = liveTranscodeEls();
+                            if (els.row) {
+                                els.row.remove();
+                            }
                             currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
                             updateQueueEmptyState();
+                        }
+                        if (entry.queueId) {
+                            delete window.__uploadQueueRegistry[entry.queueId];
                         }
                     } else if (video.status === 'failed') {
                         message = entry.title + ' failed to process.';
                         if (item) {
-                            item.row.remove();
+                            const els = liveTranscodeEls();
+                            if (els.row) {
+                                els.row.remove();
+                            }
                             currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
                             updateQueueEmptyState();
+                        }
+                        if (entry.queueId) {
+                            delete window.__uploadQueueRegistry[entry.queueId];
                         }
                     }
 
