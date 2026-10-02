@@ -81,20 +81,20 @@
                         </a>
                     </div>
                 </div>
-            </nav>
 
-            <div class="px-3 py-4">
-                <form action="{{ route('logout') }}" method="POST">
-                    @csrf
-                    <button type="submit"
-                            class="flex w-full items-center gap-2.5 rounded-xl bg-white border border-gray-200 shadow-sm px-2.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
-                        <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-red-50">
-                            <x-lucide-log-out class="w-4 h-4 text-red-600" />
-                        </span>
-                        Log out ({{ auth()->user()->username }})
-                    </button>
-                </form>
-            </div>
+                <div>
+                    <form action="{{ route('logout') }}" method="POST">
+                        @csrf
+                        <button type="submit" onclick="return confirmLogout(this.form)"
+                                class="flex w-full items-center gap-2.5 rounded-xl bg-white border border-gray-200 shadow-sm px-2.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-red-50">
+                                <x-lucide-log-out class="w-4 h-4 text-red-600" />
+                            </span>
+                            Log out ({{ auth()->user()->username }})
+                        </button>
+                    </form>
+                </div>
+            </nav>
         </aside>
 
         <div class="flex-1 flex flex-col">
@@ -199,7 +199,20 @@
                 const danger = options.danger !== false;
 
                 titleEl.textContent = options.title || '';
-                messageEl.textContent = options.message || '';
+                if (options.messageParts) {
+                    messageEl.textContent = '';
+                    options.messageParts.forEach(function (part) {
+                        if (part.bold) {
+                            const strong = document.createElement('strong');
+                            strong.textContent = part.text;
+                            messageEl.appendChild(strong);
+                        } else {
+                            messageEl.appendChild(document.createTextNode(part.text));
+                        }
+                    });
+                } else {
+                    messageEl.textContent = options.message || '';
+                }
                 cancelBtn.textContent = options.cancelText || 'Cancel';
                 confirmBtn.textContent = options.confirmText || 'Confirm';
 
@@ -248,7 +261,20 @@
                 }
             });
 
+            function confirmLogout(form) {
+                confirmDialog({ title: 'Log out', message: 'Are you sure you want to log out?', confirmText: 'Log out', danger: true }).then(function (ok) {
+                    if (!ok) return;
+                    const btn = form.querySelector('button[type="submit"]');
+                    btn.disabled = true;
+                    btn.textContent = 'Logging out...';
+                    btn.classList.add('opacity-60', 'cursor-not-allowed');
+                    form.submit();
+                });
+                return false;
+            }
+
             window.confirmDialog = confirmDialog;
+            window.confirmLogout = confirmLogout;
         })();
     </script>
 

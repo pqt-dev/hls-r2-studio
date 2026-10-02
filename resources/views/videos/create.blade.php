@@ -115,6 +115,7 @@
                 let currentQueueItems = [];
                 let isUploading = false;
                 const uploadedVideos = {};
+                const historyLoadedForVideoIds = new Set();
 
                 window.__uploadQueueRegistry = window.__uploadQueueRegistry || {};
 
@@ -122,30 +123,7 @@
                     return 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
                 }
 
-                const LOG_CACHE_KEY = 'hls_upload_log_cache';
-                const LOG_CACHE_MAX_VIDEOS = 5;
                 const LOG_DISMISSED_KEY = 'hls_upload_log_dismissed';
-
-                function loadLogCache() {
-                    try {
-                        const raw = localStorage.getItem(LOG_CACHE_KEY);
-                        if (!raw) {
-                            return { order: [], entries: {} };
-                        }
-                        const parsed = JSON.parse(raw);
-                        return { order: parsed.order || [], entries: parsed.entries || {} };
-                    } catch (e) {
-                        return { order: [], entries: {} };
-                    }
-                }
-
-                function saveLogCache(cache) {
-                    try {
-                        localStorage.setItem(LOG_CACHE_KEY, JSON.stringify(cache));
-                    } catch (e) {
-                        // localStorage unavailable (private mode, quota, etc.) — cache is best-effort only
-                    }
-                }
 
                 function loadDismissedLog() {
                     try {
@@ -166,25 +144,6 @@
                     } catch (e) {
                         // localStorage unavailable (private mode, quota, etc.) — cache is best-effort only
                     }
-                }
-
-                function recordLogEntry(videoId, message, logClass, time) {
-                    const cache = loadLogCache();
-                    const key = String(videoId);
-
-                    if (!cache.entries[key]) {
-                        cache.entries[key] = [];
-                        cache.order.push(key);
-                    }
-
-                    cache.entries[key].push({ message: message, logClass: logClass || null, time: time });
-
-                    while (cache.order.length > LOG_CACHE_MAX_VIDEOS) {
-                        const evicted = cache.order.shift();
-                        delete cache.entries[evicted];
-                    }
-
-                    saveLogCache(cache);
                 }
 
                 const transcodeStageLabels = {
@@ -280,6 +239,57 @@
                         }
                     }
                     throw lastError;
+                }
+
+                async function loadVideoHistory(videoId) {
+                    if (historyLoadedForVideoIds.has(videoId)) {
+                        return;
+                    }
+                    historyLoadedForVideoIds.add(videoId);
+
+                    let logs;
+                    try {
+                        logs = await fetchWithRetry('/videos/' + videoId + '/status-log', {
+                            headers: { 'Accept': 'application/json' },
+                        }, 1);
+                    } catch (err) {
+                        return; // best-effort; live events will still keep the UI current going forward
+                    }
+
+                    if (!Array.isArray(logs) || logs.length === 0) {
+                        return;
+                    }
+
+                    const entry = uploadedVideos[videoId];
+                    if (!entry) {
+                        return;
+                    }
+
+                    logs.forEach(function (log) {
+                        const time = new Date(log.created_at).toLocaleTimeString();
+                        let message = null;
+                        let logClass = null;
+
+                        if (log.status === 'pending') {
+                            message = entry.title + ' is queued for processing.';
+                        } else if (log.status === 'processing') {
+                            message = entry.title + ': ' + formatStageStatus(log.stage, log.progress);
+                        } else if (log.status === 'ready') {
+                            message = entry.title + ' finished transcoding.';
+                            logClass = 'text-orange-600 font-medium';
+                        } else if (log.status === 'failed') {
+                            message = entry.title + ' failed to process.';
+                        }
+
+                        if (message) {
+                            appendLog(message, logClass, time);
+                        }
+                    });
+
+                    const lastLog = logs[logs.length - 1];
+                    entry.status = lastLog.status;
+                    entry.stage = lastLog.stage;
+                    entry.progress = lastLog.progress;
                 }
 
                 function updateTitleVisibility() {
@@ -445,8 +455,6 @@
                 const clearLogBtn = document.getElementById('clear-log-btn');
 
                 clearLogBtn.addEventListener('click', function () {
-                    saveLogCache({ order: [], entries: {} });
-
                     const visibleIds = recentVideos.map(function (video) {
                         return String(video.id);
                     }).concat(Object.keys(uploadedVideos));
@@ -711,8 +719,7 @@
                             regEntry.progress = 0;
                         }
 
-                        recordLogEntry(completeData.video_id, 'Uploading ' + file.name + '...', null, uploadStartTime);
-                        recordLogEntry(completeData.video_id, 'Finishing upload for ' + file.name + '...', null, processingStartTime);
+                        loadVideoHistory(completeData.video_id);
                     }
 
                     setItemStatus(item, 'Done');
@@ -774,9 +781,6 @@
                             const videoId = await uploadFile(item);
                             successCount++;
                             appendLog(item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')', 'text-blue-600 font-medium');
-                            if (videoId) {
-                                recordLogEntry(videoId, item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')', 'text-blue-600 font-medium', new Date().toLocaleTimeString());
-                            }
                         } catch (err) {
                             setItemStatus(item, 'Error: ' + (err.message || 'An error occurred during upload.'));
                             appendLog(item.file.name + ' failed: ' + (err.message || 'An error occurred during upload.'));
@@ -833,6 +837,8 @@
                             stage: video.stage,
                             progress: video.progress,
                         };
+
+                        loadVideoHistory(video.id);
                     });
 
                     updateQueueEmptyState();
@@ -901,6 +907,7 @@
 
                         if (entry.videoId) {
                             adoptRegistryEntry(entry);
+                            loadVideoHistory(entry.videoId);
                             return;
                         }
 
@@ -929,39 +936,30 @@
                 @endphp
                 const recentVideos = @json($recentVideosForJs);
 
-                function hydrateRecentLog() {
-                    const cache = loadLogCache();
-                    const dismissedIds = loadDismissedLog();
-
-                    recentVideos.forEach(function (video) {
-                        const idKey = String(video.id);
-                        const cached = cache.entries[idKey];
-
-                        if (cached && cached.length > 0) {
-                            cached.forEach(function (entry) {
-                                appendLog(entry.message, entry.logClass, entry.time);
-                            });
-                            return;
-                        }
-
-                        if (dismissedIds.includes(idKey)) {
-                            return;
-                        }
-
-                        const name = video.title || video.original_filename;
-                        appendLog(name + ' uploaded successfully.', 'text-blue-600 font-medium', video.created_at);
-
-                        if (video.status === 'ready') {
-                            appendLog(name + ' finished transcoding.', 'text-orange-600 font-medium', video.updated_at);
-                        } else if (video.status === 'failed') {
-                            appendLog(name + ' failed to process.', null, video.updated_at);
-                        }
-                    });
-                }
-
                 hydrateActiveVideos();
                 rebuildQueueFromRegistry();
-                hydrateRecentLog();
+
+                const dismissedLogIds = loadDismissedLog();
+
+                recentVideos.forEach(function (video) {
+                    const videoIdStr = String(video.id);
+
+                    if (dismissedLogIds.includes(videoIdStr)) {
+                        return;
+                    }
+
+                    if (!uploadedVideos[video.id]) {
+                        uploadedVideos[video.id] = {
+                            title: video.title || video.original_filename,
+                            item: null,
+                            status: video.status,
+                            stage: null,
+                            progress: 0,
+                        };
+                    }
+
+                    loadVideoHistory(video.id);
+                });
 
                 function activeVideoIds() {
                     const ids = Object.keys(uploadedVideos).filter(function (id) {
@@ -1074,8 +1072,9 @@
                     document.removeEventListener('visibilitychange', handleVisibilityChange);
                 };
 
-                function applyStatusSnapshot(video) {
+                async function applyStatusSnapshot(video) {
                     let entry = uploadedVideos[video.id];
+                    let justAdopted = false;
 
                     if (!entry) {
                         const registryEntry = Object.values(window.__uploadQueueRegistry).find(function (r) {
@@ -1084,6 +1083,8 @@
 
                         if (registryEntry) {
                             entry = adoptRegistryEntry(registryEntry);
+                            justAdopted = true;
+                            await loadVideoHistory(registryEntry.videoId);
                         }
                     }
 
@@ -1092,9 +1093,9 @@
                     }
 
                     const item = entry.item;
-                    const statusChanged = entry.status !== video.status;
-                    const progressChanged = entry.progress !== video.progress;
-                    const stageChanged = entry.stage !== video.stage;
+                    const statusChanged = justAdopted || entry.status !== video.status;
+                    const progressChanged = justAdopted || entry.progress !== video.progress;
+                    const stageChanged = justAdopted || entry.stage !== video.stage;
 
                     if (!statusChanged && !progressChanged && !stageChanged) {
                         return;
@@ -1186,7 +1187,6 @@
 
                     if (message) {
                         appendLog(message, logClass);
-                        recordLogEntry(video.id, message, logClass, new Date().toLocaleTimeString());
                     }
                 }
             })();

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\TranscodeVideoJob;
 use App\Models\Setting;
 use App\Models\Video;
+use App\Models\VideoStatusLog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -251,6 +252,18 @@ class VideoController extends Controller
         $videos = Video::whereIn('id', $ids)->get(['id', 'status', 'stage', 'progress']);
 
         return response()->json($videos);
+    }
+
+    /**
+     * Return the full status/stage/progress history for the given video.
+     */
+    public function statusLog(Video $video)
+    {
+        $logs = VideoStatusLog::where('video_id', $video->id)
+            ->orderBy('created_at')
+            ->get(['status', 'stage', 'progress', 'created_at']);
+
+        return response()->json($logs);
     }
 
     /**

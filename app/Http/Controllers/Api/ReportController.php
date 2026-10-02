@@ -8,6 +8,7 @@ use App\Models\Video;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class ReportController extends Controller
 {
@@ -18,6 +19,7 @@ class ReportController extends Controller
     {
         $validated = $request->validate([
             'page_url' => ['required', 'url', 'max:2048'],
+            'reason' => ['nullable', 'string', Rule::in(array_keys(\App\Models\Report::REASONS))],
             'note' => ['nullable', 'string', 'max:1000'],
         ]);
 

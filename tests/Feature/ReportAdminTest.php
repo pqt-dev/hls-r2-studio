@@ -33,7 +33,7 @@ class ReportAdminTest extends TestCase
 
         $report = Report::create([
             'page_url' => 'https://toicovl.com/some-post',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
 
@@ -53,7 +53,7 @@ class ReportAdminTest extends TestCase
 
         $report = Report::create([
             'page_url' => 'https://toicovl.com/some-post-ajax',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
 
@@ -74,7 +74,7 @@ class ReportAdminTest extends TestCase
 
         $report = Report::create([
             'page_url' => 'https://toicovl.com/some-post-form',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
 
@@ -90,13 +90,13 @@ class ReportAdminTest extends TestCase
 
         $older = Report::create([
             'page_url' => 'https://toicovl.com/default-older',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $older->forceFill(['created_at' => now()->subDays(2)])->save();
         $newer = Report::create([
             'page_url' => 'https://toicovl.com/default-newer',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $newer->forceFill(['created_at' => now()->subDays(1)])->save();
@@ -114,13 +114,13 @@ class ReportAdminTest extends TestCase
 
         $older = Report::create([
             'page_url' => 'https://toicovl.com/older',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $older->forceFill(['created_at' => now()->subDays(2)])->save();
         $newer = Report::create([
             'page_url' => 'https://toicovl.com/newer',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $newer->forceFill(['created_at' => now()->subDays(1)])->save();
@@ -138,13 +138,13 @@ class ReportAdminTest extends TestCase
 
         $resolvedNewest = Report::create([
             'page_url' => 'https://toicovl.com/newest-sort-resolved',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
         ]);
         $resolvedNewest->forceFill(['created_at' => now()])->save();
         $newOlder = Report::create([
             'page_url' => 'https://toicovl.com/newest-sort-new',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $newOlder->forceFill(['created_at' => now()->subDays(5)])->save();
@@ -162,13 +162,13 @@ class ReportAdminTest extends TestCase
 
         $older = Report::create([
             'page_url' => 'https://toicovl.com/older2',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $older->forceFill(['created_at' => now()->subDays(2)])->save();
         $newer = Report::create([
             'page_url' => 'https://toicovl.com/newer2',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $newer->forceFill(['created_at' => now()->subDays(1)])->save();
@@ -186,13 +186,13 @@ class ReportAdminTest extends TestCase
 
         $resolvedOldest = Report::create([
             'page_url' => 'https://toicovl.com/oldest-sort-resolved',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
         ]);
         $resolvedOldest->forceFill(['created_at' => now()->subDays(10)])->save();
         $newNewer = Report::create([
             'page_url' => 'https://toicovl.com/oldest-sort-new',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
         ]);
         $newNewer->forceFill(['created_at' => now()])->save();
@@ -210,13 +210,13 @@ class ReportAdminTest extends TestCase
 
         $lowCount = Report::create([
             'page_url' => 'https://toicovl.com/low-count',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
             'report_count' => 1,
         ]);
         $highCount = Report::create([
             'page_url' => 'https://toicovl.com/high-count',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
             'report_count' => 8,
         ]);
@@ -234,13 +234,13 @@ class ReportAdminTest extends TestCase
 
         $resolvedHighCount = Report::create([
             'page_url' => 'https://toicovl.com/most-reported-resolved',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
             'report_count' => 20,
         ]);
         $newLowCount = Report::create([
             'page_url' => 'https://toicovl.com/most-reported-new',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'new',
             'report_count' => 1,
         ]);
@@ -258,7 +258,7 @@ class ReportAdminTest extends TestCase
 
         $resolvedLongAgoHighCount = Report::create([
             'page_url' => 'https://toicovl.com/resolved-long-ago-high-count',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
             'report_count' => 20,
         ]);
@@ -269,7 +269,7 @@ class ReportAdminTest extends TestCase
 
         $resolvedRecentlyLowCount = Report::create([
             'page_url' => 'https://toicovl.com/resolved-recently-low-count',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
             'report_count' => 1,
         ]);
@@ -291,7 +291,7 @@ class ReportAdminTest extends TestCase
 
         $resolvedLongAgoButCreatedRecently = Report::create([
             'page_url' => 'https://toicovl.com/resolved-created-recently',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
         ]);
         $resolvedLongAgoButCreatedRecently->forceFill([
@@ -301,7 +301,7 @@ class ReportAdminTest extends TestCase
 
         $resolvedRecentlyButCreatedLongAgo = Report::create([
             'page_url' => 'https://toicovl.com/resolved-created-long-ago',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
         ]);
         $resolvedRecentlyButCreatedLongAgo->forceFill([
@@ -322,7 +322,7 @@ class ReportAdminTest extends TestCase
 
         $resolvedRecentlyButCreatedLongAgo = Report::create([
             'page_url' => 'https://toicovl.com/oldest-sort-resolved-recently',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
         ]);
         $resolvedRecentlyButCreatedLongAgo->forceFill([
@@ -332,7 +332,7 @@ class ReportAdminTest extends TestCase
 
         $resolvedLongAgoButCreatedRecently = Report::create([
             'page_url' => 'https://toicovl.com/oldest-sort-resolved-long-ago',
-            'reason' => 'playback_error',
+            'reason' => 'other',
             'status' => 'resolved',
         ]);
         $resolvedLongAgoButCreatedRecently->forceFill([

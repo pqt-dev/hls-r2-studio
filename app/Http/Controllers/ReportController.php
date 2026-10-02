@@ -34,12 +34,13 @@ class ReportController extends Controller
                     $q->where('page_url', 'like', "%{$search}%")
                         ->orWhere('note', 'like', "%{$search}%");
                 });
-            });
+            })
+            ->orderByRaw("CASE WHEN status = 'resolved' THEN 1 ELSE 0 END ASC");
 
         match ($sort) {
-            'oldest' => $query->orderBy('created_at', 'asc')->orderBy('id', 'asc'),
-            'most_reported' => $query->orderBy('report_count', 'desc')->orderBy('created_at', 'desc')->orderBy('id', 'desc'),
-            default => $query->orderBy('created_at', 'desc')->orderBy('id', 'desc'), // 'newest'
+            'oldest' => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END ASC")->orderBy('id', 'asc'),
+            'most_reported' => $query->orderBy('report_count', 'desc')->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END DESC")->orderBy('id', 'desc'),
+            default => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE created_at END DESC")->orderBy('id', 'desc'), // 'newest'
         };
 
         $reports = $query->paginate(Setting::current()->videos_per_page);

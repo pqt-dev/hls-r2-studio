@@ -7,8 +7,17 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Report extends Model
 {
+    public const REASONS = [
+        'not_playing' => 'Not playing',
+        'lag' => 'Lag / buffering',
+        'no_audio' => 'No audio / audio out of sync',
+        'wrong_video' => 'Wrong video',
+        'other' => 'Other',
+    ];
+
     protected $fillable = [
         'page_url',
+        'reason',
         'video_id',
         'note',
         'reporter_ip',

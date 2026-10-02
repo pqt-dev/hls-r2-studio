@@ -35,6 +35,46 @@ class ReportApiTest extends TestCase
         $response->assertJsonValidationErrors('page_url');
     }
 
+    public function test_valid_reason_is_persisted(): void
+    {
+        $response = $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'lag',
+        ]);
+
+        $response->assertStatus(201);
+
+        $this->assertDatabaseHas('reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'lag',
+        ]);
+    }
+
+    public function test_invalid_reason_returns_422(): void
+    {
+        $response = $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'bogus_value',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('reason');
+    }
+
+    public function test_missing_reason_still_succeeds(): void
+    {
+        $response = $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+        ]);
+
+        $response->assertStatus(201);
+
+        $this->assertDatabaseHas('reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => null,
+        ]);
+    }
+
     public function test_sixth_report_within_ten_minutes_is_throttled(): void
     {
         for ($i = 0; $i < 5; $i++) {

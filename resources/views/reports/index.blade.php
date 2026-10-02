@@ -98,6 +98,7 @@
                 <thead class="bg-gray-50">
                     <tr>
                         <th class="px-3 py-2 text-left">Page URL</th>
+                        <th class="px-3 py-2 text-left">Reason</th>
                         <th class="px-3 py-2 text-left">Note</th>
                         <th class="px-3 py-2 text-left">Status</th>
                         <th class="px-3 py-2 text-left">Reports</th>
@@ -128,6 +129,7 @@
                                     </div>
                                 @endif
                             </td>
+                            <td class="px-3 py-2 text-gray-500">{{ \App\Models\Report::REASONS[$report->reason] ?? ($report->reason ?? '—') }}</td>
                             <td class="px-3 py-2 text-gray-500 max-w-xs truncate" title="{{ $report->note }}">{{ $report->note }}</td>
                             <td class="px-3 py-2" data-status-cell>
                                 <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium {{ $badge[0] }}">

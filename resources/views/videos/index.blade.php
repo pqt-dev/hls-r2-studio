@@ -239,8 +239,17 @@
     <script>
         (function () {
             function confirmDelete(form, title) {
-                const message = @json($deleteFromR2 ? 'Delete "{TITLE}"? The file on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete "{TITLE}"?');
-                window.confirmDialog({ title: 'Delete video', message: message.replace('{TITLE}', title), confirmText: 'Delete', danger: true }).then(function (ok) {
+                const suffix = @json($deleteFromR2 ? ' The file on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : '');
+                window.confirmDialog({
+                    title: 'Delete video',
+                    messageParts: [
+                        { text: 'Delete ' },
+                        { text: title, bold: true },
+                        { text: '?' + suffix }
+                    ],
+                    confirmText: 'Delete',
+                    danger: true
+                }).then(function (ok) {
                     if (!ok) return;
                     const btn = form.querySelector('button[type="submit"]');
                     btn.disabled = true;
