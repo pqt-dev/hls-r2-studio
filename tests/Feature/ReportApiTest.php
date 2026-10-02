@@ -139,6 +139,26 @@ class ReportApiTest extends TestCase
         Carbon::setTestNow();
     }
 
+    public function test_duplicate_report_overwrites_reason_with_latest_value(): void
+    {
+        $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'not_playing',
+        ])->assertStatus(201);
+
+        $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'lag',
+        ])->assertStatus(201);
+
+        $this->assertDatabaseCount('reports', 1);
+        $this->assertDatabaseHas('reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'report_count' => 2,
+            'reason' => 'lag',
+        ]);
+    }
+
     public function test_report_for_resolved_page_url_creates_new_record(): void
     {
         $this->postJson('/api/reports', [

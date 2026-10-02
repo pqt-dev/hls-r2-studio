@@ -36,6 +36,7 @@ class ReportController extends Controller
                 $existing->update([
                     'last_reported_at' => now(),
                     'reporter_ip' => $request->ip(),
+                    'reason' => $validated['reason'] ?? null,
                 ]);
 
                 return;
@@ -63,6 +64,7 @@ class ReportController extends Controller
                 $existing->update([
                     'last_reported_at' => now(),
                     'reporter_ip' => $request->ip(),
+                    'reason' => $validated['reason'] ?? null,
                 ]);
             }
         });
