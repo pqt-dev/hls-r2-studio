@@ -17,6 +17,22 @@
             width: 100%;
             height: 100%;
         }
+
+        @media (hover: hover) and (pointer: fine) {
+            #embed-player .art-video-player .art-controls .art-control {
+                min-width: 36px;
+            }
+        }
+
+        #embed-player .art-video-player .art-controls .art-controls-right {
+            flex-shrink: 0;
+        }
+
+        @media (max-width: 380px) {
+            #embed-player .art-video-player .art-controls .art-control-time {
+                display: none;
+            }
+        }
     </style>
 </head>
 <body>
@@ -59,10 +75,7 @@
                 customType: {
                     m3u8: playM3u8,
                 },
-                playbackRate: true,
-                setting: true,
                 fullscreen: true,
-                fullscreenWeb: true,
                 pip: true,
                 notice: false,
                 autoplay: {{ \Illuminate\Support\Js::from($autoplay) }},
