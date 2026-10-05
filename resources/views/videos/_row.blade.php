@@ -102,17 +102,9 @@
         <div class="inline-flex items-center gap-2">
             @if ($video->status === 'ready' && $playlistUrl)
                 <button type="button"
-                        onclick="openEmbedModal({{ \Illuminate\Support\Js::from($embedUrl) }}, {{ \Illuminate\Support\Js::from($video->public_url) }}, {{ \Illuminate\Support\Js::from($embedAspectRatio) }}, {{ \Illuminate\Support\Js::from($video->title) }})"
+                        onclick="openEmbedModal({{ \Illuminate\Support\Js::from($embedUrl) }}, {{ \Illuminate\Support\Js::from($video->public_url) }}, {{ \Illuminate\Support\Js::from($embedAspectRatio) }}, {{ \Illuminate\Support\Js::from($video->title) }}, {{ \Illuminate\Support\Js::from($previewImages) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-code class="w-3.5 h-3.5" /> Embed
-                </button>
-            @endif
-
-            @if ($previewImages)
-                <button type="button"
-                        onclick="openPreviewModal({{ \Illuminate\Support\Js::from($previewImages) }}, {{ \Illuminate\Support\Js::from($video->title) }})"
-                        class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
-                    <x-lucide-images class="w-3.5 h-3.5" /> Images
+                    <x-lucide-code class="w-3.5 h-3.5" /> Embed &amp; Images
                 </button>
             @endif
 

@@ -129,7 +129,7 @@
         <div class="bg-white rounded-2xl overflow-hidden w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-xl">
             <div class="flex items-center justify-between px-5 py-4 border-b border-gray-200">
                 <div>
-                    <h3 class="text-base font-semibold text-gray-900">Player / Embed</h3>
+                    <h3 class="text-base font-semibold text-gray-900">Player / Embed &amp; Images</h3>
                     <p id="embed-modal-title" class="text-xs text-gray-500"></p>
                 </div>
                 <button type="button" onclick="closeEmbedModal()" class="text-gray-400 hover:text-gray-600">
@@ -148,7 +148,7 @@
                         <input id="embed-modal-url" type="text" readonly
                                class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700 bg-gray-50">
                         <button type="button" onclick="copyModalField('embed-modal-url', this)"
-                                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 shrink-0">
+                                class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100 shrink-0">
                             <x-lucide-copy class="w-3.5 h-3.5" /> Copy
                         </button>
                     </div>
@@ -160,7 +160,7 @@
                         <input id="embed-modal-m3u8" type="text" readonly
                                class="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-xs text-gray-700 bg-gray-50">
                         <button type="button" onclick="copyModalField('embed-modal-m3u8', this)"
-                                class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100 shrink-0">
+                                class="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-medium text-blue-700 hover:bg-blue-100 shrink-0">
                             <x-lucide-copy class="w-3.5 h-3.5" /> Copy
                         </button>
                     </div>
@@ -184,23 +184,16 @@
                               class="w-full rounded-lg border border-gray-300 px-3 py-2 text-xs font-mono text-gray-700 bg-gray-50 resize-none"></textarea>
                     <p class="mt-1 text-xs text-gray-400">Browsers may block autoplay with sound unless Mute is also enabled.</p>
                     <button type="button" onclick="copyModalField('embed-modal-code', this)"
-                            class="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-800">
+                            class="mt-2 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100">
                         <x-lucide-copy class="w-3.5 h-3.5" /> Copy Iframe Code
                     </button>
                 </div>
-            </div>
-        </div>
-    </div>
 
-    <div id="preview-modal" class="fixed inset-0 z-50 hidden overflow-y-auto bg-black/70 p-4">
-        <div class="bg-white rounded-xl overflow-hidden w-full max-w-4xl mx-auto my-8 flex flex-col">
-            <div class="flex items-center justify-between px-4 py-2 bg-gray-900 text-white sticky top-0">
-                <span id="preview-modal-title" class="text-sm font-medium"></span>
-                <button type="button" onclick="closePreviewModal()" class="text-gray-300 hover:text-white">
-                    <x-lucide-x class="w-5 h-5" />
-                </button>
+                <div id="embed-modal-images-section" class="hidden">
+                    <label class="block text-xs font-medium text-gray-700 mb-1">Images</label>
+                    <div id="embed-modal-images" class="grid grid-cols-2 gap-3"></div>
+                </div>
             </div>
-            <div id="preview-modal-body" class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4"></div>
         </div>
     </div>
 
@@ -286,7 +279,46 @@
                 document.getElementById('embed-modal-code').value = buildEmbedIframeCode(embedModalState.embedUrl, embedModalState.aspectRatio, muted, autoplay);
             }
 
-            function openEmbedModal(embedUrl, publicUrl, aspectRatio, title) {
+            function buildImageCard(image) {
+                const card = document.createElement('div');
+                card.className = 'flex flex-col rounded-lg border border-gray-200 overflow-hidden';
+
+                const label = document.createElement('div');
+                label.className = 'px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600';
+                label.textContent = image.label;
+
+                const link = document.createElement('a');
+                link.href = image.url;
+                link.target = '_blank';
+                link.rel = 'noopener noreferrer';
+                link.className = 'block aspect-square overflow-hidden bg-gray-100';
+
+                const img = document.createElement('img');
+                img.src = image.url;
+                img.alt = image.label;
+                img.loading = 'lazy';
+                img.className = 'w-full h-full object-cover';
+                link.appendChild(img);
+
+                const actions = document.createElement('div');
+                actions.className = 'flex justify-center px-3 py-2 border-t border-gray-200';
+
+                const copyButton = document.createElement('button');
+                copyButton.type = 'button';
+                copyButton.className = 'inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 hover:bg-blue-100';
+                copyButton.textContent = 'Copy Link';
+                copyButton.addEventListener('click', function () {
+                    copyThumbnailUrl(copyButton, image.url);
+                });
+
+                actions.appendChild(copyButton);
+                card.appendChild(label);
+                card.appendChild(link);
+                card.appendChild(actions);
+                return card;
+            }
+
+            function openEmbedModal(embedUrl, publicUrl, aspectRatio, title, images) {
                 embedModalState = { embedUrl: embedUrl, aspectRatio: aspectRatio };
 
                 document.getElementById('embed-modal-title').textContent = title;
@@ -297,6 +329,14 @@
 
                 refreshEmbedModal();
 
+                const imagesSection = document.getElementById('embed-modal-images-section');
+                const imagesGrid = document.getElementById('embed-modal-images');
+                imagesGrid.innerHTML = '';
+                (images || []).forEach(function (image) {
+                    imagesGrid.appendChild(buildImageCard(image));
+                });
+                imagesSection.classList.toggle('hidden', !(images && images.length));
+
                 const modal = document.getElementById('embed-modal');
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
@@ -305,6 +345,8 @@
             function closeEmbedModal() {
                 document.getElementById('embed-modal-preview').src = '';
                 embedModalState = null;
+                document.getElementById('embed-modal-images').innerHTML = '';
+                document.getElementById('embed-modal-images-section').classList.add('hidden');
 
                 const modal = document.getElementById('embed-modal');
                 modal.classList.add('hidden');
@@ -321,60 +363,6 @@
                 setTimeout(function () {
                     button.innerHTML = originalHTML;
                 }, 1500);
-            }
-
-            function openPreviewModal(images, title) {
-                const modal = document.getElementById('preview-modal');
-                const body = document.getElementById('preview-modal-body');
-                document.getElementById('preview-modal-title').textContent = title;
-                body.innerHTML = '';
-
-                images.forEach(function (image) {
-                    const card = document.createElement('div');
-                    card.className = 'flex flex-col rounded-lg border border-gray-200 overflow-hidden';
-
-                    const label = document.createElement('div');
-                    label.className = 'px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600';
-                    label.textContent = image.label;
-
-                    const link = document.createElement('a');
-                    link.href = image.url;
-                    link.target = '_blank';
-                    link.rel = 'noopener noreferrer';
-                    link.className = 'block bg-gray-100';
-
-                    const img = document.createElement('img');
-                    img.src = image.url;
-                    img.alt = image.label;
-                    img.loading = 'lazy';
-                    img.className = 'w-full h-56 object-contain';
-                    link.appendChild(img);
-
-                    const actions = document.createElement('div');
-                    actions.className = 'px-3 py-2 border-t border-gray-200';
-
-                    const copyButton = document.createElement('button');
-                    copyButton.type = 'button';
-                    copyButton.className = 'inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100';
-                    copyButton.textContent = 'Copy Link';
-                    copyButton.addEventListener('click', function () {
-                        copyThumbnailUrl(copyButton, image.url);
-                    });
-
-                    actions.appendChild(copyButton);
-                    card.appendChild(label);
-                    card.appendChild(link);
-                    card.appendChild(actions);
-                    body.appendChild(card);
-                });
-
-                modal.classList.remove('hidden');
-            }
-
-            function closePreviewModal() {
-                const modal = document.getElementById('preview-modal');
-                document.getElementById('preview-modal-body').innerHTML = '';
-                modal.classList.add('hidden');
             }
 
             function openEditModal(videoId, title) {
@@ -395,7 +383,7 @@
             function copyThumbnailUrl(button, url) {
                 navigator.clipboard.writeText(url);
 
-                const originalClasses = ['border-gray-200', 'bg-gray-50', 'text-gray-700'];
+                const originalClasses = ['border-blue-200', 'bg-blue-50', 'text-blue-700', 'hover:bg-blue-100'];
                 const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
 
                 button.classList.remove(...originalClasses);
@@ -439,6 +427,18 @@
                 });
                 return false;
             }
+
+            const embedModalOverlay = document.getElementById('embed-modal');
+            let embedModalMouseDownOnOverlay = false;
+            embedModalOverlay.addEventListener('mousedown', function (event) {
+                embedModalMouseDownOnOverlay = event.target === embedModalOverlay;
+            });
+            embedModalOverlay.addEventListener('click', function (event) {
+                if (event.target === embedModalOverlay && embedModalMouseDownOnOverlay) {
+                    closeEmbedModal();
+                }
+                embedModalMouseDownOnOverlay = false;
+            });
 
             document.getElementById('embed-modal-mute').addEventListener('change', refreshEmbedModal);
             document.getElementById('embed-modal-autoplay').addEventListener('change', refreshEmbedModal);
@@ -510,8 +510,6 @@
             // onclick/onsubmit attributes in the markup.
             window.confirmDelete = confirmDelete;
             window.confirmBulkDelete = confirmBulkDelete;
-            window.openPreviewModal = openPreviewModal;
-            window.closePreviewModal = closePreviewModal;
             window.openEditModal = openEditModal;
             window.closeEditModal = closeEditModal;
             window.copyThumbnailUrl = copyThumbnailUrl;
