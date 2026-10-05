@@ -139,7 +139,7 @@
 
             <div class="p-5 space-y-4">
                 <div class="rounded-xl overflow-hidden bg-black">
-                    <iframe id="embed-modal-preview" class="w-full aspect-video" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>
+                    <iframe id="embed-modal-preview" class="block w-full mx-auto" style="max-height:45vh; border:0;" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>
                 </div>
 
                 <div>
@@ -267,7 +267,7 @@
                 if (autoplay) params.push('autoplay=1');
                 if (muted) params.push('muted=1');
                 const src = embedUrl + (params.length ? '?' + params.join('&') : '');
-                return '<iframe src="' + src + '" style="width:100%; aspect-ratio:' + aspectRatio + '; max-height:60vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
+                return '<iframe src="' + src + '" style="width:100%; aspect-ratio:' + aspectRatio + '; max-height:45vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
             }
 
             function refreshEmbedModal() {
@@ -280,7 +280,9 @@
                 if (muted) params.push('muted=1');
                 const previewSrc = embedModalState.embedUrl + (params.length ? '?' + params.join('&') : '');
 
-                document.getElementById('embed-modal-preview').src = previewSrc;
+                const previewFrame = document.getElementById('embed-modal-preview');
+                previewFrame.style.aspectRatio = embedModalState.aspectRatio;
+                previewFrame.src = previewSrc;
                 document.getElementById('embed-modal-code').value = buildEmbedIframeCode(embedModalState.embedUrl, embedModalState.aspectRatio, muted, autoplay);
             }
 

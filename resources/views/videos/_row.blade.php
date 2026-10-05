@@ -12,7 +12,7 @@
     $thumbnailUrl = $video->thumbnail_path ? Storage::disk('r2')->url($video->thumbnail_path) : null;
     $playlistUrl = $video->playlist_path ? Storage::disk('r2')->url($video->playlist_path) : null;
 
-    $embedAspectRatio = ($video->output_width && $video->output_height)
+    $embedAspectRatio = ($video->output_width && $video->output_height && $video->output_width > $video->output_height)
         ? "{$video->output_width} / {$video->output_height}"
         : '16 / 9';
 
