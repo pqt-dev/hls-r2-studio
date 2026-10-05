@@ -1,46 +1,50 @@
 # HLS R2 Studio
 
-Ứng dụng quản lý video nội bộ: upload video → băm sang HLS bằng FFmpeg → lưu trên Cloudflare R2 → phát qua HLS.js. Có dashboard, nhật ký upload, trang cài đặt và tính năng nhận báo lỗi phát video từ người xem.
+**English** | [Tiếng Việt](README.vi.md)
 
-## Mục lục
+Internal video management app: upload a video → transcode it to HLS with FFmpeg → store it on Cloudflare R2 → play it via HLS.js. Includes a dashboard, an upload log, a settings page, and a feature for receiving video playback error reports from viewers.
 
-- [Chức năng chính](#chức-năng-chính)
-- [Cách cài đặt](#cách-cài-đặt)
-  - [Cài đặt trên VPS thuần (không qua panel)](#cài-đặt-trên-vps-thuần-không-qua-panel)
-    - [Cập nhật / deploy lại khi có code mới (VPS thuần)](#cập-nhật--deploy-lại-khi-có-code-mới-vps-thuần)
-  - [Deploy qua aaPanel](#deploy-qua-aapanel)
-    - [Cập nhật / deploy lại khi có code mới (aaPanel)](#cập-nhật--deploy-lại-khi-có-code-mới-aapanel)
-- [Cấu trúc dữ liệu](#cấu-trúc-dữ-liệu)
-- [Một số tình huống gặp lỗi, cách xử lý, Q&A](#một-số-tình-huống-gặp-lỗi-cách-xử-lý-qa)
+## Table of Contents
 
-## Chức năng chính
+- [Main Features](#main-features)
+- [Installation](#installation)
+  - [Plain VPS Installation (No Panel)](#plain-vps-installation-no-panel)
+    - [Updating / Redeploying with New Code (Plain VPS)](#updating--redeploying-with-new-code-plain-vps)
+  - [Deploying with aaPanel](#deploying-with-aapanel)
+    - [Updating / Redeploying with New Code (aaPanel)](#updating--redeploying-with-new-code-aapanel)
+- [Data Structure](#data-structure)
+- [Common Errors, Fixes, and Q&A](#common-errors-fixes-and-qa)
 
-- Đăng nhập admin
-- Upload video (đơn lẻ/nhiều file, hỗ trợ file lớn qua chunk-upload)
-- Băm HLS bằng FFmpeg, tuỳ chỉnh chất lượng (480/720/1080p), độ dài segment, FPS
-- Lưu lên Cloudflare R2, phát bằng HLS.js
-- Dashboard tổng quan (CPU/RAM/Disk server + thống kê video)
-- Trang Nhật ký (lịch sử upload) và tiến độ transcode theo thời gian thực (qua Reverb/WebSocket)
-- Trang Cài đặt (đổi mật khẩu, cấu hình R2 động, tuỳ chọn xử lý, số video/trang, múi giờ hiển thị)
-- Danh sách video dạng bảng, phân trang, xoá hàng loạt, hiển thị thông số kỹ thuật (độ phân giải, fps, codec, bitrate, dung lượng)
-- Chạy nhiều worker song song để băm nhiều video cùng lúc
-- Nhận báo lỗi phát video (Report) từ trang public qua API, admin xem/đánh dấu đã xử lý
+## Main Features
 
-**Lưu ý**: URL public của video phụ thuộc vào việc bạn tự cấu hình bucket R2 public (custom domain hoặc `r2.dev` URL) trên Cloudflare dashboard rồi điền vào `R2_URL` (hoặc trường `r2_url` trong trang Cài đặt). Code không tự động public hoá bucket.
+- Admin login
+- Video upload (single/multiple files, large files supported via chunk-upload)
+- HLS transcoding with FFmpeg, with adjustable output resolution (480p/720p/1080p presets that cap the output width at 854/1280/1920 px), segment length (2–15 seconds), and FPS (15–60, or blank to keep the original FPS)
+- Storage on Cloudflare R2, playback with HLS.js
+- Overview dashboard (server CPU/RAM/Disk + video statistics)
+- Log page (upload history) and real-time transcode progress (via Reverb/WebSocket)
+- Settings page (change password, dynamic R2 configuration, processing options, videos per page, display timezone)
+- Video list as a table, with pagination, bulk delete, and technical details (resolution, fps, codec, bitrate, size)
+- Run multiple workers in parallel to transcode several videos at once
+- Receive video playback error reports (Report) from the public page via API; admins can view them and mark them as resolved
 
-Tính năng Report: trang phát video công khai (kể cả đặt ở domain khác) gửi lỗi về `POST /api/reports`. Muốn cho domain khác gọi API này, thêm domain đó vào `allowed_origins` trong `config/cors.php`.
+**Note**: A video's public URL depends on you configuring a public R2 bucket yourself (custom domain or `r2.dev` URL) in the Cloudflare dashboard and then entering it in `R2_URL` (or the `r2_url` field on the Settings page). The code does not make the bucket public automatically.
 
-## Cách cài đặt
+Report feature: the public video player page (even when hosted on a different domain) sends errors to `POST /api/reports`. To let another domain call this API, add that domain to `allowed_origins` in `config/cors.php`.
 
-> **VPS của bạn đã có sẵn panel quản lý (aaPanel, cPanel, Plesk...) chưa?**
-> - **Đã có aaPanel** → làm theo mục [Deploy qua aaPanel](#deploy-qua-aapanel) — đơn giản hơn, không cần tự cài Nginx/PHP-FPM thủ công.
-> - **VPS "trắng", chưa cài gì** → làm theo mục [Cài đặt trên VPS thuần](#cài-đặt-trên-vps-thuần-không-qua-panel) ngay bên dưới.
+## Installation
 
-### Cài đặt trên VPS thuần (không qua panel)
+> **Note:** The application behaviour described in this README is derived from the source code. The infrastructure steps below (systemd unit names/files, Nginx config, aaPanel UI steps and toggles, Let's Encrypt/certbot, Node setup) are environment-specific, are not defined in this repository, and cannot be verified from the code. aaPanel's UI may differ between versions. If something does not match your environment, see the [Common Errors, Fixes, and Q&A](#common-errors-fixes-and-qa) section.
 
-**Yêu cầu**: PHP 8.4+ (bắt buộc — `composer.lock` khoá một số gói Symfony cần PHP >= 8.4), Composer 2.2+ (`composer self-update` nếu báo lỗi `composer-runtime-api`), Node.js + npm, MySQL, FFmpeg/FFprobe, tài khoản Cloudflare R2.
+> **Does your VPS already have a management panel (aaPanel, cPanel, Plesk...)?**
+> - **Already has aaPanel** → follow the [Deploying with aaPanel](#deploying-with-aapanel) section — simpler, no need to install Nginx/PHP-FPM manually.
+> - **A "blank" VPS with nothing installed** → follow the [Plain VPS Installation](#plain-vps-installation-no-panel) section right below.
 
-**1. Cài dependencies**
+### Plain VPS Installation (No Panel)
+
+**Requirements**: PHP 8.4+ (required — `composer.lock` pins some Symfony packages that need PHP >= 8.4), Composer 2.2+ (run `composer self-update` if you get a `composer-runtime-api` error), Node.js + npm, MySQL, FFmpeg/FFprobe, a Cloudflare R2 account.
+
+**1. Install dependencies**
 
 ```bash
 composer install
@@ -49,84 +53,84 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-**2. Cấu hình `.env`** — mỗi key một dòng riêng, không gộp chung:
+**2. Configure `.env`** — one key per line, do not combine them:
 
 ```env
 # Database
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=hls_r2_studio
-DB_USERNAME=<user MySQL>
-DB_PASSWORD=<password MySQL>
+DB_USERNAME=<MySQL user>
+DB_PASSWORD=<MySQL password>
 
 # Cloudflare R2
 R2_ACCESS_KEY_ID=<access key>
 R2_SECRET_ACCESS_KEY=<secret key>
-R2_BUCKET=<tên bucket>
+R2_BUCKET=<bucket name>
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_URL=<URL public phát video, vd https://cdn.your-domain.com hoặc URL r2.dev>
+R2_URL=<public video URL, e.g. https://cdn.your-domain.com or an r2.dev URL>
 
-# Domain/HTTPS (bắt buộc đổi khi lên production)
+# Domain/HTTPS (must be changed for production)
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://domain-thật-của-bạn
+APP_URL=https://your-real-domain
 
-# WebSocket (Reverb) — sinh giá trị ngẫu nhiên thật cho 3 dòng dưới, không để trống
-REVERB_APP_ID=<số ngẫu nhiên>
-REVERB_APP_KEY=<chuỗi ngẫu nhiên>
-REVERB_APP_SECRET=<chuỗi ngẫu nhiên>
-REVERB_HOST=domain-thật-của-bạn
+# WebSocket (Reverb) — generate real random values for the 3 lines below, do not leave them empty
+REVERB_APP_ID=<random number>
+REVERB_APP_KEY=<random string>
+REVERB_APP_SECRET=<random string>
+REVERB_HOST=your-real-domain
 REVERB_PORT=443
 REVERB_SCHEME=https
 ```
 
-> Sinh 3 giá trị trên bằng 1 trong 2 cách:
+> Generate the 3 values above using one of these 2 methods:
 > ```bash
 > php artisan tinker --execute="echo Str::random(20);"   # REVERB_APP_KEY
 > php artisan tinker --execute="echo Str::random(32);"   # REVERB_APP_SECRET
 > php artisan tinker --execute="echo random_int(100000, 999999);"   # REVERB_APP_ID
 > ```
-> hoặc không cần `tinker`:
+> or without `tinker`:
 > ```bash
 > openssl rand -hex 10   # REVERB_APP_ID
 > openssl rand -hex 20   # REVERB_APP_KEY
 > openssl rand -hex 32   # REVERB_APP_SECRET
 > ```
-> Không cần đăng ký ở đâu — chỉ cần 3 giá trị khác nhau và đủ ngẫu nhiên để client/server Reverb bắt tay với nhau.
+> No registration is needed anywhere — you only need 3 different values that are random enough for the Reverb client/server to handshake with each other.
 
-> Chỉ cần điền `FFMPEG_BINARY`/`FFPROBE_BINARY` nếu `which ffmpeg`/`which ffprobe` không trả về gì (không có sẵn trong `$PATH`).
+> Only fill in `FFMPEG_BINARY`/`FFPROBE_BINARY` if `which ffmpeg`/`which ffprobe` returns nothing (not available in `$PATH`).
 
-**3. Tạo database và khởi tạo**
+**3. Create the database and initialize**
 
 ```bash
 mysql -u root -p -e "CREATE DATABASE hls_r2_studio CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
 php artisan migrate
 php artisan admin:create admin --email=admin@example.com
 ```
-> Lệnh `admin:create` sẽ hỏi password (ẩn ký tự khi gõ, tối thiểu 8 ký tự) — không nên truyền password trực tiếp trên dòng lệnh. Lệnh này upsert theo `username`: chạy lại cùng username sẽ đổi mật khẩu tài khoản đó thay vì tạo trùng.
+> The `admin:create` command will prompt for a password (input is hidden, minimum 8 characters) — do not pass the password directly on the command line. This command upserts by `username`: running it again with the same username changes that account's password instead of creating a duplicate.
 
-**4. Chạy thử (dev)** — cần **4 tiến trình song song**:
+**4. Trial run (dev)** — requires **4 parallel processes**:
 
 ```bash
 php artisan serve          # web server (terminal 1)
-php artisan queue:work     # bắt buộc — thiếu thì video không bao giờ được transcode (terminal 2)
-php artisan schedule:work  # dọn rác tự động hàng ngày, thiếu vẫn chạy được, chỉ là rác không tự dọn (terminal 3)
-php artisan reverb:start   # hiển thị tiến độ transcode live, thiếu vẫn chạy được, chỉ là phải tự reload để xem tiến độ (terminal 4)
+php artisan queue:work     # required — without it videos are never transcoded (terminal 2)
+php artisan schedule:work  # automatic daily cleanup; it still works without it, but junk is not cleaned automatically (terminal 3)
+php artisan reverb:start   # live transcode progress display; it still works without it, but you have to reload manually to see progress (terminal 4)
 ```
 
-Truy cập `http://localhost:8000/login`.
+Open `http://localhost:8000/login`.
 
-**5. Chạy production thật (thay `php artisan serve` bằng Nginx + PHP-FPM + systemd)**
+**5. Real production run (replace `php artisan serve` with Nginx + PHP-FPM + systemd)**
 
-Cài Nginx + PHP-FPM (đổi `php8.2-fpm` theo đúng version PHP đã cài, kiểm tra bằng `php -v`):
+Install Nginx + PHP-FPM (change `php8.4-fpm` to match the PHP version you installed; check with `php -v`):
 
 ```bash
-sudo apt install -y nginx php8.2-fpm
+sudo apt install -y nginx php8.4-fpm
 sudo chown -R www-data:www-data storage bootstrap/cache
 sudo chmod -R 775 storage bootstrap/cache
 ```
 
-Tạo `/etc/nginx/sites-available/hls-r2-studio`:
+Create `/etc/nginx/sites-available/hls-r2-studio`:
 
 ```nginx
 server {
@@ -143,7 +147,7 @@ server {
     }
 
     location ~ \.php$ {
-        fastcgi_pass unix:/run/php/php8.2-fpm.sock;
+        fastcgi_pass unix:/run/php/php8.4-fpm.sock;
         fastcgi_index index.php;
         include fastcgi_params;
         fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
@@ -154,9 +158,9 @@ server {
         deny all;
     }
 
-    # Reverb cần proxy CẢ HAI path: /app/ (WebSocket từ client) và /apps/
-    # (REST request server dùng để publish event). Thiếu /apps/ làm broadcast
-    # âm thầm thất bại dù WebSocket trông vẫn kết nối bình thường.
+    # Reverb needs BOTH paths proxied: /app/ (WebSocket from the client) and /apps/
+    # (REST requests the server uses to publish events). Missing /apps/ makes broadcasts
+    # fail silently even though the WebSocket looks connected.
     location /app/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -178,9 +182,9 @@ sudo ln -s /etc/nginx/sites-available/hls-r2-studio /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
-> `REVERB_SERVER_HOST=127.0.0.1`/`REVERB_SERVER_PORT=8080` giữ nguyên trong `.env` (Reverb chỉ bind local, không expose trực tiếp); `REVERB_HOST`/`PORT`/`SCHEME` đặt domain/443/https thật như ở bước 2.
+> Keep `REVERB_SERVER_HOST=127.0.0.1`/`REVERB_SERVER_PORT=8080` unchanged in `.env` (Reverb only binds locally and is not exposed directly); set `REVERB_HOST`/`PORT`/`SCHEME` to your real domain/443/https as in step 2.
 
-Tăng giới hạn upload trong `/etc/php/8.2/fpm/php.ini` (khớp `UPLOAD_MAX_SIZE_MB=2048`):
+Raise the upload limits in `/etc/php/8.4/fpm/php.ini` (matching `UPLOAD_MAX_SIZE_MB=2048`):
 
 ```ini
 upload_max_filesize = 2048M
@@ -189,13 +193,13 @@ max_execution_time = 300
 ```
 
 ```bash
-sudo systemctl restart php8.2-fpm
+sudo systemctl restart php8.4-fpm
 sudo ufw allow 80/tcp
 ```
 
-**Chạy 3 tiến trình nền bằng systemd** (thay cho 3 terminal thủ công ở bước 4 — `serve` vẫn thay bằng Nginx/PHP-FPM ở trên):
+**Run the 3 background processes with systemd** (replacing the 3 manual terminals in step 4 — `serve` is still replaced by Nginx/PHP-FPM above):
 
-Queue worker — `/etc/systemd/system/hls-r2-studio-queue@.service` (template, chạy được nhiều instance):
+Queue worker — `/etc/systemd/system/hls-r2-studio-queue@.service` (a template, so multiple instances can run):
 
 ```ini
 [Unit]
@@ -217,9 +221,9 @@ WantedBy=multi-user.target
 sudo systemctl enable --now hls-r2-studio-queue@1 hls-r2-studio-queue@2
 ```
 
-> `DB_QUEUE_RETRY_AFTER` trong `.env` (mặc định `176400`) **phải luôn lớn hơn** `--timeout` ở trên (`172800`) — nếu không, worker khác sẽ nhận lại job đang chạy dở, gây xử lý trùng.
+> `DB_QUEUE_RETRY_AFTER` in `.env` (default `176400`) **must always be greater than** the `--timeout` above (`172800`) — otherwise another worker will pick up a job that is still running, causing duplicate processing.
 
-Reverb (WebSocket) — `/etc/systemd/system/hls-r2-studio-reverb.service` (1 instance duy nhất, không dùng template):
+Reverb (WebSocket) — `/etc/systemd/system/hls-r2-studio-reverb.service` (a single instance, no template):
 
 ```ini
 [Unit]
@@ -241,7 +245,7 @@ WantedBy=multi-user.target
 sudo systemctl enable --now hls-r2-studio-reverb
 ```
 
-Scheduler (dọn rác hàng ngày) — `/etc/systemd/system/hls-r2-studio-scheduler.service` (1 instance duy nhất):
+Scheduler (daily cleanup) — `/etc/systemd/system/hls-r2-studio-scheduler.service` (a single instance):
 
 ```ini
 [Unit]
@@ -263,125 +267,125 @@ WantedBy=multi-user.target
 sudo systemctl enable --now hls-r2-studio-scheduler
 ```
 
-Kiểm tra bất kỳ service nào: `sudo systemctl status <tên-service>`, xem log: `sudo journalctl -u <tên-service> -f`.
+To check any service: `sudo systemctl status <service-name>`; to view logs: `sudo journalctl -u <service-name> -f`.
 
-Domain/SSL, cập nhật CORS R2 cho domain thật, và backup định kỳ vẫn cần tự làm thêm.
+Domain/SSL, updating the R2 CORS configuration for your real domain, and periodic backups still need to be set up on your own.
 
-#### Cập nhật / deploy lại khi có code mới (VPS thuần)
+#### Updating / Redeploying with New Code (Plain VPS)
 
 ```bash
 cd /path-to-project
 git pull
 ```
 
-| Lệnh | Chỉ cần chạy khi nào |
+| Command | Only needed when |
 |---|---|
-| `composer install --no-dev` | `composer.json`/`composer.lock` thay đổi |
-| `npm install` | `package.json`/`package-lock.json` thay đổi |
-| `npm run build` | Có sửa `resources/css`, `resources/js`, hoặc `.blade.php` |
-| `php artisan migrate --force` | Có migration mới trong `database/migrations/` |
-| `php artisan config:clear` | Đổi file `config/*.php` hoặc thêm biến mới vào `.env` |
-| Restart queue worker (`sudo systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2`) | Sửa `app/Jobs/TranscodeVideoJob.php` hoặc code xử lý hàng đợi |
-| Restart Reverb (`sudo systemctl restart hls-r2-studio-reverb`) | Sửa `app/Events/*.php`, `config/reverb.php`, `config/broadcasting.php`, `resources/js/echo.js` |
-| Restart scheduler | Gần như không bao giờ cần, trừ khi sửa `routes/console.php` hoặc lệnh cleanup trong `app/Console/Commands/` |
+| `composer install --no-dev` | `composer.json`/`composer.lock` changed |
+| `npm install` | `package.json`/`package-lock.json` changed |
+| `npm run build` | `resources/css`, `resources/js`, or `.blade.php` files were modified |
+| `php artisan migrate --force` | There is a new migration in `database/migrations/` |
+| `php artisan config:clear` | A `config/*.php` file changed or a new variable was added to `.env` |
+| Restart the queue workers (`sudo systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2`) | `app/Jobs/TranscodeVideoJob.php` or the queue-processing code was modified |
+| Restart Reverb (`sudo systemctl restart hls-r2-studio-reverb`) | `app/Events/*.php`, `config/reverb.php`, `config/broadcasting.php`, or `resources/js/echo.js` was modified |
+| Restart the scheduler | Almost never needed, unless `routes/console.php` or a cleanup command in `app/Console/Commands/` was modified |
 
-Không chắc có cần lệnh nào không thì cứ chạy hết — không hại gì.
+If you are not sure whether a command is needed, just run them all — it does no harm.
 
-### Deploy qua aaPanel
+### Deploying with aaPanel
 
-aaPanel tự quản lý Nginx + PHP-FPM + SSL — không tự `apt install nginx`/tự tạo cấu hình Nginx như phần VPS thuần ở trên (sẽ xung đột với Nginx của aaPanel).
+aaPanel manages Nginx + PHP-FPM + SSL on its own — do not run `apt install nginx` or create Nginx configuration yourself as in the plain VPS section above (it will conflict with aaPanel's Nginx).
 
-**1. Đưa code lên VPS** — clone vào thư mục tạm rồi đổi tên (tránh lỗi `destination path '.' already exists` do aaPanel hay tự sinh sẵn vài file ẩn trong thư mục site trống):
+**1. Put the code on the VPS** — clone into a temporary directory and then rename it (avoids the `destination path '.' already exists` error, since aaPanel often auto-generates a few hidden files in an empty site directory):
 
 ```bash
 cd /www/wwwroot
 git clone <git-repo-url> hls-temp
-rm -rf ten-domain.com
-mv hls-temp ten-domain.com
-cd ten-domain.com
+rm -rf domain-name.com
+mv hls-temp domain-name.com
+cd domain-name.com
 ```
 
-**2. Cài đúng version PHP** — project cần PHP `^8.4`. Nếu chưa có: aaPanel → **App Store** → tab **PHP** → cài **PHP-8.4** (cài song song được, không cần gỡ bản cũ). Từ đây dùng full path để chắc chắn gọi đúng bản:
+**2. Install the right PHP version** — the project needs PHP `^8.4`. If you don't have it: aaPanel → **App Store** → **PHP** tab → install **PHP-8.4** (it can be installed side by side, no need to remove the old version). From here on, use the full path to make sure you call the right version:
 
 ```bash
 /www/server/php/84/bin/php -v
 ```
-(nếu khác, tìm đúng số thư mục version bằng `ls /www/server/php/`)
+(if it differs, find the correct version directory number with `ls /www/server/php/`)
 
-**3. Bật extension PHP bắt buộc** — aaPanel → **PHP** → **8.4** → **Install extensions**, bật: `fileinfo` (bắt buộc, thiếu sẽ làm `composer install` lỗi ngay), `pdo_mysql`, `mbstring`, `curl`, `pcntl`, `bcmath` → **Restart** PHP 8.4.
+**3. Enable the required PHP extensions** — aaPanel → **PHP** → **8.4** → **Install extensions**, enable: `fileinfo` (required; without it `composer install` fails immediately), `pdo_mysql`, `mbstring`, `curl`, `pcntl`, `bcmath` → **Restart** PHP 8.4.
 
-**4. Cập nhật Composer** (bản có sẵn trên nhiều VPS quá cũ, không chạy được Laravel 13):
+**4. Update Composer** (the version preinstalled on many VPSs is too old to run Laravel 13):
 
 ```bash
 /www/server/php/84/bin/php /usr/bin/composer self-update
 ```
 
-**5. Cài Node.js + FFmpeg** (nếu chưa có):
+**5. Install Node.js + FFmpeg** (if not already installed):
 
 ```bash
 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo bash -
 sudo apt install -y nodejs ffmpeg
 ```
 
-**6. Cài dependencies + build asset**
+**6. Install dependencies + build assets**
 
 ```bash
 /www/server/php/84/bin/php /usr/bin/composer install --no-dev
 npm install && npm run build
 ```
 
-**7. Tạo database** — aaPanel → **Database** → **Add database** → đặt tên + tạo user/password mới, ghi nhớ lại để điền `.env`.
+**7. Create the database** — aaPanel → **Database** → **Add database** → set a name + create a new user/password, and note them down to fill into `.env`.
 
-**8. Cấu hình `.env`**
+**8. Configure `.env`**
 
 ```bash
 cp .env.example .env
 nano .env
 ```
 
-Điền (mỗi key một dòng riêng):
+Fill in (one key per line):
 
 ```env
 DB_HOST=127.0.0.1
 DB_PORT=3306
 DB_DATABASE=hls_r2_studio
-DB_USERNAME=<user vừa tạo>
-DB_PASSWORD=<password vừa tạo>
+DB_USERNAME=<user you just created>
+DB_PASSWORD=<password you just created>
 
 R2_ACCESS_KEY_ID=<access key>
 R2_SECRET_ACCESS_KEY=<secret key>
-R2_BUCKET=<tên bucket>
+R2_BUCKET=<bucket name>
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_URL=<URL public phát video>
+R2_URL=<public video URL>
 
 APP_ENV=production
 APP_DEBUG=false
-APP_URL=https://domain-thật-của-bạn
+APP_URL=https://your-real-domain
 FORCE_HTTPS=true
 
-REVERB_APP_ID=<số ngẫu nhiên>
-REVERB_APP_KEY=<chuỗi ngẫu nhiên>
-REVERB_APP_SECRET=<chuỗi ngẫu nhiên>
-REVERB_HOST=domain-thật-của-bạn
+REVERB_APP_ID=<random number>
+REVERB_APP_KEY=<random string>
+REVERB_APP_SECRET=<random string>
+REVERB_HOST=your-real-domain
 REVERB_PORT=443
 REVERB_SCHEME=https
 ```
 
-> Sinh 3 giá trị trên bằng 1 trong 2 cách:
+> Generate the 3 values above using one of these 2 methods:
 > ```bash
 > /www/server/php/84/bin/php artisan tinker --execute="echo Str::random(20);"   # REVERB_APP_KEY
 > /www/server/php/84/bin/php artisan tinker --execute="echo Str::random(32);"   # REVERB_APP_SECRET
 > /www/server/php/84/bin/php artisan tinker --execute="echo random_int(100000, 999999);"   # REVERB_APP_ID
 > ```
-> hoặc không cần `tinker`:
+> or without `tinker`:
 > ```bash
 > openssl rand -hex 10   # REVERB_APP_ID
 > openssl rand -hex 20   # REVERB_APP_KEY
 > openssl rand -hex 32   # REVERB_APP_SECRET
 > ```
-> Không cần đăng ký ở đâu — chỉ cần 3 giá trị khác nhau và đủ ngẫu nhiên để client/server Reverb bắt tay với nhau.
+> No registration is needed anywhere — you only need 3 different values that are random enough for the Reverb client/server to handshake with each other.
 
-**9. Sinh key, tạo bảng, tạo admin**
+**9. Generate the key, create the tables, create the admin**
 
 ```bash
 /www/server/php/84/bin/php artisan key:generate
@@ -389,18 +393,18 @@ REVERB_SCHEME=https
 /www/server/php/84/bin/php artisan admin:create admin --email=admin@example.com
 ```
 
-**10. Set quyền thư mục** (`www` là user PHP-FPM mặc định của aaPanel — kiểm tra bằng `ps aux | grep php-fpm` nếu VPS dùng user khác):
+**10. Set directory permissions** (`www` is aaPanel's default PHP-FPM user — check with `ps aux | grep php-fpm` if your VPS uses a different user):
 
 ```bash
 chown -R www:www storage bootstrap/cache
 chmod -R 775 storage bootstrap/cache
 ```
 
-**11. Tạo website trong aaPanel** — tab **Website** → **Add site** → điền domain → chọn **PHP 8.4** → **Document Root** đặt thành `.../public` (không phải thư mục gốc project). Nếu site đã có sẵn trước khi clone, vào site → **Directory** → xác nhận **Site directory** trỏ đúng `.../public`.
+**11. Create the website in aaPanel** — **Website** tab → **Add site** → enter the domain → choose **PHP 8.4** → set **Document Root** to `.../public` (not the project root directory). If the site already existed before cloning, go to the site → **Directory** → confirm that **Site directory** points to `.../public`.
 
-**12. Tắt "Anti-XSS attack" (open_basedir)** — site → **Directory** → tắt toggle **Anti-XSS attack**. Bật toggle này sẽ giới hạn PHP chỉ đọc được `public/`, gây trang trắng kèm lỗi `open_basedir restriction in effect` vì code Laravel thật (`vendor/`, `storage/`...) nằm ở thư mục cha.
+**12. Turn off "Anti-XSS attack" (open_basedir)** — site → **Directory** → turn off the **Anti-XSS attack** toggle. Leaving this toggle on restricts PHP to reading only `public/`, which causes a blank page with the error `open_basedir restriction in effect`, because the actual Laravel code (`vendor/`, `storage/`...) lives in the parent directory.
 
-**13. Bật URL rewrite** (thiếu bước này mọi trang ngoài trang chủ sẽ báo `404`) — site → **URL rewrite** (伪静态) → chọn template **Laravel5**/**Laravel**. Nếu không có sẵn, chọn **Custom** và dán:
+**13. Enable URL rewrite** (without this step every page other than the home page returns `404`) — site → **URL rewrite** (伪静态) → choose the **Laravel5**/**Laravel** template. If it is not available, choose **Custom** and paste:
 
 ```nginx
 location / {
@@ -408,7 +412,7 @@ location / {
 }
 ```
 
-**14. Tăng giới hạn upload** — aaPanel → **PHP** → **8.4** → **Configuration file**:
+**14. Raise the upload limits** — aaPanel → **PHP** → **8.4** → **Configuration file**:
 
 ```ini
 upload_max_filesize = 2048M
@@ -417,9 +421,9 @@ max_execution_time = 300
 memory_limit = 512M
 ```
 
-**15. Bật SSL** — site → tab **SSL** → **Let's Encrypt** → tick domain → **Apply** (tự xin và tự gia hạn).
+**15. Enable SSL** — site → **SSL** tab → **Let's Encrypt** → tick the domain → **Apply** (certificates are requested and renewed automatically).
 
-**16. Chạy queue worker bằng systemd** (bắt buộc — aaPanel KHÔNG tự quản lý việc này):
+**16. Run the queue worker with systemd** (required — aaPanel does NOT manage this for you):
 
 ```bash
 nano /etc/systemd/system/hls-r2-studio-queue@.service
@@ -432,7 +436,7 @@ After=network.target mysql.service
 
 [Service]
 User=www
-WorkingDirectory=/www/wwwroot/ten-domain.com
+WorkingDirectory=/www/wwwroot/domain-name.com
 ExecStart=/www/server/php/84/bin/php artisan queue:work --sleep=3 --tries=1 --timeout=172800 --max-time=172800
 Restart=always
 RestartSec=5
@@ -447,9 +451,9 @@ systemctl enable --now hls-r2-studio-queue@1
 systemctl enable --now hls-r2-studio-queue@2
 ```
 
-> `--timeout=172800` (48 tiếng) khớp với timeout job thật trong code (hệ số x8 theo độ dài video, xem `TRANSCODE_TIMEOUT_MULTIPLIER` ở phần Q&A). `DB_QUEUE_RETRY_AFTER` trong `.env` (`176400`) phải luôn lớn hơn giá trị này.
+> `--timeout=172800` (48 hours) matches the real job timeout in the code (an x8 multiplier on video length, see `TRANSCODE_TIMEOUT_MULTIPLIER` in the Q&A section). `DB_QUEUE_RETRY_AFTER` in `.env` (`176400`) must always be greater than this value.
 
-**17. Chạy Reverb (WebSocket) bằng systemd**:
+**17. Run Reverb (WebSocket) with systemd**:
 
 ```bash
 nano /etc/systemd/system/hls-r2-studio-reverb.service
@@ -462,7 +466,7 @@ After=network.target
 
 [Service]
 User=www
-WorkingDirectory=/www/wwwroot/ten-domain.com
+WorkingDirectory=/www/wwwroot/domain-name.com
 ExecStart=/www/server/php/84/bin/php artisan reverb:start
 Restart=always
 RestartSec=5
@@ -476,7 +480,7 @@ systemctl daemon-reload
 systemctl enable --now hls-r2-studio-reverb
 ```
 
-Mở site → tab **Config File** (配置文件) → thêm vào bên trong `server { }` đã có sẵn (giống hệt block ở phần VPS thuần) — Reverb cần proxy CẢ `/app/` (WebSocket) và `/apps/` (REST publish event), thiếu `/apps/` làm broadcast âm thầm thất bại dù WebSocket vẫn trông như kết nối bình thường:
+Open the site → **Config File** (配置文件) tab → add the following inside the existing `server { }` (identical to the block in the plain VPS section) — Reverb needs BOTH `/app/` (WebSocket) and `/apps/` (REST event publishing) proxied; missing `/apps/` makes broadcasts fail silently even though the WebSocket still looks connected:
 
 ```nginx
 location /app/ {
@@ -494,9 +498,9 @@ location /apps/ {
 }
 ```
 
-Lưu lại — aaPanel tự reload Nginx, tận dụng luôn chứng chỉ SSL đã bật ở bước 15.
+Save — aaPanel reloads Nginx automatically, and the SSL certificate enabled in step 15 is reused as-is.
 
-**18. Chạy scheduler bằng systemd** (1 instance, không dùng template `@`):
+**18. Run the scheduler with systemd** (a single instance, no `@` template):
 
 ```bash
 nano /etc/systemd/system/hls-r2-studio-scheduler.service
@@ -509,7 +513,7 @@ After=network.target mysql.service
 
 [Service]
 User=www
-WorkingDirectory=/www/wwwroot/ten-domain.com
+WorkingDirectory=/www/wwwroot/domain-name.com
 ExecStart=/www/server/php/84/bin/php artisan schedule:work
 Restart=always
 RestartSec=5
@@ -523,78 +527,78 @@ systemctl daemon-reload
 systemctl enable --now hls-r2-studio-scheduler
 ```
 
-**19. Kiểm tra** — mở `https://domain-thật/login`, đăng nhập bằng tài khoản admin vừa tạo, thử upload 1 video ngắn để xác nhận pipeline chạy hoàn chỉnh (upload → transcode → upload R2 → phát HLS).
+**19. Verify** — open `https://your-real-domain/login`, log in with the admin account you just created, and try uploading a short video to confirm the whole pipeline works (upload → transcode → upload to R2 → HLS playback).
 
-#### Cập nhật / deploy lại khi có code mới (aaPanel)
+#### Updating / Redeploying with New Code (aaPanel)
 
 ```bash
-cd /www/wwwroot/ten-domain.com
+cd /www/wwwroot/domain-name.com
 git pull
 ```
 
-| Lệnh | Chỉ cần chạy khi nào |
+| Command | Only needed when |
 |---|---|
-| `/www/server/php/84/bin/php /usr/bin/composer install --no-dev` | `composer.json`/`composer.lock` thay đổi |
-| `npm install` | `package.json`/`package-lock.json` thay đổi |
-| `npm run build` | Có sửa `resources/css`, `resources/js`, hoặc `.blade.php` |
-| `/www/server/php/84/bin/php artisan migrate --force` | Có migration mới trong `database/migrations/` |
-| `/www/server/php/84/bin/php artisan config:clear` | Đổi file `config/*.php` hoặc thêm biến mới vào `.env` |
-| Restart queue worker (`systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2`) | Sửa `app/Jobs/TranscodeVideoJob.php` hoặc code xử lý hàng đợi |
-| Restart Reverb (`systemctl restart hls-r2-studio-reverb`) | Sửa `app/Events/*.php`, `config/reverb.php`, `config/broadcasting.php`, `resources/js/echo.js` |
-| Restart scheduler | Gần như không bao giờ cần, trừ khi sửa `routes/console.php` hoặc lệnh cleanup |
+| `/www/server/php/84/bin/php /usr/bin/composer install --no-dev` | `composer.json`/`composer.lock` changed |
+| `npm install` | `package.json`/`package-lock.json` changed |
+| `npm run build` | `resources/css`, `resources/js`, or `.blade.php` files were modified |
+| `/www/server/php/84/bin/php artisan migrate --force` | There is a new migration in `database/migrations/` |
+| `/www/server/php/84/bin/php artisan config:clear` | A `config/*.php` file changed or a new variable was added to `.env` |
+| Restart the queue workers (`systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2`) | `app/Jobs/TranscodeVideoJob.php` or the queue-processing code was modified |
+| Restart Reverb (`systemctl restart hls-r2-studio-reverb`) | `app/Events/*.php`, `config/reverb.php`, `config/broadcasting.php`, or `resources/js/echo.js` was modified |
+| Restart the scheduler | Almost never needed, unless `routes/console.php` or a cleanup command was modified |
 
-Không chắc có cần lệnh nào không thì cứ chạy hết — không hại gì.
+If you are not sure whether a command is needed, just run them all — it does no harm.
 
-## Cấu trúc dữ liệu
+## Data Structure
 
-**`videos`** — mỗi dòng là 1 video: tiêu đề, tên/dung lượng file gốc, trạng thái xử lý (`status`: pending/processing/ready/failed, `stage`: queued/transcoding/uploading_r2/ready/failed, `progress` %), đường dẫn tới file HLS/thumbnail/storyboard trên R2, thông số kỹ thuật video output thật (độ phân giải, fps, bitrate, codec, thời lượng), và lỗi nếu xử lý thất bại.
+**`videos`** — each row is one video: title, original file name/size, processing status (`status`: pending/processing/ready/failed, `stage`: queued/transcoding/generating_storyboard/uploading_r2/ready/failed, `progress` %), paths to the HLS/thumbnail/storyboard files on R2, the actual technical details of the output video (resolution, fps, bitrate, codec, duration), and the error if processing failed.
 
-**`settings`** — bảng cấu hình, luôn chỉ có 1 dòng duy nhất (`id = 1`, lấy qua `Setting::current()`): thông tin R2 (có thể override biến `.env`), có xoá file trên R2 khi xoá video không, cấu hình transcode mặc định (độ phân giải/segment/fps), số video hiển thị mỗi trang, múi giờ hiển thị.
+**`settings`** — the configuration table, which always has exactly 1 row (`id = 1`, retrieved via `Setting::current()`): R2 information (can override `.env` variables), whether to delete files on R2 when a video is deleted, default transcode configuration (resolution/segment/fps), number of videos shown per page, display timezone.
 
-**`users`** — tài khoản đăng nhập admin (username + password), theo cơ chế Auth chuẩn của Laravel.
+**`users`** — admin login accounts (username + password), using Laravel's standard Auth mechanism.
 
-**`reports`** — báo lỗi phát video gửi từ trang public: URL trang đang phát, ghi chú người báo, IP, trạng thái (`new`/`resolved`), số lần bị báo trùng cùng URL (`report_count`), thời điểm báo gần nhất và thời điểm admin xử lý xong.
+**`reports`** — playback error reports sent from the public page: the URL of the page being played, the reason (`reason`, nullable: `not_playing`/`lag`/`no_audio`/`wrong_video`/`other`), the matched video (`video_id`, nullable — the video ID parsed from an `.../embed/{id}` page URL when that video exists, otherwise empty; no database foreign key, so deleting the video does not clear it), the reporter's note, IP, status (`new`/`resolved`), the number of times the same URL was reported again (`report_count`; a unique stored generated column `active_report_key` holds the SHA-256 of the URL while status is `new` and NULL otherwise, so at most one `new` report exists per URL even under concurrent submissions), the time of the most recent report, the time the admin finished handling it, and who handled it (`resolved_by`, nullable — the ID of the admin user who clicked resolve).
 
-## Một số tình huống gặp lỗi, cách xử lý, Q&A
+## Common Errors, Fixes, and Q&A
 
-| Lỗi gặp phải | Nguyên nhân | Cách fix |
+| Error encountered | Cause | Fix |
 |---|---|---|
-| `destination path '.' already exists` khi `git clone` (aaPanel) | Thư mục site có file ẩn aaPanel tự sinh mà `ls` không hiện | Clone vào thư mục tạm rồi `mv` đè lên |
-| `composer install` báo `ext-fileinfo` thiếu | Extension `fileinfo` chưa bật cho bản PHP đang dùng | Bật qua aaPanel → PHP → Install extensions (hoặc cài extension tương ứng trên VPS thuần) |
-| `composer install` báo gói Symfony yêu cầu PHP >= 8.4 | Đang chạy PHP < 8.4 nhưng `composer.lock` khoá bản cần 8.4 | Cài/nâng cấp PHP lên 8.4 |
-| `composer install` báo `composer-runtime-api` không khớp | Bản Composer cài sẵn quá cũ (< 2.2) | `composer self-update` |
-| Trang trắng, lỗi `open_basedir restriction in effect` (aaPanel) | Toggle "Anti-XSS attack" đang bật, giới hạn PHP chỉ đọc được `public/` | Tắt toggle này ở site → Directory |
-| `404 Not Found` khi vào `/login` (trang chủ `/` vẫn vào được) | Thiếu rule rewrite URL đẹp cho Laravel | Bật URL rewrite template Laravel (aaPanel) hoặc kiểm tra lại `try_files` trong Nginx config (VPS thuần) |
-| Video kẹt "Đang xử lý" mãi không xong, log có `Job timed out` | Queue worker thiếu cờ `--timeout`, Laravel tự kill job sau 60s mặc định | Thêm `--timeout=172800` vào `ExecStart` của systemd unit |
-| Console báo `You must pass your app key when you instantiate Pusher` | Thiếu `REVERB_*`/`VITE_REVERB_*` trong `.env` lúc `npm run build`, hoặc chưa cấu hình Reverb | Điền đủ biến, `npm run build` lại, đảm bảo Reverb đang chạy |
-| WebSocket kết nối được nhưng tiến độ transcode không bao giờ cập nhật live; dispatch event qua tinker báo `Pusher error: 404 Not Found` | Thiếu `location /apps/` trong cấu hình reverse-proxy Reverb | Thêm `location /apps/` proxy sang cùng port Reverb |
-| `systemctl restart nginx`/`php-fpm-84` báo lỗi nhưng service vẫn chạy (aaPanel) | Script khởi động kiểu LSB xử lý sai "restart" khi service đã chạy | Dùng `/etc/init.d/nginx reload` và `/etc/init.d/php-fpm-84 restart` thay vì `systemctl restart` |
+| `destination path '.' already exists` on `git clone` (aaPanel) | The site directory contains hidden files auto-generated by aaPanel that `ls` does not show | Clone into a temporary directory and then `mv` it over |
+| `composer install` reports missing `ext-fileinfo` | The `fileinfo` extension is not enabled for the PHP version in use | Enable it via aaPanel → PHP → Install extensions (or install the corresponding extension on a plain VPS) |
+| `composer install` reports a Symfony package requires PHP >= 8.4 | Running PHP < 8.4 while `composer.lock` pins a version that needs 8.4 | Install/upgrade PHP to 8.4 |
+| `composer install` reports a `composer-runtime-api` mismatch | The preinstalled Composer is too old (< 2.2) | `composer self-update` |
+| Blank page, error `open_basedir restriction in effect` (aaPanel) | The "Anti-XSS attack" toggle is on, restricting PHP to reading only `public/` | Turn this toggle off at site → Directory |
+| `404 Not Found` when visiting `/login` (the home page `/` still works) | Missing the pretty-URL rewrite rule for Laravel | Enable the Laravel URL rewrite template (aaPanel) or recheck `try_files` in the Nginx config (plain VPS) |
+| A video is stuck on "Processing" forever, the log has `Job timed out` | The queue worker is missing the `--timeout` flag, so Laravel kills the job after the default 60s | Add `--timeout=172800` to `ExecStart` in the systemd unit |
+| Console reports `You must pass your app key when you instantiate Pusher` | `REVERB_*`/`VITE_REVERB_*` are missing from `.env` at `npm run build` time, or Reverb is not configured | Fill in all the variables, run `npm run build` again, and make sure Reverb is running |
+| The WebSocket connects but transcode progress never updates live; dispatching an event via tinker reports `Pusher error: 404 Not Found` | Missing `location /apps/` in the Reverb reverse-proxy configuration | Add a `location /apps/` that proxies to the same Reverb port |
+| `systemctl restart nginx`/`php-fpm-84` reports an error but the service is still running (aaPanel) | The LSB-style startup script mishandles "restart" when the service is already running | Use `/etc/init.d/nginx reload` and `/etc/init.d/php-fpm-84 restart` instead of `systemctl restart` |
 
-**Q: Quên mật khẩu admin thì sao?**
-Chạy lại `php artisan admin:create <username>` (hoặc full path PHP 8.4 nếu dùng aaPanel) — lệnh này upsert theo `username`, chạy lại cùng username sẽ đổi mật khẩu tài khoản đó thay vì báo lỗi trùng.
+**Q: What if I forget the admin password?**
+Run `php artisan admin:create <username>` again (or use the full PHP 8.4 path if you use aaPanel) — this command upserts by `username`, so running it again with the same username changes that account's password instead of reporting a duplicate error.
 
-**Q: Video bị kẹt xử lý mãi không xong?**
-Kiểm tra queue worker còn chạy không (`systemctl status hls-r2-studio-queue@1` hoặc xem terminal đang chạy `queue:work`) và xem log lỗi (`journalctl -u hls-r2-studio-queue@1 -f`). Nếu log có `Job timed out`, xem dòng troubleshooting tương ứng ở trên.
+**Q: A video is stuck processing and never finishes?**
+Check whether the queue worker is still running (`systemctl status hls-r2-studio-queue@1`, or look at the terminal running `queue:work`) and check the error log (`journalctl -u hls-r2-studio-queue@1 -f`). If the log has `Job timed out`, see the corresponding troubleshooting row above.
 
-**Q: Làm sao cho trang phát video ở domain khác gửi được report?**
-Thêm domain đó vào `allowed_origins` trong `config/cors.php` (mặc định chỉ cho phép domain khai báo sẵn trong file này). Route `/api/reports` có rate limit 5 lần/10 giây.
+**Q: How do I let a video player page on another domain send reports?**
+Add that domain to `allowed_origins` in `config/cors.php` (by default only the domains already declared in this file are allowed). The `/api/reports` route has a rate limit of 5 requests per 10 minutes per IP, plus 20 requests per 10 minutes per `page_url`.
 
-**Q: Đổi giới hạn upload ở đâu?**
-Phải đổi đồng thời 3 nơi: `UPLOAD_MAX_SIZE_MB` trong `.env`, `upload_max_filesize`/`post_max_size` trong `php.ini`, và `client_max_body_size` trong Nginx — đổi 1 nơi mà thiếu 2 nơi còn lại vẫn sẽ bị chặn.
+**Q: Where do I change the upload limit?**
+You must change 3 places at the same time: `UPLOAD_MAX_SIZE_MB` in `.env`, `upload_max_filesize`/`post_max_size` in `php.ini`, and `client_max_body_size` in Nginx — changing 1 place while missing the other 2 will still be blocked.
 
-**Q: Các tuỳ chỉnh nâng cao khác?**
-Không bắt buộc, có giá trị mặc định hợp lý, thêm vào `.env` nếu muốn đổi:
+**Q: Any other advanced options?**
+Not required, with reasonable defaults; add them to `.env` if you want to change them:
 ```env
-UPLOAD_ABANDONED_TTL_HOURS=24       # dọn upload chunk bỏ dở sau bao lâu
-TRANSCODE_ORPHANED_TTL_HOURS=48     # dọn thư mục tạm băm HLS bị crash treo sau bao lâu
-UPLOAD_ORPHANED_TTL_HOURS=72        # dọn file video gốc mồ côi sau bao lâu
-TRANSCODE_TIMEOUT_MULTIPLIER=8      # hệ số nhân với độ dài video để tính timeout băm HLS
-STORYBOARD_TILE_SIZE=160            # kích thước (px) mỗi ô trong ảnh lưới storyboard
-DB_QUEUE_RETRY_AFTER=176400         # phải lớn hơn --timeout của queue worker
+UPLOAD_ABANDONED_TTL_HOURS=24       # how long before abandoned upload chunks are cleaned up
+TRANSCODE_ORPHANED_TTL_HOURS=48     # how long before crashed/stuck HLS transcode temp directories are cleaned up
+UPLOAD_ORPHANED_TTL_HOURS=72        # how long before orphaned original video files are cleaned up
+TRANSCODE_TIMEOUT_MULTIPLIER=8      # multiplier applied to video length to compute the HLS transcode timeout
+STORYBOARD_TILE_SIZE=160            # size (px) of each tile in the storyboard grid image
+DB_QUEUE_RETRY_AFTER=176400         # must be greater than the queue worker's --timeout
 ```
 
-**Q: App chạy sau reverse proxy HTTPS (aaPanel/Nginx/Cloudflare Tunnel) nhưng link asset ra `http://` (mixed content)?**
-Set `APP_ENV=production` (thường đã có sẵn ở production) hoặc `FORCE_HTTPS=true` trong `.env` — Laravel sẽ tự ép `https` cho mọi URL sinh ra. Không bật tuỳ chọn này trên môi trường dev local không có HTTPS thật, trình duyệt sẽ load lỗi asset.
+**Q: The app runs behind an HTTPS reverse proxy (aaPanel/Nginx/Cloudflare Tunnel) but asset links come out as `http://` (mixed content)?**
+Set `FORCE_HTTPS=true` in `.env` (if `FORCE_HTTPS` is not set at all, `APP_ENV=production` is enough, but `FORCE_HTTPS=false` copied from `.env.example` overrides it) — Laravel will then force `https` for every generated URL. Do not enable this option on a local dev environment without real HTTPS, or the browser will fail to load assets.
 
-**Q: Rate limit mặc định của các API là bao nhiêu?**
-Đăng nhập: 5 lần/phút. `/uploads/init`: 30 lần/phút. `/uploads/{id}/chunk`: 120 lần/phút. `/api/reports`: 5 lần/10 giây. Gặp lỗi "Too Many Requests" khi thao tác quá nhanh là do các giới hạn này.
+**Q: What are the default rate limits of the APIs?**
+Login: 5 requests/minute. `/uploads/init`: 30 requests/minute. `/uploads/{id}/chunk`: 120 requests/minute. `/api/reports`: 5 requests/10 minutes per IP (plus 20 requests/10 minutes per `page_url`). Getting a "Too Many Requests" error when acting too quickly is caused by these limits.
