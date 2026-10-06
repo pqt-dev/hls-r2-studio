@@ -216,6 +216,7 @@
                 <div id="embed-modal-images-section" role="tabpanel" aria-labelledby="embed-tab-images" class="hidden max-md:hidden">
                     <label class="block text-xs font-medium text-gray-700 mb-1">Images</label>
                     <div id="embed-modal-images" class="grid grid-cols-2 gap-3"></div>
+                    <p id="embed-modal-images-error" class="hidden mt-2 text-xs text-red-600"></p>
                 </div>
             </div>
         </div>
@@ -303,7 +304,14 @@
                 document.getElementById('embed-modal-code').value = buildEmbedIframeCode(embedModalState.embedUrl, embedModalState.aspectRatio, muted, autoplay);
             }
 
-            function buildImageCard(image) {
+            // The table rows are rendered at page load, so their openEmbedModal()
+            // data goes stale after an upload/delete. Remember the latest custom
+            // image per video (keyed by its upload URL) and prefer it on reopen.
+            const customImageOverrides = {};
+            const customImageMaxBytes = 5 * 1024 * 1024;
+            const customImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
+
+            function buildImageCard(image, extraButtons) {
                 const card = document.createElement('div');
                 card.className = 'flex flex-col min-w-0 rounded-lg border border-gray-200 overflow-hidden';
 
@@ -325,7 +333,7 @@
                 link.appendChild(img);
 
                 const actions = document.createElement('div');
-                actions.className = 'flex justify-center px-3 py-2 border-t border-gray-200';
+                actions.className = 'flex flex-wrap justify-center gap-2 px-3 py-2 border-t border-gray-200';
 
                 const copyButton = document.createElement('button');
                 copyButton.type = 'button';
@@ -336,10 +344,206 @@
                 });
 
                 actions.appendChild(copyButton);
+                (extraButtons || []).forEach(function (button) {
+                    actions.appendChild(button);
+                });
                 card.appendChild(label);
                 card.appendChild(link);
                 card.appendChild(actions);
                 return card;
+            }
+
+            function showImagesError(message) {
+                const el = document.getElementById('embed-modal-images-error');
+                el.textContent = message || '';
+                el.classList.toggle('hidden', !message);
+            }
+
+            function validateCustomImageFile(file) {
+                if (customImageTypes.indexOf(file.type) === -1) return 'Only JPG, PNG or WebP images are allowed.';
+                if (file.size > customImageMaxBytes) return 'The image must not be larger than 5 MB.';
+                return '';
+            }
+
+            function buildSmallButton(text, className) {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 md:py-1.5 text-xs font-medium disabled:opacity-50 ' + className;
+                button.textContent = text;
+                return button;
+            }
+
+            // Returns the decoded JSON, or throws an Error carrying a user-facing message.
+            async function sendCustomImageRequest(url, method, body) {
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const response = await fetch(url, {
+                    method: method,
+                    headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' },
+                    body: body || undefined,
+                });
+                let data = null;
+                try {
+                    data = await response.json();
+                } catch (e) {
+                    data = null;
+                }
+                if (!response.ok) {
+                    const firstError = data && data.errors ? Object.values(data.errors)[0][0] : null;
+                    throw new Error(firstError || (data && data.message) || 'Request failed. Please try again.');
+                }
+                return data;
+            }
+
+            function setCustomImage(state, image) {
+                customImageOverrides[state.uploadUrl] = image;
+                state.customImage = image;
+                if (embedModalState === state) {
+                    renderEmbedImages();
+                }
+            }
+
+            function buildUploadTile(state) {
+                const card = document.createElement('div');
+                card.className = 'flex flex-col min-w-0 rounded-lg border border-gray-200 overflow-hidden';
+
+                const label = document.createElement('div');
+                label.className = 'px-3 py-2 bg-gray-50 text-xs font-medium text-gray-600 truncate';
+                label.textContent = 'Custom image';
+
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/jpeg,image/png,image/webp';
+                input.className = 'hidden';
+
+                const tile = document.createElement('button');
+                tile.type = 'button';
+                tile.className = 'flex flex-col items-center justify-center gap-1 aspect-square bg-gray-100 text-xs font-medium text-gray-500 hover:bg-gray-200 disabled:opacity-50';
+                tile.textContent = '+ Upload image';
+                tile.addEventListener('click', function () {
+                    input.click();
+                });
+
+                input.addEventListener('change', async function () {
+                    const file = input.files && input.files[0];
+                    input.value = '';
+                    if (!file) return;
+
+                    const fileError = validateCustomImageFile(file);
+                    if (fileError) {
+                        showImagesError(fileError);
+                        return;
+                    }
+
+                    showImagesError('');
+                    tile.disabled = true;
+                    tile.textContent = 'Uploading...';
+
+                    const formData = new FormData();
+                    formData.append('image', file);
+
+                    try {
+                        const data = await sendCustomImageRequest(state.uploadUrl, 'POST', formData);
+                        if (embedModalState === state) showImagesError('');
+                        setCustomImage(state, { label: data.label, url: data.url });
+                    } catch (error) {
+                        if (embedModalState === state) {
+                            showImagesError(error.message);
+                            tile.disabled = false;
+                            tile.textContent = '+ Upload image';
+                        }
+                    }
+                });
+
+                card.appendChild(label);
+                card.appendChild(tile);
+                card.appendChild(input);
+                return card;
+            }
+
+            function buildCustomImageCard(state) {
+                const replaceButton = buildSmallButton('Replace', 'border-gray-200 bg-gray-50 text-gray-700 hover:bg-gray-100');
+                const deleteButton = buildSmallButton('Delete', 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100');
+
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/jpeg,image/png,image/webp';
+                input.className = 'hidden';
+
+                replaceButton.addEventListener('click', function () {
+                    input.click();
+                });
+
+                input.addEventListener('change', async function () {
+                    const file = input.files && input.files[0];
+                    input.value = '';
+                    if (!file) return;
+
+                    const fileError = validateCustomImageFile(file);
+                    if (fileError) {
+                        showImagesError(fileError);
+                        return;
+                    }
+
+                    showImagesError('');
+                    replaceButton.disabled = true;
+                    deleteButton.disabled = true;
+                    replaceButton.textContent = 'Uploading...';
+
+                    const formData = new FormData();
+                    formData.append('image', file);
+
+                    try {
+                        const data = await sendCustomImageRequest(state.uploadUrl, 'POST', formData);
+                        setCustomImage(state, { label: data.label, url: data.url });
+                    } catch (error) {
+                        if (embedModalState === state) {
+                            showImagesError(error.message);
+                            replaceButton.disabled = false;
+                            deleteButton.disabled = false;
+                            replaceButton.textContent = 'Replace';
+                        }
+                    }
+                });
+
+                deleteButton.addEventListener('click', async function () {
+                    if (!confirm('Delete this custom image?')) return;
+
+                    showImagesError('');
+                    replaceButton.disabled = true;
+                    deleteButton.disabled = true;
+                    deleteButton.textContent = 'Deleting...';
+
+                    try {
+                        await sendCustomImageRequest(state.deleteUrl, 'DELETE');
+                        setCustomImage(state, null);
+                    } catch (error) {
+                        if (embedModalState === state) {
+                            showImagesError(error.message);
+                            replaceButton.disabled = false;
+                            deleteButton.disabled = false;
+                            deleteButton.textContent = 'Delete';
+                        }
+                    }
+                });
+
+                const card = buildImageCard(state.customImage, [replaceButton, deleteButton]);
+                card.appendChild(input);
+                return card;
+            }
+
+            function renderEmbedImages() {
+                const state = embedModalState;
+                const imagesGrid = document.getElementById('embed-modal-images');
+                imagesGrid.innerHTML = '';
+                state.images.forEach(function (image) {
+                    imagesGrid.appendChild(buildImageCard(image));
+                });
+                if (state.customImage) {
+                    imagesGrid.appendChild(buildCustomImageCard(state));
+                } else if (state.canUpload) {
+                    imagesGrid.appendChild(buildUploadTile(state));
+                }
+                document.getElementById('embed-modal-images-section').classList.toggle('hidden', imagesGrid.children.length === 0);
             }
 
             // tabs:start
@@ -385,8 +589,21 @@
             });
             // tabs:end
 
-            function openEmbedModal(embedUrl, publicUrl, aspectRatio, title, images) {
-                embedModalState = { embedUrl: embedUrl, aspectRatio: aspectRatio };
+            function openEmbedModal(embedUrl, publicUrl, aspectRatio, title, images, uploadUrl, deleteUrl, canUpload) {
+                const allImages = images || [];
+                const customImage = uploadUrl && uploadUrl in customImageOverrides
+                    ? customImageOverrides[uploadUrl]
+                    : (allImages.find(function (image) { return image.label === 'Custom image'; }) || null);
+
+                embedModalState = {
+                    embedUrl: embedUrl,
+                    aspectRatio: aspectRatio,
+                    images: allImages.filter(function (image) { return image.label !== 'Custom image'; }),
+                    customImage: customImage,
+                    uploadUrl: uploadUrl,
+                    deleteUrl: deleteUrl,
+                    canUpload: !!canUpload,
+                };
 
                 document.getElementById('embed-modal-title').textContent = title;
                 document.getElementById('embed-modal-url').value = embedUrl;
@@ -396,13 +613,8 @@
 
                 refreshEmbedModal();
 
-                const imagesSection = document.getElementById('embed-modal-images-section');
-                const imagesGrid = document.getElementById('embed-modal-images');
-                imagesGrid.innerHTML = '';
-                (images || []).forEach(function (image) {
-                    imagesGrid.appendChild(buildImageCard(image));
-                });
-                imagesSection.classList.toggle('hidden', !(images && images.length));
+                showImagesError('');
+                renderEmbedImages();
                 setEmbedTab('preview'); // tabs
 
                 const modal = document.getElementById('embed-modal');
@@ -414,6 +626,7 @@
                 document.getElementById('embed-modal-preview').src = '';
                 embedModalState = null;
                 document.getElementById('embed-modal-images').innerHTML = '';
+                showImagesError('');
                 document.getElementById('embed-modal-images-section').classList.add('hidden');
                 setEmbedTab('preview'); // tabs
 

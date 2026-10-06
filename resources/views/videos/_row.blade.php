@@ -36,6 +36,10 @@
             ];
         }
     }
+
+    if ($video->custom_image_path) {
+        $previewImages[] = ['label' => 'Custom image', 'url' => Storage::disk('r2')->url($video->custom_image_path).'?v='.$video->updated_at->timestamp];
+    }
 @endphp
 
 {{-- mobile-card:start (max-md:* classes turn this row into a card below md; md+ is unchanged) --}}
@@ -103,7 +107,7 @@
         <div class="flex w-full flex-wrap gap-2 md:inline-flex md:w-auto md:flex-nowrap md:items-center">
             @if ($video->status === 'ready' && $playlistUrl)
                 <button type="button"
-                        onclick="openEmbedModal({{ \Illuminate\Support\Js::from($embedUrl) }}, {{ \Illuminate\Support\Js::from($video->public_url) }}, {{ \Illuminate\Support\Js::from($embedAspectRatio) }}, {{ \Illuminate\Support\Js::from($video->title) }}, {{ \Illuminate\Support\Js::from($previewImages) }})"
+                        onclick="openEmbedModal({{ \Illuminate\Support\Js::from($embedUrl) }}, {{ \Illuminate\Support\Js::from($video->public_url) }}, {{ \Illuminate\Support\Js::from($embedAspectRatio) }}, {{ \Illuminate\Support\Js::from($video->title) }}, {{ \Illuminate\Support\Js::from($previewImages) }}, {{ \Illuminate\Support\Js::from(route('videos.image.store', $video)) }}, {{ \Illuminate\Support\Js::from(route('videos.image.destroy', $video)) }}, {{ \Illuminate\Support\Js::from((bool) $video->disk_prefix) }})"
                         class="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 max-md:min-h-10 max-md:flex-1 max-md:justify-center px-3 py-2 md:py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-100">
                     <x-lucide-code class="w-3.5 h-3.5" /> Embed &amp; Images
                 </button>

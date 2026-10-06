@@ -662,6 +662,94 @@ class VideoController extends Controller
     }
 
     /**
+     * Upload (or replace) the single custom image of a video, stored on R2
+     * inside the video's own folder.
+     */
+    public function storeImage(Request $request, Video $video)
+    {
+        $validated = $request->validate([
+            'image' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'mimetypes:image/jpeg,image/png,image/webp', 'max:5120'],
+        ]);
+
+        if (! $video->disk_prefix) {
+            return response()->json([
+                'message' => 'This video has no storage folder yet. Please wait until it has finished processing.',
+            ], 422);
+        }
+
+        $file = $validated['image'];
+        $extension = $file->guessExtension() === 'jpeg' ? 'jpg' : $file->guessExtension();
+        $filename = 'custom-'.basename(rtrim($video->disk_prefix, '/')).'.'.$extension;
+        $disk = Setting::current()->r2Disk();
+        $oldPath = $video->custom_image_path;
+        $newPath = null;
+
+        try {
+            $newPath = $disk->putFileAs(rtrim($video->disk_prefix, '/'), $file, $filename, [
+                'ContentType' => $file->getMimeType(),
+            ]);
+
+            if (! $newPath) {
+                throw new \RuntimeException('The R2 disk refused to store the file.');
+            }
+
+            // Set updated_at explicitly: a same-extension replace leaves the path unchanged, so
+            // Eloquent would skip the UPDATE and the cache-busting version would not move.
+            $video->forceFill(['custom_image_path' => $newPath, 'updated_at' => now()])->save();
+        } catch (\Throwable $e) {
+            Log::error("Failed to store custom image for video {$video->id}: {$e->getMessage()}");
+
+            // When the keys are equal the "new" object is the old one (already overwritten); keep it.
+            if ($newPath && $newPath !== $oldPath) {
+                $this->deleteR2Object($disk, $newPath, $video);
+            }
+
+            return response()->json([
+                'message' => 'Failed to upload the image. Please try again.',
+            ], 500);
+        }
+
+        if ($oldPath && $oldPath !== $newPath) {
+            $this->deleteR2Object($disk, $oldPath, $video);
+        }
+
+        return response()->json([
+            'label' => 'Custom image',
+            'url' => $disk->url($newPath).'?v='.$video->updated_at->timestamp,
+        ]);
+    }
+
+    /**
+     * Remove the custom image of a video.
+     */
+    public function destroyImage(Video $video)
+    {
+        if (! $video->custom_image_path) {
+            return response()->json(['message' => 'This video has no custom image.'], 404);
+        }
+
+        $this->deleteR2Object(Setting::current()->r2Disk(), $video->custom_image_path, $video);
+
+        $video->update(['custom_image_path' => null]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /**
+     * Best-effort delete of one R2 object; failures are logged, not thrown.
+     */
+    private function deleteR2Object($disk, string $path, Video $video): void
+    {
+        try {
+            if (! $disk->delete($path)) {
+                Log::warning("Unable to delete custom image '{$path}' of video {$video->id} from R2.");
+            }
+        } catch (\Throwable $e) {
+            Log::warning("Unable to delete custom image '{$path}' of video {$video->id} from R2: {$e->getMessage()}");
+        }
+    }
+
+    /**
      * Remove the video record and its files on R2.
      */
     public function destroy(Video $video)

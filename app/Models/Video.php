@@ -17,6 +17,7 @@ class Video extends Model
         'playlist_path',
         'thumbnail_path',
         'storyboards',
+        'custom_image_path',
         'duration',
         'error_message',
         'output_width',
