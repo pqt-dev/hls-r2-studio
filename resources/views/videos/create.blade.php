@@ -28,9 +28,9 @@
                         <x-lucide-cloud-upload class="w-8 h-8 text-foreground" />
                     </div>
                     <p id="dropzone-instruction" class="text-sm text-muted-foreground mb-3">Drag and drop video here, or</p>
-                    <span class="pointer-events-none inline-flex items-center gap-2 rounded-lg bg-primary hover:bg-primary/90 px-4 py-2 text-sm font-medium text-primary-foreground">
-                        <x-lucide-upload class="w-4 h-4" /> Choose Video File
-                    </span>
+                    <x-ui.button type="button">
+                        <x-lucide-upload class="w-4 h-4" /> Choose video file
+                    </x-ui.button>
                 </div>
                 <p class="mt-1 text-xs text-muted-foreground">Formats: mp4, mov, mkv, avi, webm. Maximum size {{ config('videos.max_upload_size_mb') }} MB.</p>
                 <div id="selected-files-list" class="mt-2 space-y-1 hidden"></div>
@@ -76,7 +76,7 @@
 
             <div id="upload-summary" class="hidden">
                 <x-ui.button href="{{ route('videos.index') }}">
-                    View Video List
+                    View video list
                 </x-ui.button>
             </div>
         </form>

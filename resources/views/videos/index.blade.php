@@ -56,8 +56,8 @@
         <div class="flex items-center justify-end mb-3">
             <div class="flex items-center gap-3">
                 @if ($completedVideos->isNotEmpty())
-                    <x-ui.button variant="destructive" size="sm" type="submit" form="bulk-delete-form" id="bulk-delete-btn" disabled>
-                        Delete Selected (<span id="selected-count">0</span>)
+                    <x-ui.button variant="destructive-outline" size="sm" type="submit" form="bulk-delete-form" id="bulk-delete-btn" disabled>
+                        <x-lucide-trash-2 class="w-3.5 h-3.5" /> Delete<span hidden>&nbsp;(<span id="selected-count">0</span>)</span>
                     </x-ui.button>
                 @endif
             </div>
@@ -100,8 +100,8 @@
                             <x-ui.table-head class="max-md:hidden">Status</x-ui.table-head>
                             <x-ui.table-head class="hidden md:table-cell">Duration</x-ui.table-head>
                             <x-ui.table-head class="hidden md:table-cell">Size</x-ui.table-head>
-                            <x-ui.table-head class="hidden md:table-cell">Source</x-ui.table-head>
-                            <x-ui.table-head class="hidden md:table-cell">Details</x-ui.table-head>
+                            <x-ui.table-head class="hidden xl:table-cell">Source</x-ui.table-head>
+                            <x-ui.table-head class="hidden xl:table-cell">Details</x-ui.table-head>
                             <x-ui.table-head class="hidden md:table-cell">Upload Date</x-ui.table-head>
                             <x-ui.table-head align="right" class="max-md:hidden">Actions</x-ui.table-head>
                         </x-ui.table-row>
@@ -120,9 +120,9 @@
 
     {{-- tabs:start (below md the dialog is a full-screen sheet; header and tab bar stay fixed, body scrolls) --}}
     <x-ui.dialog id="embed-modal" class="z-50 md:p-4" initialFocus="panel" aria-labelledby="embed-modal-heading"
-                 panelClass="max-w-2xl max-md:flex max-md:h-[100dvh] max-md:max-h-none max-md:max-w-none max-md:flex-col max-md:overflow-hidden max-md:rounded-none max-md:border-0 md:overflow-hidden md:overflow-y-auto">
+                 panelClass="max-w-2xl flex flex-col overflow-hidden max-md:h-[100dvh] max-md:max-h-none max-md:max-w-none max-md:rounded-none max-md:border-0">
     {{-- tabs:end --}}
-            <x-ui.dialog-header class="px-4 sm:px-5 py-4 border-b border-border max-md:shrink-0">
+            <x-ui.dialog-header class="px-4 sm:px-5 py-4 border-b border-border shrink-0">
                 <div class="min-w-0 pr-8">
                     <x-ui.dialog-title id="embed-modal-heading" class="text-base">Player / Embed &amp; Images</x-ui.dialog-title>
                     <x-ui.dialog-description id="embed-modal-title" class="mt-1.5 break-words"></x-ui.dialog-description>
@@ -139,7 +139,7 @@
             </div>
             {{-- tabs:end --}}
 
-            <div class="p-4 sm:p-5 md:space-y-4 max-md:min-h-0 max-md:flex-1 max-md:overflow-y-auto">
+            <div class="p-4 sm:p-5 md:space-y-4 min-h-0 flex-1 overflow-y-auto">
                 {{-- tabs:start --}}
                 <div id="embed-panel-preview" role="tabpanel" aria-labelledby="embed-tab-preview" class="rounded-lg overflow-hidden bg-black">
                 {{-- tabs:end --}}
@@ -153,8 +153,8 @@
                     <x-ui.label for="embed-modal-url" class="block mb-2">Embed URL</x-ui.label>
                     <div class="flex gap-2">
                         <x-ui.input id="embed-modal-url" type="text" readonly class="flex-1" />
-                        <x-ui.button variant="outline" size="sm" class="shrink-0" onclick="copyModalField('embed-modal-url', this)">
-                            <x-lucide-copy class="w-3.5 h-3.5" /> Copy
+                        <x-ui.button variant="outline" size="sm" class="shrink-0" data-copy-btn aria-live="polite" onclick="copyModalField('embed-modal-url', this)">
+                            <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy</span>
                         </x-ui.button>
                     </div>
                 </div>
@@ -163,8 +163,8 @@
                     <x-ui.label for="embed-modal-m3u8" class="block mb-2">Link m3u8 / play</x-ui.label>
                     <div class="flex gap-2">
                         <x-ui.input id="embed-modal-m3u8" type="text" readonly class="flex-1" />
-                        <x-ui.button variant="outline" size="sm" class="shrink-0" onclick="copyModalField('embed-modal-m3u8', this)">
-                            <x-lucide-copy class="w-3.5 h-3.5" /> Copy
+                        <x-ui.button variant="outline" size="sm" class="shrink-0" data-copy-btn aria-live="polite" onclick="copyModalField('embed-modal-m3u8', this)">
+                            <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy</span>
                         </x-ui.button>
                     </div>
                 </div>
@@ -185,8 +185,8 @@
                     </div>
                     <x-ui.textarea id="embed-modal-code" readonly rows="3" class="font-mono resize-none" />
                     <p class="mt-1 text-xs text-muted-foreground">Browsers may block autoplay with sound unless Mute is also enabled.</p>
-                    <x-ui.button variant="outline" size="sm" class="mt-2" onclick="copyModalField('embed-modal-code', this)">
-                        <x-lucide-copy class="w-3.5 h-3.5" /> Copy Iframe Code
+                    <x-ui.button variant="outline" size="sm" class="mt-2" data-copy-btn aria-live="polite" onclick="copyModalField('embed-modal-code', this)">
+                        <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy</span>
                     </x-ui.button>
                 </div>
                 {{-- tabs:start --}}
@@ -279,6 +279,31 @@
             // The table rows are rendered at page load, so their openEmbedModal()
             // data goes stale after an upload/delete. Remember the latest custom
             // image per video (keyed by its upload URL) and prefer it on reopen.
+            const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
+            // Idle classes mirror the ui button component outline variant; copied classes use the primary token.
+            const COPY_BTN_IDLE_CLASSES = ['border-input', 'bg-background', 'text-foreground', 'hover:bg-accent', 'hover:text-accent-foreground'];
+            const COPY_BTN_COPIED_CLASSES = ['border-primary', 'bg-primary', 'text-primary-foreground', 'hover:bg-primary/90', 'hover:text-primary-foreground'];
+
+            function setCopyButtonState(button, copied) {
+                button.querySelector('[data-copy-label]').textContent = copied ? 'Copied' : 'Copy';
+                button.classList.remove(...(copied ? COPY_BTN_IDLE_CLASSES : COPY_BTN_COPIED_CLASSES));
+                button.classList.add(...(copied ? COPY_BTN_COPIED_CLASSES : COPY_BTN_IDLE_CLASSES));
+            }
+
+            function resetCopyButtons() {
+                document.querySelectorAll('#embed-modal [data-copy-btn]').forEach(function (button) {
+                    setCopyButtonState(button, false);
+                });
+            }
+
+            // Shared by every copy button. The "Copied" state is kept until the Embed modal is opened again.
+            function copyTextToClipboard(text, button) {
+                if (!navigator.clipboard) return;
+                navigator.clipboard.writeText(text).then(function () {
+                    setCopyButtonState(button, true);
+                }).catch(function () {});
+            }
+
             const customImageOverrides = {};
             const customImageMaxBytes = 5 * 1024 * 1024;
             const customImageTypes = ['image/jpeg', 'image/png', 'image/webp'];
@@ -309,8 +334,10 @@
 
                 const copyButton = document.createElement('button');
                 copyButton.type = 'button';
-                copyButton.className = 'inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 md:py-1.5 text-xs font-medium text-foreground hover:bg-accent';
-                copyButton.textContent = 'Copy Link';
+                copyButton.className = 'inline-flex items-center gap-1.5 rounded-md border border-input bg-background px-3 py-2 md:py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50';
+                copyButton.setAttribute('data-copy-btn', '');
+                copyButton.setAttribute('aria-live', 'polite');
+                copyButton.innerHTML = COPY_ICON_SVG + '<span data-copy-label>Copy</span>';
                 copyButton.addEventListener('click', function () {
                     copyThumbnailUrl(copyButton, image.url);
                 });
@@ -335,6 +362,23 @@
                 if (customImageTypes.indexOf(file.type) === -1) return 'Only JPG, PNG or WebP images are allowed.';
                 if (file.size > customImageMaxBytes) return 'The image must not be larger than 5 MB.';
                 return '';
+            }
+
+            const TRASH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
+
+            // Same classes as the ui button component destructive-outline variant, size sm (components/ui/button.blade.php).
+            const DESTRUCTIVE_OUTLINE_BTN_CLASS = 'inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:border-ring disabled:pointer-events-none px-3 py-2 md:py-1.5 text-xs border border-input bg-background text-destructive shadow-xs hover:bg-destructive/10 hover:text-destructive disabled:border-input disabled:text-muted-foreground disabled:opacity-60 disabled:hover:bg-transparent';
+
+            function buildDeleteButton() {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = DESTRUCTIVE_OUTLINE_BTN_CLASS;
+                button.innerHTML = TRASH_ICON_SVG + '<span data-label>Delete</span>';
+                return button;
+            }
+
+            function setButtonLabel(button, text) {
+                button.querySelector('[data-label]').textContent = text;
             }
 
             function buildSmallButton(text, className) {
@@ -434,7 +478,7 @@
 
             function buildCustomImageCard(state) {
                 const replaceButton = buildSmallButton('Replace', 'border-border bg-muted text-foreground hover:bg-accent');
-                const deleteButton = buildSmallButton('Delete', 'border-destructive/30 bg-destructive/10 text-destructive hover:bg-destructive/20');
+                const deleteButton = buildDeleteButton();
 
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -478,12 +522,13 @@
                 });
 
                 deleteButton.addEventListener('click', async function () {
-                    if (!confirm('Delete this custom image?')) return;
+                    const ok = await window.confirmDialog({ title: 'Delete image', message: 'Delete this custom image?', confirmText: 'Delete', danger: true });
+                    if (!ok) return;
 
                     showImagesError('');
                     replaceButton.disabled = true;
                     deleteButton.disabled = true;
-                    deleteButton.textContent = 'Deleting...';
+                    setButtonLabel(deleteButton, 'Deleting...');
 
                     try {
                         await sendCustomImageRequest(state.deleteUrl, 'DELETE');
@@ -493,7 +538,7 @@
                             showImagesError(error.message);
                             replaceButton.disabled = false;
                             deleteButton.disabled = false;
-                            deleteButton.textContent = 'Delete';
+                            setButtonLabel(deleteButton, 'Delete');
                         }
                     }
                 });
@@ -584,6 +629,7 @@
 
                 showImagesError('');
                 renderEmbedImages();
+                resetCopyButtons();
                 setEmbedTab('preview'); // tabs
 
                 window.uiDialog.open(document.getElementById('embed-modal'));
@@ -601,15 +647,7 @@
             }
 
             function copyModalField(elementId, button) {
-                const el = document.getElementById(elementId);
-                navigator.clipboard.writeText(el.value);
-
-                const originalHTML = button.innerHTML;
-                button.innerHTML = originalHTML.replace(/Copy.*/, 'Copied!');
-
-                setTimeout(function () {
-                    button.innerHTML = originalHTML;
-                }, 1500);
+                copyTextToClipboard(document.getElementById(elementId).value, button);
             }
 
             function openEditModal(videoId, title) {
@@ -624,18 +662,7 @@
             }
 
             function copyThumbnailUrl(button, url) {
-                navigator.clipboard.writeText(url);
-
-                const originalClasses = ['border-input', 'bg-background', 'text-foreground', 'hover:bg-accent'];
-                const successClasses = ['border-emerald-300', 'bg-emerald-50', 'text-emerald-700'];
-
-                button.classList.remove(...originalClasses);
-                button.classList.add(...successClasses);
-
-                setTimeout(function () {
-                    button.classList.remove(...successClasses);
-                    button.classList.add(...originalClasses);
-                }, 1500);
+                copyTextToClipboard(url, button);
             }
 
             const selectAllCheckbox = document.getElementById('select-all-checkbox');
@@ -645,6 +672,7 @@
             function updateBulkDeleteState() {
                 const checked = document.querySelectorAll('.bulk-select-checkbox:checked');
                 selectedCountEl.textContent = checked.length;
+                selectedCountEl.parentElement.hidden = checked.length === 0;
                 bulkDeleteBtn.disabled = checked.length === 0;
             }
 
@@ -663,8 +691,8 @@
 
             function confirmBulkDelete() {
                 const count = document.querySelectorAll('.bulk-select-checkbox:checked').length;
-                const message = @json($deleteFromR2 ? 'Delete {COUNT} selected videos? The files on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete {COUNT} selected videos?');
-                window.confirmDialog({ title: 'Delete selected videos', message: message.replace('{COUNT}', count), confirmText: 'Delete', danger: true }).then(function (ok) {
+                const message = @json($deleteFromR2 ? 'Delete {COUNT} videos? The files on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete {COUNT} videos?');
+                window.confirmDialog({ title: 'Delete videos', message: message.replace('{COUNT}', count), confirmText: 'Delete', danger: true }).then(function (ok) {
                     if (!ok) return;
                     document.getElementById('bulk-delete-form').submit();
                 });

@@ -7,6 +7,7 @@
         'outline' => 'border border-input bg-background text-foreground shadow-xs hover:bg-accent hover:text-accent-foreground',
         'ghost' => 'text-foreground hover:bg-accent hover:text-accent-foreground',
         'destructive' => 'bg-destructive text-destructive-foreground hover:bg-destructive/90',
+        'destructive-outline' => 'border border-input bg-background text-destructive shadow-xs hover:bg-destructive/10 hover:text-destructive disabled:border-input disabled:text-muted-foreground disabled:opacity-60 disabled:hover:bg-transparent',
     ];
 
     $sizes = [

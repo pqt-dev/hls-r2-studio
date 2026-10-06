@@ -64,7 +64,7 @@
         </div>
     </x-ui.table-cell>
 
-    <x-ui.table-cell class="font-medium text-foreground max-w-[10rem] md:max-w-xs max-md:min-w-0 max-md:max-w-none max-md:p-0">
+    <x-ui.table-cell class="font-medium text-foreground max-w-[10rem] md:max-w-[7rem] xl:max-w-[11rem] 2xl:max-w-xs max-md:min-w-0 max-md:max-w-none max-md:p-0">
         <div class="truncate">{{ $video->title }}</div>
         <div class="text-xs font-normal text-muted-foreground truncate" title="{{ $video->disk_prefix ?? '—' }}">{{ $video->disk_prefix ?? '—' }}</div>
     </x-ui.table-cell>
@@ -81,14 +81,14 @@
 
     <x-ui.table-cell class="hidden md:table-cell text-muted-foreground max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:before:content-['Size']">{{ $video->formatted_size }}</x-ui.table-cell>
 
-    <x-ui.table-cell class="hidden md:table-cell max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:before:content-['Source']">
+    <x-ui.table-cell class="hidden xl:table-cell max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:before:content-['Source']">
         <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Cloudflare R2">
             <img src="{{ asset('img/cloudflare.png') }}" alt="Cloudflare" class="w-4 h-4">
             R2
         </span>
     </x-ui.table-cell>
 
-    <x-ui.table-cell class="hidden md:table-cell text-muted-foreground text-xs max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:text-right max-md:before:text-left max-md:before:content-['Details']">
+    <x-ui.table-cell class="hidden xl:table-cell text-muted-foreground text-xs max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:text-right max-md:before:text-left max-md:before:content-['Details']">
         @if ($video->output_width && $video->output_height)
             <div>{{ $video->output_width }}×{{ $video->output_height }}</div>
             <div>{{ $video->output_fps ?? '—' }} fps · {{ $video->output_codec ? strtoupper($video->output_codec) : '—' }}</div>
@@ -103,24 +103,24 @@
     <x-ui.table-cell align="right" class="whitespace-nowrap max-md:col-span-full max-md:mt-1 max-md:border-t max-md:border-border max-md:p-0 max-md:pt-3 max-md:text-left">
         <div class="flex w-full flex-wrap gap-2 md:inline-flex md:w-auto md:flex-nowrap md:items-center">
             @if ($video->status === 'ready' && $playlistUrl)
-                <x-ui.button variant="outline" size="sm" class="max-md:min-h-10 max-md:flex-1"
+                <x-ui.button variant="outline" size="sm" class="max-md:min-h-10 max-md:flex-1 md:h-8 md:w-8 md:px-0 md:py-0" aria-label="Embed" title="Embed"
                         onclick="openEmbedModal({{ \Illuminate\Support\Js::from($embedUrl) }}, {{ \Illuminate\Support\Js::from($video->public_url) }}, {{ \Illuminate\Support\Js::from($embedAspectRatio) }}, {{ \Illuminate\Support\Js::from($video->title) }}, {{ \Illuminate\Support\Js::from($previewImages) }}, {{ \Illuminate\Support\Js::from(route('videos.image.store', $video)) }}, {{ \Illuminate\Support\Js::from(route('videos.image.destroy', $video)) }}, {{ \Illuminate\Support\Js::from((bool) $video->disk_prefix) }})"
                         >
-                    <x-lucide-code class="w-3.5 h-3.5" /> Embed &amp; Images
+                    <x-lucide-code class="w-3.5 h-3.5" /> <span class="max-md:inline md:sr-only">Embed</span>
                 </x-ui.button>
             @endif
 
-            <x-ui.button variant="outline" size="sm" class="max-md:min-h-10 max-md:flex-1"
+            <x-ui.button variant="outline" size="sm" class="max-md:min-h-10 max-md:flex-1 md:h-8 md:w-8 md:px-0 md:py-0" aria-label="Edit" title="Edit"
                     onclick="openEditModal({{ $video->id }}, {{ \Illuminate\Support\Js::from($video->title) }})">
-                <x-lucide-pencil class="w-3.5 h-3.5" /> Edit
+                <x-lucide-pencil class="w-3.5 h-3.5" /> <span class="max-md:inline md:sr-only">Edit</span>
             </x-ui.button>
 
             <form action="{{ route('videos.destroy', $video) }}" method="POST" class="max-md:flex-1"
                   onsubmit="return confirmDelete(this, {{ \Illuminate\Support\Js::from($video->title) }})">
                 @csrf
                 @method('DELETE')
-                <x-ui.button type="submit" variant="destructive" size="sm" class="max-md:min-h-10 max-md:w-full">
-                    <x-lucide-trash-2 class="w-3.5 h-3.5" /> Delete
+                <x-ui.button type="submit" variant="destructive-outline" size="sm" class="max-md:min-h-10 max-md:w-full md:h-8 md:w-8 md:px-0 md:py-0" aria-label="Delete" title="Delete">
+                    <x-lucide-trash-2 class="w-3.5 h-3.5" /> <span class="max-md:inline md:sr-only">Delete</span>
                 </x-ui.button>
             </form>
         </div>

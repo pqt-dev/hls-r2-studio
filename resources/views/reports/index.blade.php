@@ -69,7 +69,7 @@
             <x-lucide-circle-x class="w-4 h-4 shrink-0" />
             <span id="reports-error-banner-message"></span>
         </div>
-        <button type="button" id="reports-error-banner-close" class="rounded-sm text-destructive hover:text-destructive" aria-label="Dismiss">
+        <button type="button" id="reports-error-banner-close" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" aria-label="Dismiss">
             <x-lucide-x class="w-4 h-4" />
         </button>
     </x-ui.alert>
@@ -153,7 +153,7 @@
                             <x-ui.table-cell align="right" class="whitespace-nowrap max-md:col-span-full max-md:p-0 max-md:text-left" data-actions-cell>
                                 @if ($report->status === 'new')
                                     <x-ui.button size="sm" class="js-mark-resolved max-md:min-h-10 max-md:w-full" data-report-id="{{ $report->id }}" data-url="{{ route('reports.resolve', $report) }}" data-page-url="{{ $report->page_url }}">
-                                        Mark Resolved
+                                        Mark resolved
                                     </x-ui.button>
                                 @endif
                             </x-ui.table-cell>
@@ -204,7 +204,7 @@
                 window.confirmDialog({
                     title: 'Mark report as resolved?',
                     message: 'Mark "' + pageUrl + '" as resolved? You can still find it under the Resolved tab afterward.',
-                    confirmText: 'Mark Resolved',
+                    confirmText: 'Mark resolved',
                     danger: false,
                 }).then(function (ok) {
                     if (!ok) {

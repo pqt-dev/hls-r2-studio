@@ -42,7 +42,7 @@
                     </div>
 
                     <x-ui.button type="submit">
-                        Change Password
+                        Change password
                     </x-ui.button>
                 </form>
             </x-ui.card-content>
@@ -119,7 +119,7 @@
                     </div>
 
                     <x-ui.button type="submit">
-                        Save R2 Configuration
+                        Save R2 configuration
                     </x-ui.button>
                 </form>
             </x-ui.card-content>
@@ -171,7 +171,7 @@
                     </div>
 
                     <x-ui.button type="submit">
-                        Save Transcoding Options
+                        Save transcoding options
                     </x-ui.button>
                 </form>
             </x-ui.card-content>
@@ -219,7 +219,7 @@
                     </div>
 
                     <x-ui.button type="submit">
-                        Save Other Options
+                        Save other options
                     </x-ui.button>
                 </form>
             </x-ui.card-content>
