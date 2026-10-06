@@ -9,50 +9,49 @@
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="bg-gradient-to-br from-blue-50 via-white to-sky-50 text-gray-800">
+<body class="bg-muted text-sm text-foreground antialiased">
     <div class="min-h-screen flex items-center justify-center p-4">
-        <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <x-ui.card class="w-full max-w-sm">
+            <x-ui.card-content>
             <div class="flex flex-col items-center text-center mb-6">
-                <div class="w-12 h-12 rounded-2xl bg-white border border-gray-200 flex items-center justify-center mb-3 shadow-sm p-2">
+                <div class="w-12 h-12 rounded-lg bg-background border border-border flex items-center justify-center mb-3 shadow-sm p-2">
                     <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-full h-full">
                 </div>
-                <h1 class="text-lg font-semibold text-gray-900 mb-1">HLS R2 Studio</h1>
-                <p class="text-xs text-gray-500">Admin Login</p>
+                <h1 class="text-2xl font-semibold tracking-tight text-foreground mb-1">HLS R2 Studio</h1>
+                <p class="text-sm text-muted-foreground">Admin Login</p>
             </div>
 
             @if (session('error'))
-                <div class="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm">
+                <x-ui.alert variant="destructive" class="mb-4">
                     {{ session('error') }}
-                </div>
+                </x-ui.alert>
             @endif
 
             <form method="POST" action="{{ route('login.attempt') }}" class="space-y-5">
                 @csrf
 
                 <div>
-                    <label for="username" class="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                    <input type="text" name="username" id="username" value="{{ old('username') }}" required autofocus
-                           class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+                    <x-ui.label for="username" class="block mb-2">Username</x-ui.label>
+                    <x-ui.input type="text" name="username" id="username" value="{{ old('username') }}" required autofocus />
                     @error('username')
-                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                        <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
                     @enderror
                 </div>
 
                 <div>
-                    <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                    <input type="password" name="password" id="password" required
-                           class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
+                    <x-ui.label for="password" class="block mb-2">Password</x-ui.label>
+                    <x-ui.input type="password" name="password" id="password" required />
                     @error('password')
-                        <p class="mt-1 text-xs text-red-600">{{ $message }}</p>
+                        <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
                     @enderror
                 </div>
 
-                <button type="submit"
-                        class="inline-flex w-full items-center justify-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
+                <x-ui.button class="w-full" type="submit">
                     Log in
-                </button>
+                </x-ui.button>
             </form>
-        </div>
+            </x-ui.card-content>
+        </x-ui.card>
     </div>
 </body>
 </html>

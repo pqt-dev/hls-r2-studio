@@ -14,8 +14,8 @@
  * and the periodic reload used by the video list).
  */
 
-const ACTIVE_CLASSES = ['bg-blue-50', 'text-blue-700'];
-const INACTIVE_CLASSES = ['text-gray-700', 'hover:bg-gray-50'];
+const ACTIVE_CLASSES = ['bg-accent', 'text-accent-foreground'];
+const INACTIVE_CLASSES = ['text-muted-foreground', 'hover:bg-accent'];
 
 let navigationToken = 0;
 let navigating = false;
@@ -157,6 +157,7 @@ async function performSwap(url, { push, nav, hardFallback = true }, token) {
     removeInlinePageScripts();
 
     currentMain.innerHTML = incomingMain.innerHTML;
+    document.dispatchEvent(new CustomEvent('softnav:swap'));
 
     const title = incoming.querySelector('title');
     if (title) {

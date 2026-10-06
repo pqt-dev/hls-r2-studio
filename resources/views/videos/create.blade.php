@@ -5,86 +5,82 @@
 @section('breadcrumb', 'Home / Upload Video')
 
 @section('content')
-    <div class="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-blue-50 border-b border-blue-100 px-4 sm:px-6 py-4">
-            <h2 class="text-base font-semibold text-blue-700 inline-flex items-center gap-2"><x-lucide-cloud-upload class="w-4 h-4" /> Upload Video</h2>
-        </div>
+    <x-ui.card class="max-w-xl overflow-hidden">
+        <x-ui.card-header class="border-b border-border">
+            <x-ui.card-title class="inline-flex items-center gap-2"><x-lucide-cloud-upload class="w-4 h-4" /> Upload Video</x-ui.card-title>
+        </x-ui.card-header>
 
-        <form id="upload-form" class="p-4 sm:p-6 space-y-5"
+        <form id="upload-form" class="p-6 space-y-5"
               data-max-size-mb="{{ config('videos.max_upload_size_mb') }}"
               data-chunk-size-mb="{{ config('videos.chunk_size_mb') }}">
             <div id="title-field-wrapper">
-                <label for="title" class="block text-sm font-medium text-gray-700 mb-1">Title (optional)</label>
-                <input type="text" name="title" id="title" value="{{ old('title') }}"
-                       class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
-                <p id="title-multi-note" class="mt-1 text-xs text-gray-500 hidden">Title is automatically taken from the filename when uploading multiple videos.</p>
+                <x-ui.label for="title" class="block mb-2">Title (optional)</x-ui.label>
+                <x-ui.input type="text" name="title" id="title" value="{{ old('title') }}" />
+                <p id="title-multi-note" class="mt-1 text-xs text-muted-foreground hidden">Title is automatically taken from the filename when uploading multiple videos.</p>
             </div>
 
             <div>
-                <label for="video" class="block text-sm font-medium text-gray-700 mb-1">Video File</label>
+                <x-ui.label for="video" class="block mb-2">Video File</x-ui.label>
                 <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
                 <div id="dropzone"
-                     class="rounded-2xl border-2 border-dashed border-gray-300 px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/40">
-                    <div class="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
-                        <x-lucide-cloud-upload class="w-8 h-8 text-blue-700" />
+                     class="rounded-lg border-2 border-dashed border-input px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-foreground/40 hover:bg-muted/40">
+                    <div class="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                        <x-lucide-cloud-upload class="w-8 h-8 text-foreground" />
                     </div>
-                    <p id="dropzone-instruction" class="text-sm text-gray-600 mb-3">Drag and drop video here, or</p>
-                    <span class="pointer-events-none inline-flex items-center gap-2 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
+                    <p id="dropzone-instruction" class="text-sm text-muted-foreground mb-3">Drag and drop video here, or</p>
+                    <span class="pointer-events-none inline-flex items-center gap-2 rounded-lg bg-primary hover:bg-primary/90 px-4 py-2 text-sm font-medium text-primary-foreground">
                         <x-lucide-upload class="w-4 h-4" /> Choose Video File
                     </span>
                 </div>
-                <p class="mt-1 text-xs text-gray-500">Formats: mp4, mov, mkv, avi, webm. Maximum size {{ config('videos.max_upload_size_mb') }} MB.</p>
+                <p class="mt-1 text-xs text-muted-foreground">Formats: mp4, mov, mkv, avi, webm. Maximum size {{ config('videos.max_upload_size_mb') }} MB.</p>
                 <div id="selected-files-list" class="mt-2 space-y-1 hidden"></div>
             </div>
 
-            <div id="upload-error" class="hidden rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm"></div>
+            <x-ui.alert variant="destructive" id="upload-error" class="hidden"></x-ui.alert>
 
-            <button type="submit" id="upload-submit"
-                    class="inline-flex items-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">
+            <x-ui.button type="submit" id="upload-submit">
                 Upload
-            </button>
+            </x-ui.button>
 
-            <div id="upload-warning" class="hidden rounded-lg bg-amber-50 border border-amber-200 text-amber-800 px-4 py-3 text-sm flex items-center gap-2">
+            <x-ui.alert variant="warning" id="upload-warning" class="hidden">
                 <x-lucide-triangle-alert class="w-4 h-4 shrink-0" />
                 Please do not reload or close this tab while the upload is in progress.
-            </div>
+            </x-ui.alert>
 
-            <div id="upload-progress-card" class="rounded-2xl border border-gray-200 overflow-hidden">
-                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between gap-2">
-                    <h3 class="text-sm font-semibold text-blue-700 inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Upload Progress</h3>
-                    <button type="button" id="clear-queue-btn"
-                            class="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
+            <x-ui.card id="upload-progress-card" class="overflow-hidden">
+                <div class="bg-muted border-b border-border px-4 py-2 flex items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Upload Progress</h3>
+                    <x-ui.button variant="outline" size="sm" id="clear-queue-btn">
                         <x-lucide-trash-2 class="w-3.5 h-3.5" /> Clear queue
-                    </button>
+                    </x-ui.button>
                 </div>
                 <div class="p-4">
                     <div id="upload-queue" class="space-y-3"></div>
-                    <p id="upload-queue-empty" class="text-sm text-gray-500 text-center py-4">No files in queue.</p>
+                    <p id="upload-queue-empty" class="text-sm text-muted-foreground text-center py-4">No files in queue.</p>
                 </div>
-            </div>
+            </x-ui.card>
 
-            <div class="rounded-2xl border border-gray-200 overflow-hidden">
-                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between gap-2">
-                    <h3 class="text-sm font-semibold text-blue-700 inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Log</h3>
-                    <button type="button" id="clear-log-btn"
-                            class="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
+            <x-ui.card class="overflow-hidden">
+                <div class="bg-muted border-b border-border px-4 py-2 flex items-center justify-between gap-2">
+                    <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Log</h3>
+                    <x-ui.button variant="outline" size="sm" id="clear-log-btn">
                         <x-lucide-trash-2 class="w-3.5 h-3.5" /> Clear log
-                    </button>
+                    </x-ui.button>
                 </div>
                 <div class="p-4">
-                    <div id="upload-log" class="font-mono text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto break-words">
-                        <p class="text-gray-400" data-log-placeholder>Ready.</p>
+                    <div id="upload-log" class="font-mono text-xs text-muted-foreground space-y-1 max-h-40 overflow-y-auto break-words">
+                        <p class="text-muted-foreground" data-log-placeholder>Ready.</p>
                     </div>
                 </div>
-            </div>
+            </x-ui.card>
 
             <div id="upload-summary" class="hidden">
-                <a href="{{ route('videos.index') }}" class="inline-flex items-center rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-4 py-2 text-sm font-medium text-blue-700">
+                <x-ui.button href="{{ route('videos.index') }}">
                     View Video List
-                </a>
+                </x-ui.button>
             </div>
         </form>
-    </div>
+    </x-ui.card>
 
     @push('scripts')
         <script>
@@ -318,29 +314,29 @@
 
                     files.forEach(function (file, index) {
                         const row = document.createElement('div');
-                        row.className = 'flex items-center justify-between text-xs bg-gray-50 rounded-lg px-3 py-2 border border-gray-200';
+                        row.className = 'flex items-center justify-between text-xs bg-muted rounded-lg px-3 py-2 border border-border';
 
                         const leftWrap = document.createElement('span');
                         leftWrap.className = 'flex items-center gap-2 min-w-0';
 
                         const iconEl = document.createElement('span');
-                        iconEl.className = 'text-blue-700 shrink-0';
+                        iconEl.className = 'text-foreground shrink-0';
                         iconEl.innerHTML = FILE_ICON_SVG;
 
                         const nameEl = document.createElement('span');
-                        nameEl.className = 'text-gray-700 truncate';
+                        nameEl.className = 'text-foreground truncate';
                         nameEl.textContent = file.name;
 
                         leftWrap.appendChild(iconEl);
                         leftWrap.appendChild(nameEl);
 
                         const sizeEl = document.createElement('span');
-                        sizeEl.className = 'text-gray-400 ml-2 shrink-0';
+                        sizeEl.className = 'text-muted-foreground ml-2 shrink-0';
                         sizeEl.textContent = formatSize(file.size);
 
                         const removeBtn = document.createElement('button');
                         removeBtn.type = 'button';
-                        removeBtn.className = 'text-gray-400 hover:text-red-600 shrink-0 ml-2 p-1';
+                        removeBtn.className = 'text-muted-foreground hover:text-destructive shrink-0 ml-2 p-1';
                         removeBtn.innerHTML = TRASH_ICON_SVG;
                         removeBtn.setAttribute('aria-label', 'Remove ' + file.name);
                         removeBtn.addEventListener('click', function () {
@@ -460,7 +456,7 @@
                     }).concat(Object.keys(uploadedVideos));
                     saveDismissedLog(Array.from(new Set(visibleIds)));
 
-                    logBox.innerHTML = '<p class="text-gray-400" data-log-placeholder>Ready.</p>';
+                    logBox.innerHTML = '<p class="text-muted-foreground" data-log-placeholder>Ready.</p>';
                 });
 
                 function updateQueueEmptyState() {
@@ -473,14 +469,14 @@
 
                 function createTranscodeSection() {
                     const transcodeWrapper = document.createElement('div');
-                    transcodeWrapper.className = 'hidden mt-2 pt-2 border-t border-gray-100';
+                    transcodeWrapper.className = 'hidden mt-2 pt-2 border-t border-border';
 
                     const transcodeLabel = document.createElement('p');
-                    transcodeLabel.className = 'text-xs font-medium text-gray-500 mb-1';
+                    transcodeLabel.className = 'text-xs font-medium text-muted-foreground mb-1';
                     transcodeLabel.textContent = 'Transcoding';
 
                     const transcodeBarWrapper = document.createElement('div');
-                    transcodeBarWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5';
+                    transcodeBarWrapper.className = 'w-full bg-border rounded-full h-2.5';
 
                     const transcodeBar = document.createElement('div');
                     transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full';
@@ -489,7 +485,7 @@
                     transcodeBarWrapper.appendChild(transcodeBar);
 
                     const transcodeStatusEl = document.createElement('p');
-                    transcodeStatusEl.className = 'mt-1 text-xs text-gray-500 break-words';
+                    transcodeStatusEl.className = 'mt-1 text-xs text-muted-foreground break-words';
                     transcodeStatusEl.dataset.role = 'transcode-status';
 
                     transcodeWrapper.dataset.role = 'transcode-wrapper';
@@ -502,7 +498,7 @@
 
                 function createQueueRow(name, size, queueId) {
                     const row = document.createElement('div');
-                    row.className = 'rounded-lg border border-gray-200 p-3';
+                    row.className = 'rounded-lg border border-border p-3';
                     if (queueId) {
                         row.dataset.queueId = queueId;
                     }
@@ -511,31 +507,31 @@
                     header.className = 'flex items-center justify-between text-sm';
 
                     const nameEl = document.createElement('span');
-                    nameEl.className = 'font-medium text-gray-800 truncate mr-2';
+                    nameEl.className = 'font-medium text-foreground truncate mr-2';
                     nameEl.textContent = name;
 
                     const sizeEl = document.createElement('span');
-                    sizeEl.className = 'text-gray-500 text-xs whitespace-nowrap';
+                    sizeEl.className = 'text-muted-foreground text-xs whitespace-nowrap';
                     sizeEl.textContent = formatSize(size);
 
                     header.appendChild(nameEl);
                     header.appendChild(sizeEl);
 
                     const uploadLabel = document.createElement('p');
-                    uploadLabel.className = 'text-xs font-medium text-gray-500 mb-1 mt-2';
+                    uploadLabel.className = 'text-xs font-medium text-muted-foreground mb-1 mt-2';
                     uploadLabel.textContent = 'Uploading';
 
                     const barWrapper = document.createElement('div');
-                    barWrapper.className = 'w-full bg-gray-200 rounded-full h-2.5 mt-2';
+                    barWrapper.className = 'w-full bg-border rounded-full h-2.5 mt-2';
 
                     const bar = document.createElement('div');
-                    bar.className = 'bg-blue-600 h-2.5 rounded-full transition-[width] duration-300 ease-linear';
+                    bar.className = 'bg-primary h-2.5 rounded-full transition-[width] duration-300 ease-linear';
                     bar.style.width = '0%';
                     bar.dataset.role = 'upload-bar';
                     barWrapper.appendChild(bar);
 
                     const statusEl = document.createElement('p');
-                    statusEl.className = 'mt-1 text-xs text-gray-500 break-words';
+                    statusEl.className = 'mt-1 text-xs text-muted-foreground break-words';
                     statusEl.dataset.role = 'upload-status';
                     statusEl.textContent = 'Pending';
 
@@ -780,7 +776,7 @@
                         try {
                             const videoId = await uploadFile(item);
                             successCount++;
-                            appendLog(item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')', 'text-blue-600 font-medium');
+                            appendLog(item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')', 'text-foreground font-medium');
                         } catch (err) {
                             setItemStatus(item, 'Error: ' + (err.message || 'An error occurred during upload.'));
                             appendLog(item.file.name + ' failed: ' + (err.message || 'An error occurred during upload.'));
@@ -796,7 +792,7 @@
                     uploadWarning.classList.add('hidden');
 
                     summaryBox.classList.remove('hidden');
-                    appendLog('Upload finished: ' + successCount + '/' + consideredCount + ' succeeded.', 'text-blue-600 font-medium');
+                    appendLog('Upload finished: ' + successCount + '/' + consideredCount + ' succeeded.', 'text-foreground font-medium');
                 });
 
                 function hydrateActiveVideos() {
@@ -1028,7 +1024,7 @@
                         reconnectAttempts++;
 
                         if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-                            appendLog('Lost real-time connection. Please reload the page to see the latest status.', 'text-red-600 font-medium');
+                            appendLog('Lost real-time connection. Please reload the page to see the latest status.', 'text-destructive font-medium');
                             return;
                         }
 

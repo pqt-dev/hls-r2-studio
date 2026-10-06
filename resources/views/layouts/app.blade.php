@@ -9,35 +9,35 @@
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
-<body class="bg-white text-gray-800">
+<body class="bg-background text-sm text-foreground antialiased">
     <div id="sidebar-backdrop" class="fixed inset-0 z-40 hidden bg-black/50 md:hidden" aria-hidden="true"></div>
 
     <div class="flex min-h-screen">
-        <aside id="app-sidebar" class="fixed inset-y-0 left-0 z-50 w-64 max-md:-translate-x-full max-md:invisible overflow-y-auto transition-[transform,visibility] duration-200 md:static md:z-auto md:overflow-visible shrink-0 bg-gray-50 text-gray-700 border-r border-gray-200 flex flex-col">
-            <div class="px-6 py-5 border-b border-gray-200 flex items-center gap-3 bg-gradient-to-br from-cyan-50 via-teal-50 to-white">
-                <div class="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm p-1.5">
+        <aside id="app-sidebar" class="fixed inset-y-0 left-0 z-50 w-64 max-md:-translate-x-full max-md:invisible overflow-y-auto transition-[transform,visibility] duration-200 md:static md:z-auto md:overflow-visible shrink-0 bg-muted text-foreground border-r border-border flex flex-col">
+            <div class="px-6 py-5 border-b border-border flex items-center gap-3 bg-background">
+                <div class="w-10 h-10 rounded-lg bg-background border border-border flex items-center justify-center shrink-0 shadow-sm p-1.5">
                     <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-full h-full">
                 </div>
                 <div class="leading-tight">
-                    <div class="text-base font-extrabold text-gray-900 tracking-tight">HLS R2 Studio</div>
-                    <div class="text-[11px] text-gray-500">Cloud Video Platform</div>
+                    <div class="text-base font-semibold text-foreground tracking-tight">HLS R2 Studio</div>
+                    <div class="text-[11px] text-muted-foreground">Cloud Video Platform</div>
                 </div>
             </div>
             <nav class="flex-1 px-3 py-4 space-y-4">
                 <div>
-                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Dashboard</p>
-                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 space-y-1">
+                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Dashboard</p>
+                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 space-y-1">
                         <a href="{{ route('dashboard.overview') }}"
-                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('dashboard.overview') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
-                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-rose-50">
-                                <x-lucide-layout-dashboard class="w-4 h-4 text-rose-600" />
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('dashboard.overview') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                <x-lucide-layout-dashboard class="w-4 h-4 text-foreground" />
                             </span>
                             Overview
                         </a>
                         <a href="{{ route('logs.index') }}"
-                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('logs.index') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
-                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-amber-50">
-                                <x-lucide-scroll-text class="w-4 h-4 text-amber-600" />
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('logs.index') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                <x-lucide-scroll-text class="w-4 h-4 text-foreground" />
                             </span>
                             Logs
                         </a>
@@ -45,19 +45,19 @@
                 </div>
 
                 <div>
-                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Video</p>
-                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 space-y-1">
+                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Video</p>
+                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 space-y-1">
                         <a href="{{ route('videos.index') }}"
-                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('videos.index') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
-                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-sky-50">
-                                <x-lucide-video class="w-4 h-4 text-sky-600" />
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('videos.index') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                <x-lucide-video class="w-4 h-4 text-foreground" />
                             </span>
                             Videos
                         </a>
                         <a href="{{ route('videos.create') }}"
-                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('videos.create') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
-                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-blue-50">
-                                <x-lucide-upload class="w-4 h-4 text-blue-600" />
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('videos.create') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                <x-lucide-upload class="w-4 h-4 text-foreground" />
                             </span>
                             Upload Video
                         </a>
@@ -65,19 +65,19 @@
                 </div>
 
                 <div>
-                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">System</p>
-                    <div class="bg-white rounded-2xl border border-gray-200 shadow-sm p-1.5 space-y-1">
+                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">System</p>
+                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 space-y-1">
                         <a href="{{ route('reports.index') }}"
-                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('reports.index') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
-                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
-                                <x-lucide-flag class="w-4 h-4 text-gray-600" />
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('reports.index') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                <x-lucide-flag class="w-4 h-4 text-muted-foreground" />
                             </span>
                             Reports
                         </a>
                         <a href="{{ route('settings.edit') }}"
-                           class="flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm font-medium {{ request()->routeIs('settings.edit') ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50' }}">
-                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-gray-100">
-                                <x-lucide-settings class="w-4 h-4 text-gray-600" />
+                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('settings.edit') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
+                                <x-lucide-settings class="w-4 h-4 text-muted-foreground" />
                             </span>
                             Settings
                         </a>
@@ -88,9 +88,9 @@
                     <form action="{{ route('logout') }}" method="POST">
                         @csrf
                         <button type="submit" onclick="return confirmLogout(this.form)"
-                                class="flex w-full items-center gap-2.5 rounded-xl bg-white border border-gray-200 shadow-sm px-2.5 py-2 text-sm font-medium text-red-600 hover:bg-red-50">
-                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-red-50">
-                                <x-lucide-log-out class="w-4 h-4 text-red-600" />
+                                class="flex w-full items-center gap-2.5 rounded-md bg-background border border-border shadow-sm px-2.5 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                            <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-destructive/10">
+                                <x-lucide-log-out class="w-4 h-4 text-destructive" />
                             </span>
                             Log out ({{ auth()->user()->username }})
                         </button>
@@ -100,41 +100,41 @@
         </aside>
 
         <div class="flex-1 min-w-0 flex flex-col">
-            <header class="sticky top-0 z-30 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5 md:hidden">
+            <header class="sticky top-0 z-30 flex items-center gap-3 border-b border-border bg-background px-4 py-2.5 md:hidden">
                 <button type="button" id="sidebar-toggle" aria-label="Open navigation menu" aria-controls="app-sidebar" aria-expanded="false"
-                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
+                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-border bg-background text-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
                     <x-lucide-menu class="w-5 h-5" />
                 </button>
                 <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-8 h-8 shrink-0">
-                <span class="truncate text-base font-extrabold tracking-tight text-gray-900">HLS R2 Studio</span>
+                <span class="truncate text-base font-semibold tracking-tight text-foreground">HLS R2 Studio</span>
             </header>
 
             <main class="flex-1 p-4 md:p-8">
-                <div class="mb-6 pb-4 border-b border-gray-200">
-                    <h1 class="text-xl md:text-2xl font-bold text-gray-900 break-words">@yield('page-title', 'HLS R2 Studio')</h1>
-                    <p class="mt-1 text-xs text-gray-500">@yield('breadcrumb', 'Home')</p>
+                <div class="mb-6 pb-4 border-b border-border">
+                    <h1 class="text-2xl font-semibold tracking-tight text-foreground break-words">@yield('page-title', 'HLS R2 Studio')</h1>
+                    <p class="mt-1 text-sm text-muted-foreground">@yield('breadcrumb', 'Home')</p>
                 </div>
 
                 @if (session('success'))
-                    <div class="mb-6 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 text-sm flex items-center gap-2">
+                    <x-ui.alert variant="success" class="mb-6">
                         <x-lucide-circle-check class="w-4 h-4 shrink-0" /> <span class="min-w-0 break-words">{{ session('success') }}</span>
-                    </div>
+                    </x-ui.alert>
                 @endif
 
                 @if (session('error'))
-                    <div class="mb-6 rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm flex items-center gap-2">
+                    <x-ui.alert variant="destructive" class="mb-6">
                         <x-lucide-circle-x class="w-4 h-4 shrink-0" /> <span class="min-w-0 break-words">{{ session('error') }}</span>
-                    </div>
+                    </x-ui.alert>
                 @endif
 
                 @if ($errors->any())
-                    <div class="mb-6 rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm">
+                    <x-ui.alert variant="destructive" class="mb-6">
                         <ul class="list-disc list-inside">
                             @foreach ($errors->all() as $error)
                                 <li>{{ $error }}</li>
                             @endforeach
                         </ul>
-                    </div>
+                    </x-ui.alert>
                 @endif
 
                 @yield('content')
@@ -142,31 +142,23 @@
         </div>
     </div>
 
-    <div id="confirm-modal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/50 p-4">
-        <div class="bg-white rounded-2xl overflow-hidden w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-xl">
-            <div class="p-5">
-                <div class="flex items-start gap-3">
-                    <span id="confirm-modal-icon-wrap" class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-red-50">
-                        <x-lucide-triangle-alert id="confirm-modal-icon" class="w-5 h-5 text-red-600" />
-                    </span>
-                    <div class="flex-1 min-w-0 pt-0.5">
-                        <h3 id="confirm-modal-title" class="text-sm font-semibold text-gray-900"></h3>
-                        <p id="confirm-modal-message" class="mt-1 text-sm text-gray-500 break-words"></p>
-                    </div>
+    <x-ui.dialog id="confirm-modal" role="alertdialog" class="z-[60] p-4" panelClass="max-w-sm" initialFocus="panel" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message">
+        <div class="grid gap-4 p-6">
+            <x-ui.dialog-header class="flex-row items-start gap-3">
+                <span id="confirm-modal-icon-wrap" class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-destructive/10">
+                    <x-lucide-triangle-alert id="confirm-modal-icon" class="w-5 h-5 text-destructive" />
+                </span>
+                <div class="flex min-w-0 flex-1 flex-col gap-1.5 pr-6">
+                    <x-ui.dialog-title id="confirm-modal-title" class="text-base"></x-ui.dialog-title>
+                    <x-ui.dialog-description id="confirm-modal-message" class="break-words"></x-ui.dialog-description>
                 </div>
-            </div>
-            <div class="flex justify-end gap-2 px-5 py-3 bg-gray-50 border-t border-gray-200">
-                <button type="button" id="confirm-modal-cancel"
-                        class="rounded-lg border border-gray-200 bg-white px-3 py-2 md:py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
-                    Cancel
-                </button>
-                <button type="button" id="confirm-modal-confirm"
-                        class="rounded-lg bg-red-600 px-3 py-2 md:py-1.5 text-xs font-medium text-white hover:bg-red-700">
-                    Confirm
-                </button>
-            </div>
+            </x-ui.dialog-header>
+            <x-ui.dialog-footer>
+                <x-ui.button variant="outline" id="confirm-modal-cancel">Cancel</x-ui.button>
+                <x-ui.button variant="destructive" id="confirm-modal-confirm">Confirm</x-ui.button>
+            </x-ui.dialog-footer>
         </div>
-    </div>
+    </x-ui.dialog>
 
     <script>
         (function () {
@@ -178,25 +170,18 @@
             const cancelBtn = document.getElementById('confirm-modal-cancel');
             const confirmBtn = document.getElementById('confirm-modal-confirm');
 
-            const dangerIconWrapClasses = ['bg-red-50'];
-            const dangerIconClasses = ['text-red-600'];
-            const dangerConfirmClasses = ['bg-red-600', 'hover:bg-red-700'];
+            const dangerIconWrapClasses = ['bg-destructive/10'];
+            const dangerIconClasses = ['text-destructive'];
+            const dangerConfirmClasses = ['bg-destructive', 'text-destructive-foreground', 'hover:bg-destructive/90'];
 
-            const infoIconWrapClasses = ['bg-blue-50'];
-            const infoIconClasses = ['text-blue-700'];
-            const infoConfirmClasses = ['bg-blue-700', 'hover:bg-blue-800'];
+            const infoIconWrapClasses = ['bg-muted'];
+            const infoIconClasses = ['text-foreground'];
+            const infoConfirmClasses = ['bg-primary', 'text-primary-foreground', 'hover:bg-primary/90'];
 
             let activeResolve = null;
-            let keydownHandler = null;
 
             function close(result) {
-                modal.classList.add('hidden');
-                modal.classList.remove('flex');
-
-                if (keydownHandler) {
-                    document.removeEventListener('keydown', keydownHandler);
-                    keydownHandler = null;
-                }
+                window.uiDialog.close(modal);
 
                 if (activeResolve) {
                     const resolve = activeResolve;
@@ -241,20 +226,13 @@
                     confirmBtn.classList.add(...infoConfirmClasses);
                 }
 
-                modal.classList.remove('hidden');
-                modal.classList.add('flex');
+                // Escape, overlay click and the X button arrive as 'dialog:dismiss' (see below).
+                // Initial focus: Cancel for destructive confirmations, Confirm otherwise. Enter then
+                // activates the focused button natively.
+                window.uiDialog.open(modal, { initialFocus: danger ? cancelBtn : confirmBtn });
 
                 return new Promise(function (resolve) {
                     activeResolve = resolve;
-
-                    keydownHandler = function (event) {
-                        if (event.key === 'Escape') {
-                            close(false);
-                        } else if (event.key === 'Enter') {
-                            close(true);
-                        }
-                    };
-                    document.addEventListener('keydown', keydownHandler);
                 });
             }
 
@@ -266,10 +244,9 @@
                 close(true);
             });
 
-            modal.addEventListener('click', function (event) {
-                if (event.target === modal) {
-                    close(false);
-                }
+            modal.addEventListener('dialog:dismiss', function (event) {
+                event.preventDefault();
+                close(false);
             });
 
             function confirmLogout(form) {
