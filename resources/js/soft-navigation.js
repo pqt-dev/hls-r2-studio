@@ -14,8 +14,8 @@
  * and the periodic reload used by the video list).
  */
 
-const ACTIVE_CLASSES = ['bg-accent', 'text-accent-foreground'];
-const INACTIVE_CLASSES = ['text-muted-foreground', 'hover:bg-accent'];
+const ACTIVE_CLASSES = ['bg-primary', 'text-primary-foreground', 'shadow-sm', '[&>span:first-child]:bg-transparent', '[&_svg]:text-primary-foreground'];
+const INACTIVE_CLASSES = ['text-muted-foreground', 'hover:bg-accent', 'hover:text-foreground'];
 
 let navigationToken = 0;
 let navigating = false;

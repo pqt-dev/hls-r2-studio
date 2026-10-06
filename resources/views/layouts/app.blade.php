@@ -13,73 +13,79 @@
     <div id="sidebar-backdrop" class="fixed inset-0 z-40 hidden bg-black/50 md:hidden" aria-hidden="true"></div>
 
     <div class="flex min-h-screen">
-        <aside id="app-sidebar" class="fixed inset-y-0 left-0 z-50 w-64 max-md:-translate-x-full max-md:invisible overflow-y-auto transition-[transform,visibility] duration-200 md:static md:z-auto md:overflow-visible shrink-0 bg-muted text-foreground border-r border-border flex flex-col">
-            <div class="px-6 py-5 border-b border-border flex items-center gap-3 bg-background">
+        <aside id="app-sidebar" class="fixed inset-y-0 left-0 z-50 w-64 md:max-lg:w-16 max-md:-translate-x-full max-md:invisible overflow-y-auto transition-[transform,visibility] duration-200 md:static md:z-auto md:overflow-visible shrink-0 bg-muted text-foreground border-r border-border flex flex-col">
+            <div class="px-6 py-5 md:max-lg:px-0 border-b border-border flex items-center md:max-lg:justify-center gap-3 bg-background">
                 <div class="w-10 h-10 rounded-lg bg-background border border-border flex items-center justify-center shrink-0 shadow-sm p-1.5">
                     <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-full h-full">
                 </div>
-                <div class="leading-tight">
+                <div class="leading-tight md:max-lg:hidden">
                     <div class="text-base font-semibold text-foreground tracking-tight">HLS R2 Studio</div>
                     <div class="text-[11px] text-muted-foreground">Cloud Video Platform</div>
                 </div>
             </div>
-            <nav class="flex-1 px-3 py-4 space-y-4">
+            <nav class="flex-1 px-3 md:max-lg:px-2 py-4 space-y-4">
                 <div>
-                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Dashboard</p>
-                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 space-y-1">
+                    <p class="px-1 mb-2 md:max-lg:hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Dashboard</p>
+                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 md:max-lg:p-1 space-y-1">
                         <a href="{{ route('dashboard.overview') }}"
-                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('dashboard.overview') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                           title="Overview"
+                           class="flex items-center md:max-lg:justify-center gap-2.5 rounded-md px-2.5 md:max-lg:px-0 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('dashboard.overview') ? 'bg-primary text-primary-foreground shadow-sm [&>span:first-child]:bg-transparent [&_svg]:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground' }}">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
                                 <x-lucide-layout-dashboard class="w-4 h-4 text-foreground" />
                             </span>
-                            Overview
+                            <span class="md:max-lg:sr-only">Overview</span>
                         </a>
                         <a href="{{ route('logs.index') }}"
-                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('logs.index') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                           title="Logs"
+                           class="flex items-center md:max-lg:justify-center gap-2.5 rounded-md px-2.5 md:max-lg:px-0 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('logs.index') ? 'bg-primary text-primary-foreground shadow-sm [&>span:first-child]:bg-transparent [&_svg]:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground' }}">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
                                 <x-lucide-scroll-text class="w-4 h-4 text-foreground" />
                             </span>
-                            Logs
+                            <span class="md:max-lg:sr-only">Logs</span>
                         </a>
                     </div>
                 </div>
 
                 <div>
-                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Video</p>
-                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 space-y-1">
+                    <p class="px-1 mb-2 md:max-lg:hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Video</p>
+                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 md:max-lg:p-1 space-y-1">
                         <a href="{{ route('videos.index') }}"
-                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('videos.index') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                           title="Videos"
+                           class="flex items-center md:max-lg:justify-center gap-2.5 rounded-md px-2.5 md:max-lg:px-0 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('videos.index') ? 'bg-primary text-primary-foreground shadow-sm [&>span:first-child]:bg-transparent [&_svg]:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground' }}">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
                                 <x-lucide-video class="w-4 h-4 text-foreground" />
                             </span>
-                            Videos
+                            <span class="md:max-lg:sr-only">Videos</span>
                         </a>
                         <a href="{{ route('videos.create') }}"
-                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('videos.create') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                           title="Upload Video"
+                           class="flex items-center md:max-lg:justify-center gap-2.5 rounded-md px-2.5 md:max-lg:px-0 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('videos.create') ? 'bg-primary text-primary-foreground shadow-sm [&>span:first-child]:bg-transparent [&_svg]:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground' }}">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
                                 <x-lucide-upload class="w-4 h-4 text-foreground" />
                             </span>
-                            Upload Video
+                            <span class="md:max-lg:sr-only">Upload Video</span>
                         </a>
                     </div>
                 </div>
 
                 <div>
-                    <p class="px-1 mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">System</p>
-                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 space-y-1">
+                    <p class="px-1 mb-2 md:max-lg:hidden text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">System</p>
+                    <div class="bg-background rounded-lg border border-border shadow-sm p-1.5 md:max-lg:p-1 space-y-1">
                         <a href="{{ route('reports.index') }}"
-                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('reports.index') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                           title="Reports"
+                           class="flex items-center md:max-lg:justify-center gap-2.5 rounded-md px-2.5 md:max-lg:px-0 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('reports.index') ? 'bg-primary text-primary-foreground shadow-sm [&>span:first-child]:bg-transparent [&_svg]:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground' }}">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
                                 <x-lucide-flag class="w-4 h-4 text-muted-foreground" />
                             </span>
-                            Reports
+                            <span class="md:max-lg:sr-only">Reports</span>
                         </a>
                         <a href="{{ route('settings.edit') }}"
-                           class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('settings.edit') ? 'bg-accent text-accent-foreground' : 'text-muted-foreground hover:bg-accent' }}">
+                           title="Settings"
+                           class="flex items-center md:max-lg:justify-center gap-2.5 rounded-md px-2.5 md:max-lg:px-0 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('settings.edit') ? 'bg-primary text-primary-foreground shadow-sm [&>span:first-child]:bg-transparent [&_svg]:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground' }}">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
                                 <x-lucide-settings class="w-4 h-4 text-muted-foreground" />
                             </span>
-                            Settings
+                            <span class="md:max-lg:sr-only">Settings</span>
                         </a>
                     </div>
                 </div>
@@ -87,12 +93,12 @@
                 <div>
                     <form action="{{ route('logout') }}" method="POST">
                         @csrf
-                        <button type="submit" onclick="return confirmLogout(this.form)"
-                                class="flex w-full items-center gap-2.5 rounded-md bg-background border border-border shadow-sm px-2.5 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
+                        <button type="submit" onclick="return confirmLogout(this.form)" title="Log out"
+                                class="flex w-full items-center md:max-lg:justify-center gap-2.5 rounded-md bg-background border border-border shadow-sm px-2.5 md:max-lg:px-0 py-2 text-sm font-medium text-destructive hover:bg-destructive/20 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-destructive/10">
                                 <x-lucide-log-out class="w-4 h-4 text-destructive" />
                             </span>
-                            Log out ({{ auth()->user()->username }})
+                            <span class="md:max-lg:sr-only">Log out ({{ auth()->user()->username }})</span>
                         </button>
                     </form>
                 </div>
