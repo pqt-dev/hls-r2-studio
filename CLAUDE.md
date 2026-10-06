@@ -49,3 +49,11 @@ Boost replaces these bootstrap instructions with guidelines tailored to the appl
 ## Communication style
 
 When asking the user to confirm a direction or decision, put the confirmation question as the very last line of the reply — nothing (no tool calls, no further text) after it. Lead with a short plain-language bullet summary of what's at stake; keep code snippets, diffs, and deep technical reasoning out of the confirmation ask itself (push detail after the summary, or only on request).
+
+## Git commit rules
+
+- Split commits by feature, based on the diff: changes for one distinct feature = one commit; changes touching two or more features must be split into one commit per feature.
+- Commit message: a single line only (no multi-line body, no trailers), short but complete enough to describe that commit's changes; never overly long.
+- Commit message must not contain any Vietnamese; write it in English only.
+- Author: keep the current git config as-is. Never commit under, or add attribution/co-author trailers naming, a model (Opus, Sonnet, etc.).
+- Before committing, always confirm with the user first: summarize "I will make X commits; each commit has these messages corresponding to these features; the commit author is Y", and commit only after the user confirms.
