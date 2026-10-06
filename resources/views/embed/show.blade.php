@@ -76,6 +76,7 @@
                     m3u8: playM3u8,
                 },
                 fullscreen: true,
+                autoOrientation: true,
                 pip: true,
                 notice: false,
                 autoplay: {{ \Illuminate\Support\Js::from($autoplay) }},
