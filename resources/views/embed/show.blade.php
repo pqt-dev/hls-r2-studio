@@ -77,6 +77,7 @@
                 },
                 fullscreen: true,
                 autoOrientation: true,
+                gesture: false,
                 pip: true,
                 notice: false,
                 autoplay: {{ \Illuminate\Support\Js::from($autoplay) }},
