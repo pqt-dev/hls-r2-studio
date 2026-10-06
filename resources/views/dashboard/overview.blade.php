@@ -5,10 +5,10 @@
 @section('breadcrumb', 'Home / Overview')
 
 @section('content')
-    <div class="bg-white -m-8 p-8">
-    <div class="rounded-[22px] p-6 relative overflow-hidden border mb-3.5" style="background:linear-gradient(135deg,rgba(99,102,241,.14),rgba(99,102,241,.08) 42%,rgba(255,255,255,.98));border-color:rgba(99,102,241,.16);box-shadow:0 18px 42px rgba(99,102,241,.08)">
+    <div class="bg-white -m-4 p-4 md:-m-8 md:p-8">
+    <div class="rounded-[22px] p-4 sm:p-6 relative overflow-hidden border mb-3.5" style="background:linear-gradient(135deg,rgba(99,102,241,.14),rgba(99,102,241,.08) 42%,rgba(255,255,255,.98));border-color:rgba(99,102,241,.16);box-shadow:0 18px 42px rgba(99,102,241,.08)">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-extrabold mb-3 bg-blue-100 text-blue-700"><x-lucide-layout-dashboard class="w-3.5 h-3.5" /> DASHBOARD OVERVIEW</div>
-        <h2 class="text-[28px] leading-tight font-bold mb-2 text-gray-900">System Overview</h2>
+        <h2 class="text-2xl sm:text-[28px] leading-tight font-bold mb-2 text-gray-900">System Overview</h2>
         <p class="text-sm text-gray-500 max-w-xl">Quickly manage the entire upload, HLS transcoding, and video storage workflow on Cloudflare R2.</p>
     </div>
 

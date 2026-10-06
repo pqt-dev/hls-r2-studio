@@ -10,8 +10,10 @@
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
 <body class="bg-white text-gray-800">
+    <div id="sidebar-backdrop" class="fixed inset-0 z-40 hidden bg-black/50 md:hidden" aria-hidden="true"></div>
+
     <div class="flex min-h-screen">
-        <aside class="w-64 shrink-0 bg-gray-50 text-gray-700 border-r border-gray-200 flex flex-col">
+        <aside id="app-sidebar" class="fixed inset-y-0 left-0 z-50 w-64 max-md:-translate-x-full max-md:invisible overflow-y-auto transition-[transform,visibility] duration-200 md:static md:z-auto md:overflow-visible shrink-0 bg-gray-50 text-gray-700 border-r border-gray-200 flex flex-col">
             <div class="px-6 py-5 border-b border-gray-200 flex items-center gap-3 bg-gradient-to-br from-cyan-50 via-teal-50 to-white">
                 <div class="w-10 h-10 rounded-xl bg-white border border-gray-200 flex items-center justify-center shrink-0 shadow-sm p-1.5">
                     <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-full h-full">
@@ -97,22 +99,31 @@
             </nav>
         </aside>
 
-        <div class="flex-1 flex flex-col">
-            <main class="flex-1 p-8">
+        <div class="flex-1 min-w-0 flex flex-col">
+            <header class="sticky top-0 z-30 flex items-center gap-3 border-b border-gray-200 bg-white px-4 py-2.5 md:hidden">
+                <button type="button" id="sidebar-toggle" aria-label="Open navigation menu" aria-controls="app-sidebar" aria-expanded="false"
+                        class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50">
+                    <x-lucide-menu class="w-5 h-5" />
+                </button>
+                <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-8 h-8 shrink-0">
+                <span class="truncate text-base font-extrabold tracking-tight text-gray-900">HLS R2 Studio</span>
+            </header>
+
+            <main class="flex-1 p-4 md:p-8">
                 <div class="mb-6 pb-4 border-b border-gray-200">
-                    <h1 class="text-2xl font-bold text-gray-900">@yield('page-title', 'HLS R2 Studio')</h1>
+                    <h1 class="text-xl md:text-2xl font-bold text-gray-900 break-words">@yield('page-title', 'HLS R2 Studio')</h1>
                     <p class="mt-1 text-xs text-gray-500">@yield('breadcrumb', 'Home')</p>
                 </div>
 
                 @if (session('success'))
                     <div class="mb-6 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-3 text-sm flex items-center gap-2">
-                        <x-lucide-circle-check class="w-4 h-4 shrink-0" /> {{ session('success') }}
+                        <x-lucide-circle-check class="w-4 h-4 shrink-0" /> <span class="min-w-0 break-words">{{ session('success') }}</span>
                     </div>
                 @endif
 
                 @if (session('error'))
                     <div class="mb-6 rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm flex items-center gap-2">
-                        <x-lucide-circle-x class="w-4 h-4 shrink-0" /> {{ session('error') }}
+                        <x-lucide-circle-x class="w-4 h-4 shrink-0" /> <span class="min-w-0 break-words">{{ session('error') }}</span>
                     </div>
                 @endif
 
@@ -132,25 +143,25 @@
     </div>
 
     <div id="confirm-modal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-black/50 p-4">
-        <div class="bg-white rounded-2xl overflow-hidden w-full max-w-sm shadow-xl">
+        <div class="bg-white rounded-2xl overflow-hidden w-full max-w-sm max-h-[90vh] overflow-y-auto shadow-xl">
             <div class="p-5">
                 <div class="flex items-start gap-3">
                     <span id="confirm-modal-icon-wrap" class="w-10 h-10 rounded-full flex items-center justify-center shrink-0 bg-red-50">
                         <x-lucide-triangle-alert id="confirm-modal-icon" class="w-5 h-5 text-red-600" />
                     </span>
-                    <div class="flex-1 pt-0.5">
+                    <div class="flex-1 min-w-0 pt-0.5">
                         <h3 id="confirm-modal-title" class="text-sm font-semibold text-gray-900"></h3>
-                        <p id="confirm-modal-message" class="mt-1 text-sm text-gray-500"></p>
+                        <p id="confirm-modal-message" class="mt-1 text-sm text-gray-500 break-words"></p>
                     </div>
                 </div>
             </div>
             <div class="flex justify-end gap-2 px-5 py-3 bg-gray-50 border-t border-gray-200">
                 <button type="button" id="confirm-modal-cancel"
-                        class="rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
+                        class="rounded-lg border border-gray-200 bg-white px-3 py-2 md:py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50">
                     Cancel
                 </button>
                 <button type="button" id="confirm-modal-confirm"
-                        class="rounded-lg bg-red-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-red-700">
+                        class="rounded-lg bg-red-600 px-3 py-2 md:py-1.5 text-xs font-medium text-white hover:bg-red-700">
                     Confirm
                 </button>
             </div>

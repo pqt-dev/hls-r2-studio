@@ -5,7 +5,7 @@
 @section('breadcrumb', 'Home / Reports')
 
 @section('content')
-    <form method="GET" action="{{ route('reports.index') }}" class="mb-4 flex items-center gap-2">
+    <form method="GET" action="{{ route('reports.index') }}" class="mb-4 flex flex-wrap items-center gap-2">
         <input type="text" name="search" value="{{ $search }}" placeholder="Search by page URL or note..."
                class="block w-full max-w-sm rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-600">
         <input type="hidden" name="status" value="{{ $status }}">
@@ -16,7 +16,7 @@
         </button>
     </form>
 
-    <div class="flex items-center gap-2 mb-4">
+    <div class="flex flex-wrap items-center gap-2 mb-4">
         @php
             $statusOptions = [
                 ['value' => null, 'label' => 'All'],
@@ -41,7 +41,7 @@
                 <x-lucide-chevron-down class="w-4 h-4" />
             </button>
 
-            <div id="status-filter-panel" class="hidden absolute left-0 z-20 mt-1 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+            <div id="status-filter-panel" class="hidden absolute left-0 z-20 mt-1 w-44 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
                 <ul class="text-sm text-gray-700">
                     @foreach ($statusOptions as $option)
                         <li>
@@ -63,7 +63,7 @@
                 <x-lucide-chevron-down class="w-4 h-4" />
             </button>
 
-            <div id="sort-filter-panel" class="hidden absolute left-0 z-20 mt-1 w-44 rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
+            <div id="sort-filter-panel" class="hidden absolute left-0 z-20 mt-1 w-44 max-w-[calc(100vw-2rem)] rounded-lg border border-gray-200 bg-white p-1 shadow-lg">
                 <ul class="text-sm text-gray-700">
                     @foreach ($sortOptions as $option)
                         <li>
@@ -79,7 +79,7 @@
     </div>
 
     <div id="reports-error-banner" class="hidden mb-6 rounded-lg bg-red-50 border border-red-200 text-red-800 px-4 py-3 text-sm items-center justify-between gap-2">
-        <div class="flex items-center gap-2">
+        <div class="flex min-w-0 items-center gap-2">
             <x-lucide-circle-x class="w-4 h-4 shrink-0" />
             <span id="reports-error-banner-message"></span>
         </div>
@@ -94,19 +94,20 @@
         </div>
     @else
         <div class="overflow-x-auto rounded-2xl border border-gray-200 bg-white">
-            <table class="min-w-full divide-y divide-gray-200 text-sm">
-                <thead class="bg-gray-50">
+            {{-- mobile-card:start (below md the table is restyled as stacked cards via max-md:* classes) --}}
+            <table class="min-w-full divide-y divide-gray-200 text-sm max-md:block">
+                <thead class="bg-gray-50 max-md:hidden">
                     <tr>
                         <th class="px-3 py-2 text-left">Page URL</th>
-                        <th class="px-3 py-2 text-left">Reason</th>
-                        <th class="px-3 py-2 text-left">Note</th>
+                        <th class="hidden md:table-cell px-3 py-2 text-left">Reason</th>
+                        <th class="hidden md:table-cell px-3 py-2 text-left">Note</th>
                         <th class="px-3 py-2 text-left">Status</th>
-                        <th class="px-3 py-2 text-left">Reports</th>
-                        <th class="px-3 py-2 text-left">Reported At</th>
+                        <th class="hidden md:table-cell px-3 py-2 text-left">Reports</th>
+                        <th class="hidden md:table-cell px-3 py-2 text-left">Reported At</th>
                         <th class="px-3 py-2 text-right">Actions</th>
                     </tr>
                 </thead>
-                <tbody class="divide-y divide-gray-100">
+                <tbody class="divide-y divide-gray-100 max-md:block">
                     @foreach ($reports as $report)
                         @php
                             $badge = match ($report->status) {
@@ -115,8 +116,8 @@
                                 default => ['bg-gray-100 text-gray-800', $report->status],
                             };
                         @endphp
-                        <tr data-report-row="{{ $report->id }}">
-                            <td class="px-3 py-2 max-w-xs truncate">
+                        <tr data-report-row="{{ $report->id }}" class="max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-start max-md:gap-x-3 max-md:gap-y-2 max-md:p-3">
+                            <td class="px-3 py-2 max-w-[10rem] md:max-w-xs truncate max-md:col-start-1 max-md:row-start-1 max-md:min-w-0 max-md:max-w-none max-md:whitespace-normal max-md:break-all max-md:p-0">
                                 <a href="{{ $report->page_url }}" target="_blank" rel="noopener noreferrer" title="{{ $report->page_url }}" class="underline {{ $report->report_count >= 5 ? 'text-red-700 font-semibold' : 'text-emerald-700' }}">{{ $report->page_url }}</a>
                                 @if ($report->related_count > 0)
                                     <span class="ml-1 text-xs text-gray-400" title="{{ $report->related_count }} other report(s) on record for this exact page URL (including past resolved incidents)">↻ {{ $report->related_count }}</span>
@@ -129,14 +130,14 @@
                                     </div>
                                 @endif
                             </td>
-                            <td class="px-3 py-2 text-gray-500">{{ \App\Models\Report::REASONS[$report->reason] ?? ($report->reason ?? '—') }}</td>
-                            <td class="px-3 py-2 text-gray-500 max-w-xs truncate" title="{{ $report->note }}">{{ $report->note }}</td>
-                            <td class="px-3 py-2" data-status-cell>
+                            <td class="hidden md:table-cell px-3 py-2 text-gray-500 max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-gray-400 max-md:text-right max-md:before:content-['Reason']">{{ \App\Models\Report::REASONS[$report->reason] ?? ($report->reason ?? '—') }}</td>
+                            <td class="hidden md:table-cell px-3 py-2 text-gray-500 max-w-xs truncate max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-gray-400 max-md:max-w-none max-md:whitespace-normal max-md:break-words max-md:text-right max-md:before:content-['Note'] max-md:empty:hidden" title="{{ $report->note }}">{{ $report->note }}</td>
+                            <td class="px-3 py-2 max-md:col-start-2 max-md:row-start-1 max-md:p-0" data-status-cell>
                                 <span class="inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-medium {{ $badge[0] }}">
                                     {{ $badge[1] }}
                                 </span>
                             </td>
-                            <td class="px-3 py-2">
+                            <td class="hidden md:table-cell px-3 py-2 max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-gray-400 max-md:items-center max-md:before:content-['Reports']">
                                 @if ($report->report_count >= 5)
                                     <span title="5+ reports — high priority" class="inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-1 text-xs font-bold text-white">
                                         {{ $report->report_count }}
@@ -151,7 +152,7 @@
                                     </span>
                                 @endif
                             </td>
-                            <td class="px-3 py-2 text-gray-500" data-reported-at-cell>
+                            <td class="hidden md:table-cell px-3 py-2 text-gray-500 max-md:col-span-full max-md:p-0 max-md:text-xs max-md:before:mb-0.5 max-md:before:block max-md:before:text-gray-400 max-md:before:content-['Reported']" data-reported-at-cell>
                                 {{ $report->created_at->toDisplay() }}
                                 <div data-resolved-at-line class="text-xs text-gray-400" @if (! ($report->status === 'resolved' && $report->resolved_at)) style="display: none;" @endif>
                                     Resolved: <span data-resolved-at-value>{{ $report->resolved_at?->toDisplay() }}</span>
@@ -163,10 +164,10 @@
                                     <div class="text-xs text-gray-400">Last reported: {{ $report->last_reported_at->toDisplay() }}</div>
                                 @endif
                             </td>
-                            <td class="px-3 py-2 text-right whitespace-nowrap" data-actions-cell>
+                            <td class="px-3 py-2 text-right whitespace-nowrap max-md:col-span-full max-md:p-0 max-md:text-left" data-actions-cell>
                                 @if ($report->status === 'new')
                                     <button type="button"
-                                            class="js-mark-resolved inline-flex items-center gap-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-1.5 text-xs font-medium text-blue-700"
+                                            class="js-mark-resolved inline-flex items-center gap-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 border border-blue-200 px-3 py-2 md:py-1.5 text-xs font-medium text-blue-700 max-md:min-h-10 max-md:w-full max-md:justify-center"
                                             data-report-id="{{ $report->id }}"
                                             data-url="{{ route('reports.resolve', $report) }}"
                                             data-page-url="{{ $report->page_url }}">
@@ -178,6 +179,7 @@
                     @endforeach
                 </tbody>
             </table>
+            {{-- mobile-card:end --}}
         </div>
         <div class="mt-4">{{ $reports->appends(request()->query())->links('partials.pagination') }}</div>
     @endif

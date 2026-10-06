@@ -6,11 +6,11 @@
 
 @section('content')
     <div class="max-w-xl bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
-        <div class="bg-blue-50 border-b border-blue-100 px-6 py-4">
+        <div class="bg-blue-50 border-b border-blue-100 px-4 sm:px-6 py-4">
             <h2 class="text-base font-semibold text-blue-700 inline-flex items-center gap-2"><x-lucide-cloud-upload class="w-4 h-4" /> Upload Video</h2>
         </div>
 
-        <form id="upload-form" class="p-6 space-y-5"
+        <form id="upload-form" class="p-4 sm:p-6 space-y-5"
               data-max-size-mb="{{ config('videos.max_upload_size_mb') }}"
               data-chunk-size-mb="{{ config('videos.chunk_size_mb') }}">
             <div id="title-field-wrapper">
@@ -24,7 +24,7 @@
                 <label for="video" class="block text-sm font-medium text-gray-700 mb-1">Video File</label>
                 <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
                 <div id="dropzone"
-                     class="rounded-2xl border-2 border-dashed border-gray-300 px-6 py-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/40">
+                     class="rounded-2xl border-2 border-dashed border-gray-300 px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-blue-400 hover:bg-blue-50/40">
                     <div class="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-blue-50">
                         <x-lucide-cloud-upload class="w-8 h-8 text-blue-700" />
                     </div>
@@ -50,7 +50,7 @@
             </div>
 
             <div id="upload-progress-card" class="rounded-2xl border border-gray-200 overflow-hidden">
-                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between">
+                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between gap-2">
                     <h3 class="text-sm font-semibold text-blue-700 inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Upload Progress</h3>
                     <button type="button" id="clear-queue-btn"
                             class="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
@@ -64,7 +64,7 @@
             </div>
 
             <div class="rounded-2xl border border-gray-200 overflow-hidden">
-                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between">
+                <div class="bg-blue-50 border-b border-blue-100 px-4 py-2 flex items-center justify-between gap-2">
                     <h3 class="text-sm font-semibold text-blue-700 inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Log</h3>
                     <button type="button" id="clear-log-btn"
                             class="inline-flex items-center gap-1 rounded-lg border border-blue-200 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
@@ -72,7 +72,7 @@
                     </button>
                 </div>
                 <div class="p-4">
-                    <div id="upload-log" class="font-mono text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto">
+                    <div id="upload-log" class="font-mono text-xs text-gray-600 space-y-1 max-h-40 overflow-y-auto break-words">
                         <p class="text-gray-400" data-log-placeholder>Ready.</p>
                     </div>
                 </div>
@@ -340,7 +340,7 @@
 
                         const removeBtn = document.createElement('button');
                         removeBtn.type = 'button';
-                        removeBtn.className = 'text-gray-400 hover:text-red-600 shrink-0 ml-2';
+                        removeBtn.className = 'text-gray-400 hover:text-red-600 shrink-0 ml-2 p-1';
                         removeBtn.innerHTML = TRASH_ICON_SVG;
                         removeBtn.setAttribute('aria-label', 'Remove ' + file.name);
                         removeBtn.addEventListener('click', function () {
@@ -489,7 +489,7 @@
                     transcodeBarWrapper.appendChild(transcodeBar);
 
                     const transcodeStatusEl = document.createElement('p');
-                    transcodeStatusEl.className = 'mt-1 text-xs text-gray-500';
+                    transcodeStatusEl.className = 'mt-1 text-xs text-gray-500 break-words';
                     transcodeStatusEl.dataset.role = 'transcode-status';
 
                     transcodeWrapper.dataset.role = 'transcode-wrapper';
@@ -535,7 +535,7 @@
                     barWrapper.appendChild(bar);
 
                     const statusEl = document.createElement('p');
-                    statusEl.className = 'mt-1 text-xs text-gray-500';
+                    statusEl.className = 'mt-1 text-xs text-gray-500 break-words';
                     statusEl.dataset.role = 'upload-status';
                     statusEl.textContent = 'Pending';
 

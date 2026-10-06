@@ -5,8 +5,8 @@
 @section('breadcrumb', 'Home / Settings')
 
 @section('content')
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div class="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
             <div class="flex items-center gap-3 mb-4">
                 <div class="w-9 h-9 rounded-lg bg-sky-100 flex items-center justify-center shrink-0">
                     <x-lucide-key-round class="w-4 h-4 text-sky-600" />
@@ -48,7 +48,7 @@
             </form>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <div class="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
             <div class="flex items-center gap-3 mb-4">
                 <div class="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
                     <x-lucide-cloud class="w-4 h-4 text-orange-600" />
@@ -130,7 +130,7 @@
             </form>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <div class="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
             <div class="flex items-center gap-3 mb-4">
                 <div class="w-9 h-9 rounded-lg bg-blue-100 flex items-center justify-center shrink-0">
                     <x-lucide-video class="w-4 h-4 text-blue-600" />
@@ -184,7 +184,7 @@
             </form>
         </div>
 
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+        <div class="min-w-0 bg-white rounded-2xl shadow-sm border border-gray-200 p-4 sm:p-6">
             <div class="flex items-center gap-3 mb-4">
                 <div class="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
                     <x-lucide-sliders-horizontal class="w-4 h-4 text-violet-600" />

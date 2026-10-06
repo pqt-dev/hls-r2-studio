@@ -46,12 +46,12 @@
                 @forelse ($errorLogs as $log)
                     <div class="px-4 py-3">
                         <div class="flex items-center justify-between gap-2">
-                            <div class="font-medium text-gray-900 text-sm truncate">{{ $log->title }}</div>
+                            <div class="min-w-0 font-medium text-gray-900 text-sm truncate">{{ $log->title }}</div>
                             <div class="text-xs text-gray-400 whitespace-nowrap shrink-0">{{ $log->created_at->toDisplay() }}</div>
                         </div>
                         <div class="text-xs text-gray-500 truncate">{{ $log->original_filename }}</div>
                         @if ($log->error_message)
-                            <div class="text-xs text-rose-600 mt-1 line-clamp-3">{{ $log->error_message }}</div>
+                            <div class="text-xs text-rose-600 mt-1 line-clamp-3 break-words">{{ $log->error_message }}</div>
                         @endif
                     </div>
                 @empty
@@ -69,7 +69,7 @@
                 @forelse ($successLogs as $log)
                     <div class="px-4 py-3">
                         <div class="flex items-center justify-between gap-2">
-                            <div class="font-medium text-gray-900 text-sm truncate">{{ $log->title }}</div>
+                            <div class="min-w-0 font-medium text-gray-900 text-sm truncate">{{ $log->title }}</div>
                             <div class="text-xs text-gray-400 whitespace-nowrap shrink-0">{{ $log->created_at->toDisplay() }}</div>
                         </div>
                         <div class="text-xs text-gray-500 truncate">{{ $log->original_filename }}</div>
