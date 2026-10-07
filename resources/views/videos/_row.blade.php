@@ -9,8 +9,8 @@
     $seconds = $video->duration ? floor($video->duration % 60) : 0;
     $durationLabel = $video->duration ? sprintf('%02d:%02d', $minutes, $seconds) : '--:--';
 
-    $thumbnailUrl = $video->thumbnail_path ? Storage::disk('r2')->url($video->thumbnail_path) : null;
-    $playlistUrl = $video->playlist_path ? Storage::disk('r2')->url($video->playlist_path) : null;
+    $thumbnailUrl = $video->thumbnail_path ? $disk->url($video->thumbnail_path) : null;
+    $playlistUrl = $video->playlist_path ? $disk->url($video->playlist_path) : null;
 
     $embedAspectRatio = ($video->output_width && $video->output_height && $video->output_width > $video->output_height)
         ? "{$video->output_width} / {$video->output_height}"
@@ -32,13 +32,13 @@
         if (! empty($storyboard['path'])) {
             $previewImages[] = [
                 'label' => 'Storyboard '.$gridKey,
-                'url' => Storage::disk('r2')->url($storyboard['path']),
+                'url' => $disk->url($storyboard['path']),
             ];
         }
     }
 
     if ($video->custom_image_path) {
-        $previewImages[] = ['label' => 'Custom image', 'url' => Storage::disk('r2')->url($video->custom_image_path).'?v='.$video->updated_at->timestamp];
+        $previewImages[] = ['label' => 'Custom image', 'url' => $disk->url($video->custom_image_path).'?v='.$video->updated_at->timestamp];
     }
 @endphp
 
@@ -83,7 +83,7 @@
 
     <x-ui.table-cell class="hidden xl:table-cell max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:before:content-['Source']">
         <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title="Cloudflare R2">
-            <img src="{{ asset('img/cloudflare.png') }}" alt="Cloudflare" class="w-4 h-4">
+            <img src="{{ asset('img/r2.svg') }}" alt="Cloudflare R2" class="w-4 h-4 shrink-0">
             R2
         </span>
     </x-ui.table-cell>
