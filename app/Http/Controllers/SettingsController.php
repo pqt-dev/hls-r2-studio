@@ -88,6 +88,31 @@ class SettingsController extends Controller
         return back()->with('success', 'Display options saved.');
     }
 
+    public function updateEmbed(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'embed_allowed_domains' => ['nullable', 'string', 'max:20000', function (string $attribute, mixed $value, \Closure $fail) {
+                $parsed = Setting::parseEmbedEntries($value);
+
+                if ($parsed['invalid'] !== []) {
+                    $fail('Invalid entries: '.implode(', ', array_map(fn ($entry) => '"'.mb_substr($entry, 0, 60).'"', array_slice($parsed['invalid'], 0, 5))).'. Use one domain per line, like example.com, *.example.com or https://example.com:8443.');
+                }
+
+                if (count($parsed['valid']) > Setting::EMBED_MAX_ENTRIES) {
+                    $fail('You can list at most '.Setting::EMBED_MAX_ENTRIES.' domains.');
+                }
+            }],
+        ]);
+
+        $entries = Setting::parseEmbedEntries($validated['embed_allowed_domains'] ?? null)['valid'];
+
+        Setting::current()->update([
+            'embed_allowed_domains' => $entries === [] ? null : implode("\n", $entries),
+        ]);
+
+        return back()->with('success', 'Embed protection saved.');
+    }
+
     public function updatePassword(Request $request): RedirectResponse
     {
         $validated = $request->validate([

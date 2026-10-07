@@ -17,7 +17,8 @@ class EmbedController extends Controller
             abort(404);
         }
 
-        $disk = Setting::current()->r2Disk();
+        $settings = Setting::current();
+        $disk = $settings->r2Disk();
 
         $playlistUrl = $disk->url($video->playlist_path);
 
@@ -44,6 +45,14 @@ class EmbedController extends Controller
             }
         }
 
-        return view('embed.show', compact('video', 'playlistUrl', 'storyboardThumbnails', 'autoplay', 'muted'));
+        $response = response()->view('embed.show', compact('video', 'playlistUrl', 'storyboardThumbnails', 'autoplay', 'muted'));
+
+        $allowedOrigins = $settings->embedAllowedOrigins();
+
+        if ($allowedOrigins !== []) {
+            $response->header('Content-Security-Policy', "frame-ancestors 'self' ".implode(' ', $allowedOrigins));
+        }
+
+        return $response;
     }
 }

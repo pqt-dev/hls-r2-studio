@@ -224,5 +224,35 @@
                 </form>
             </x-ui.card-content>
         </x-ui.card>
+
+        <x-ui.card class="min-w-0">
+            <x-ui.card-header>
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+                        <x-lucide-shield-check class="w-4 h-4 text-violet-600" />
+                    </div>
+                    <x-ui.card-title class="text-lg">Embed protection</x-ui.card-title>
+                </div>
+            </x-ui.card-header>
+            <x-ui.card-content>
+                <form method="POST" action="{{ route('settings.embed') }}" class="space-y-5">
+                    @csrf
+                    @method('PUT')
+
+                    <div>
+                        <x-ui.label for="embed_allowed_domains" class="block mb-2">Allowed domains</x-ui.label>
+                        <x-ui.textarea name="embed_allowed_domains" id="embed_allowed_domains" rows="5" class="font-mono" placeholder="example.com&#10;*.example.com&#10;https://example.com:8443">{{ old('embed_allowed_domains', $settings->embed_allowed_domains) }}</x-ui.textarea>
+                        <p class="mt-1 text-xs text-muted-foreground">Only these domains can embed the player iframe. Leave empty to allow any website. Your own site is always allowed.</p>
+                        @error('embed_allowed_domains')
+                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <x-ui.button type="submit">
+                        Save embed protection
+                    </x-ui.button>
+                </form>
+            </x-ui.card-content>
+        </x-ui.card>
     </div>
 @endsection
