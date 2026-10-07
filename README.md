@@ -23,14 +23,16 @@ Internal video management app: upload a video → transcode it to HLS with FFmpe
 - Storage on Cloudflare R2, playback with HLS.js
 - Overview dashboard (server CPU/RAM/Disk + video statistics)
 - Log page (upload history) and real-time transcode progress (via Reverb/WebSocket)
-- Settings page (change password, dynamic R2 configuration, processing options, videos per page, display timezone)
+- One overall progress percentage per video, from the moment you click Upload until the HLS output is on R2 (100% only when the video is ready). Each stage (upload, merge, transcode, thumbnail, storyboard, R2 upload) gets a share proportional to its estimated time, which adapts to the file size: a light video spends most of its share on fixed costs, a heavy one on size-dependent stages. The estimates live in `config/videos.php` under `progress` and should be tuned per deployment (CPU and network speed shift the shares).
+- Upload page Activity Log is stored in the database for the last 100 uploads/videos (`config/videos.php`, `activity_log`) and the page shows the last 10, so a reload shows what it showed in realtime. Lines logged by the browser are stored only when the browser can reach the server.
+- Settings page (change password, dynamic R2 configuration, processing options, videos per page, display timezone, embed domain allowlist)
 - Video list as a table, with pagination, bulk delete, and technical details (resolution, fps, codec, bitrate, size)
 - Run multiple workers in parallel to transcode several videos at once
 - Receive video playback error reports (Report) from the public page via API; admins can view them and mark them as resolved
 
 **Note**: A video's public URL depends on you configuring a public R2 bucket yourself (custom domain or `r2.dev` URL) in the Cloudflare dashboard and then entering it in `R2_URL` (or the `r2_url` field on the Settings page). The code does not make the bucket public automatically.
 
-Report feature: the public video player page (even when hosted on a different domain) sends errors to `POST /api/reports`. To let another domain call this API, add that domain to `allowed_origins` in `config/cors.php`.
+Report feature: the public video player page (even when hosted on a different domain) sends errors to `POST /api/reports`. To let another domain call this API, add that domain to `CORS_ALLOWED_ORIGINS` in `.env`.
 
 ## Installation
 
@@ -112,13 +114,19 @@ php artisan admin:create admin --email=admin@example.com
 **4. Trial run (dev)** — requires **4 parallel processes**:
 
 ```bash
-php artisan serve          # web server (terminal 1)
-php artisan queue:work     # required — without it videos are never transcoded (terminal 2)
+PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload   # web server (terminal 1)
+php artisan queue:work     # required — without it uploaded chunks are never merged and videos are never transcoded (terminal 2)
 php artisan schedule:work  # automatic daily cleanup; it still works without it, but junk is not cleaned automatically (terminal 3)
 php artisan reverb:start   # live transcode progress display; it still works without it, but you have to reload manually to see progress (terminal 4)
 ```
 
 Open `http://localhost:8000/login`.
+
+> Merging the uploaded chunks into the original file is done by the queue worker (not by the web request) and shows as stage "Merging chunks" before "Transcoding". Run at least 2 queue workers (e.g. `php artisan queue:work --queue=default` in two terminals) so a new upload's merge is not stuck behind a long transcode.
+
+> **Separate merge queue (optional, `UPLOAD_MERGE_QUEUE`).** By default (unset = `default`) merging runs on the same queue as transcoding, exactly as before. Set `UPLOAD_MERGE_QUEUE=uploads` in `.env` to push the chunk-merge job to its own queue so a new upload's merge starts immediately instead of waiting behind long transcodes. You must then run workers that read that queue, for example worker 1: `php artisan queue:work --queue=uploads,default` and worker 2: `php artisan queue:work --queue=default` (restart the workers and run `php artisan config:clear` after changing it). **Warning: if no running worker reads the queue named in `UPLOAD_MERGE_QUEUE`, every upload stalls at the merge step.** While merging, the video shows stage "Merging chunks" and still counts as pending; a merge whose worker was killed is marked failed by `videos:cleanup-orphaned-tmp` after `TRANSCODE_ORPHANED_TTL_HOURS`.
+
+> `php artisan serve` runs PHP's built-in server, which handles one request at a time by default. `PHP_CLI_SERVER_WORKERS=4` starts 4 workers, but Laravel only honours it together with `--no-reload` (so restart the command after changing `.env`).
 
 **5. Real production run (replace `php artisan serve` with Nginx + PHP-FPM + systemd)**
 
@@ -557,7 +565,7 @@ If you are not sure whether a command is needed, just run them all — it does n
 
 **`users`** — admin login accounts (username + password), using Laravel's standard Auth mechanism.
 
-**`reports`** — playback error reports sent from the public page: the URL of the page being played, the reason (`reason`, nullable: `not_playing`/`lag`/`no_audio`/`wrong_video`/`other`), the matched video (`video_id`, nullable — the video ID parsed from an `.../embed/{id}` page URL when that video exists, otherwise empty; no database foreign key, so deleting the video does not clear it), the reporter's note, IP, status (`new`/`resolved`), the number of times the same URL was reported again (`report_count`; a unique stored generated column `active_report_key` holds the SHA-256 of the URL while status is `new` and NULL otherwise, so at most one `new` report exists per URL even under concurrent submissions), the time of the most recent report, the time the admin finished handling it, and who handled it (`resolved_by`, nullable — the ID of the admin user who clicked resolve).
+**`reports`** — playback error reports sent from the public page: the URL of the page being played, the reason (`reason`, nullable: `not_playing`/`lag`/`no_audio`/`wrong_video`/`other`), the matched video (`video_id`, nullable — the video ID parsed from an `.../embed/{id}` page URL when that video exists, otherwise empty; database foreign key to `videos.id` with `ON DELETE SET NULL`, so deleting the video clears it), the reporter's note, IP, status (`new`/`resolved`), the number of times the same URL was reported again (`report_count`; a unique stored generated column `active_report_key` holds the SHA-256 of the URL while status is `new` and NULL otherwise, so at most one `new` report exists per URL even under concurrent submissions), the time of the most recent report, the time the admin finished handling it, and who handled it (`resolved_by`, nullable — the ID of the admin user who clicked resolve; foreign key to `users.id` with `ON DELETE SET NULL`). `video_status_logs.video_id` is a foreign key to `videos.id` with `ON DELETE CASCADE`, so deleting a video also deletes its status logs.
 
 ## Common Errors, Fixes, and Q&A
 
@@ -574,6 +582,9 @@ If you are not sure whether a command is needed, just run them all — it does n
 | The WebSocket connects but transcode progress never updates live; dispatching an event via tinker reports `Pusher error: 404 Not Found` | Missing `location /apps/` in the Reverb reverse-proxy configuration | Add a `location /apps/` that proxies to the same Reverb port |
 | `systemctl restart nginx`/`php-fpm-84` reports an error but the service is still running (aaPanel) | The LSB-style startup script mishandles "restart" when the service is already running | Use `/etc/init.d/nginx reload` and `/etc/init.d/php-fpm-84 restart` instead of `systemctl restart` |
 
+**Q: The whole site freezes while a video is uploading, and opening the Upload page is very slow?**
+This only happens with the dev server (`php artisan serve`), which is single-threaded: while one request runs (an 8 MB chunk upload) every other request, including page navigation and status polling, waits for it. Start it with `PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload` (see step 4). It does not happen in production with Nginx + PHP-FPM, which serves requests concurrently.
+
 **Q: What if I forget the admin password?**
 Run `php artisan admin:create <username>` again (or use the full PHP 8.4 path if you use aaPanel) — this command upserts by `username`, so running it again with the same username changes that account's password instead of reporting a duplicate error.
 
@@ -581,7 +592,7 @@ Run `php artisan admin:create <username>` again (or use the full PHP 8.4 path if
 Check whether the queue worker is still running (`systemctl status hls-r2-studio-queue@1`, or look at the terminal running `queue:work`) and check the error log (`journalctl -u hls-r2-studio-queue@1 -f`). If the log has `Job timed out`, see the corresponding troubleshooting row above.
 
 **Q: How do I let a video player page on another domain send reports?**
-Add that domain to `allowed_origins` in `config/cors.php` (by default only the domains already declared in this file are allowed). The `/api/reports` route has a rate limit of 5 requests per 10 minutes per IP, plus 20 requests per 10 minutes per `page_url`.
+Add that domain to `CORS_ALLOWED_ORIGINS` in `.env` (comma-separated; by default only `https://toicovl.com` is allowed). To also reject reports whose `page_url` host is not yours, set `REPORT_ALLOWED_HOSTS` (comma-separated hosts, exact match; empty means no restriction). The `/api/reports` route has a rate limit of 5 requests per 10 minutes per IP, plus 20 requests per 10 minutes per `page_url`.
 
 **Q: Where do I change the upload limit?**
 You must change 3 places at the same time: `UPLOAD_MAX_SIZE_MB` in `.env`, `upload_max_filesize`/`post_max_size` in `php.ini`, and `client_max_body_size` in Nginx — changing 1 place while missing the other 2 will still be blocked.
@@ -590,15 +601,20 @@ You must change 3 places at the same time: `UPLOAD_MAX_SIZE_MB` in `.env`, `uplo
 Not required, with reasonable defaults; add them to `.env` if you want to change them:
 ```env
 UPLOAD_ABANDONED_TTL_HOURS=24       # how long before abandoned upload chunks are cleaned up
-TRANSCODE_ORPHANED_TTL_HOURS=48     # how long before crashed/stuck HLS transcode temp directories are cleaned up
+TRANSCODE_ORPHANED_TTL_HOURS=60     # how long before crashed/stuck HLS transcode temp directories are cleaned up
 UPLOAD_ORPHANED_TTL_HOURS=72        # how long before orphaned original video files are cleaned up
 TRANSCODE_TIMEOUT_MULTIPLIER=8      # multiplier applied to video length to compute the HLS transcode timeout
 STORYBOARD_TILE_SIZE=160            # size (px) of each tile in the storyboard grid image
+REVERB_ALLOWED_ORIGINS=*                 # comma-separated origins allowed to connect to Reverb (default `*`); in production set it to your real domain, e.g. https://your-real-domain
+KEEP_ORIGINAL_UPLOAD=false          # true keeps original uploads on disk; the orphaned-upload cleanup then does nothing
 DB_QUEUE_RETRY_AFTER=176400         # must be greater than the queue worker's --timeout
 ```
 
 **Q: The app runs behind an HTTPS reverse proxy (aaPanel/Nginx/Cloudflare Tunnel) but asset links come out as `http://` (mixed content)?**
 Set `FORCE_HTTPS=true` in `.env` (if `FORCE_HTTPS` is not set at all, `APP_ENV=production` is enough, but `FORCE_HTTPS=false` copied from `.env.example` overrides it) — Laravel will then force `https` for every generated URL. Do not enable this option on a local dev environment without real HTTPS, or the browser will fail to load assets.
+
+**Q: How do I make the per-IP rate limits reliable behind a reverse proxy?**
+Set `TRUSTED_PROXIES` in `.env` to your reverse proxy IP (comma-separated; default `*` trusts every proxy). Restrict it in production so `X-Forwarded-For` cannot be spoofed, since login/report throttling is per-IP.
 
 **Q: What are the default rate limits of the APIs?**
 Login: 5 requests/minute. `/uploads/init`: 30 requests/minute. `/uploads/{id}/chunk`: 120 requests/minute. `/api/reports`: 5 requests/10 minutes per IP (plus 20 requests/10 minutes per `page_url`). Getting a "Too Many Requests" error when acting too quickly is caused by these limits.

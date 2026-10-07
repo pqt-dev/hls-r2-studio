@@ -23,14 +23,16 @@
 - Lưu lên Cloudflare R2, phát bằng HLS.js
 - Dashboard tổng quan (CPU/RAM/Disk server + thống kê video)
 - Trang Nhật ký (lịch sử upload) và tiến độ transcode theo thời gian thực (qua Reverb/WebSocket)
-- Trang Cài đặt (đổi mật khẩu, cấu hình R2 động, tuỳ chọn xử lý, số video/trang, múi giờ hiển thị)
+- Mỗi video có một phần trăm tiến độ tổng duy nhất, tính từ lúc bấm Upload đến khi file HLS lên xong R2 (chỉ đạt 100% khi video sẵn sàng). Mỗi giai đoạn (upload, ghép chunk, transcode, thumbnail, storyboard, upload R2) chiếm một phần tỉ lệ với thời gian ước tính, tự thay đổi theo dung lượng file: video nhẹ chủ yếu tốn chi phí cố định, video nặng tốn ở các giai đoạn phụ thuộc dung lượng. Các hằng số ước tính nằm ở `config/videos.php`, mục `progress`, nên chỉnh theo từng môi trường triển khai (tốc độ CPU và mạng làm lệch tỉ lệ).
+- Activity Log ở trang Upload được lưu trong database cho 100 lượt upload/video gần nhất (`config/videos.php`, mục `activity_log`) và trang hiển thị 10 lượt gần nhất, nên tải lại trang vẫn thấy đúng nội dung đã hiện theo thời gian thực. Các dòng do trình duyệt ghi chỉ được lưu khi trình duyệt kết nối được tới server.
+- Trang Cài đặt (đổi mật khẩu, cấu hình R2 động, tuỳ chọn xử lý, số video/trang, múi giờ hiển thị, danh sách domain được embed)
 - Danh sách video dạng bảng, phân trang, xoá hàng loạt, hiển thị thông số kỹ thuật (độ phân giải, fps, codec, bitrate, dung lượng)
 - Chạy nhiều worker song song để băm nhiều video cùng lúc
 - Nhận báo lỗi phát video (Report) từ trang public qua API, admin xem/đánh dấu đã xử lý
 
 **Lưu ý**: URL public của video phụ thuộc vào việc bạn tự cấu hình bucket R2 public (custom domain hoặc `r2.dev` URL) trên Cloudflare dashboard rồi điền vào `R2_URL` (hoặc trường `r2_url` trong trang Cài đặt). Code không tự động public hoá bucket.
 
-Tính năng Report: trang phát video công khai (kể cả đặt ở domain khác) gửi lỗi về `POST /api/reports`. Muốn cho domain khác gọi API này, thêm domain đó vào `allowed_origins` trong `config/cors.php`.
+Tính năng Report: trang phát video công khai (kể cả đặt ở domain khác) gửi lỗi về `POST /api/reports`. Muốn cho domain khác gọi API này, thêm domain đó vào `CORS_ALLOWED_ORIGINS` trong `.env`.
 
 ## Cách cài đặt
 
@@ -112,13 +114,19 @@ php artisan admin:create admin --email=admin@example.com
 **4. Chạy thử (dev)** — cần **4 tiến trình song song**:
 
 ```bash
-php artisan serve          # web server (terminal 1)
-php artisan queue:work     # bắt buộc — thiếu thì video không bao giờ được transcode (terminal 2)
+PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload   # web server (terminal 1)
+php artisan queue:work     # bắt buộc — thiếu thì chunk upload không được ghép và video không bao giờ được transcode (terminal 2)
 php artisan schedule:work  # dọn rác tự động hàng ngày, thiếu vẫn chạy được, chỉ là rác không tự dọn (terminal 3)
 php artisan reverb:start   # hiển thị tiến độ transcode live, thiếu vẫn chạy được, chỉ là phải tự reload để xem tiến độ (terminal 4)
 ```
 
 Truy cập `http://localhost:8000/login`.
+
+> Việc ghép các chunk đã upload thành file gốc do queue worker làm (không còn nằm trong request web) và hiển thị ở stage "Merging chunks" trước "Transcoding". Nên chạy ít nhất 2 queue worker (ví dụ `php artisan queue:work --queue=default` ở hai terminal) để việc ghép của upload mới không bị kẹt sau một video đang transcode lâu.
+
+> **Queue ghép riêng (tuỳ chọn, `UPLOAD_MERGE_QUEUE`).** Mặc định (không đặt = `default`) việc ghép chạy cùng queue với transcode, y như trước. Đặt `UPLOAD_MERGE_QUEUE=uploads` trong `.env` để đẩy job ghép chunk sang queue riêng, giúp việc ghép của upload mới bắt đầu ngay thay vì chờ sau các video transcode lâu. Khi đó bạn phải chạy worker đọc queue đó, ví dụ worker 1: `php artisan queue:work --queue=uploads,default` và worker 2: `php artisan queue:work --queue=default` (restart worker và chạy `php artisan config:clear` sau khi đổi). **Cảnh báo: nếu không có worker nào đang chạy đọc queue ghi trong `UPLOAD_MERGE_QUEUE`, mọi upload sẽ bị kẹt ở bước ghép.** Trong lúc ghép, video hiển thị stage "Merging chunks" và vẫn được tính là pending; job ghép mà worker bị kill sẽ được `videos:cleanup-orphaned-tmp` đánh dấu failed sau `TRANSCODE_ORPHANED_TTL_HOURS`.
+
+> `php artisan serve` chạy server tích hợp của PHP, mặc định chỉ xử lý từng request một. `PHP_CLI_SERVER_WORKERS=4` mở 4 worker, nhưng Laravel chỉ nhận biến này khi đi kèm `--no-reload` (nên cần chạy lại lệnh sau khi đổi `.env`).
 
 **5. Chạy production thật (thay `php artisan serve` bằng Nginx + PHP-FPM + systemd)**
 
@@ -557,7 +565,7 @@ Không chắc có cần lệnh nào không thì cứ chạy hết — không h�
 
 **`users`** — tài khoản đăng nhập admin (username + password), theo cơ chế Auth chuẩn của Laravel.
 
-**`reports`** — báo lỗi phát video gửi từ trang public: URL trang đang phát, lý do (`reason`, nullable: `not_playing`/`lag`/`no_audio`/`wrong_video`/`other`), video tương ứng (`video_id`, nullable — ID video được tách từ URL trang dạng `.../embed/{id}` nếu video đó tồn tại, ngược lại để trống; không có foreign key ở database nên xoá video không làm xoá giá trị này), ghi chú người báo, IP, trạng thái (`new`/`resolved`), số lần bị báo trùng cùng URL (`report_count`; cột stored generated có unique index `active_report_key` chứa SHA-256 của URL khi status là `new` và NULL ở các trạng thái khác, nên mỗi URL chỉ có tối đa một report `new` kể cả khi gửi đồng thời), thời điểm báo gần nhất, thời điểm admin xử lý xong và người xử lý (`resolved_by`, nullable — ID của user admin đã bấm resolve).
+**`reports`** — báo lỗi phát video gửi từ trang public: URL trang đang phát, lý do (`reason`, nullable: `not_playing`/`lag`/`no_audio`/`wrong_video`/`other`), video tương ứng (`video_id`, nullable — ID video được tách từ URL trang dạng `.../embed/{id}` nếu video đó tồn tại, ngược lại để trống; có foreign key tới `videos.id` với `ON DELETE SET NULL` nên xoá video sẽ đặt giá trị này về NULL), ghi chú người báo, IP, trạng thái (`new`/`resolved`), số lần bị báo trùng cùng URL (`report_count`; cột stored generated có unique index `active_report_key` chứa SHA-256 của URL khi status là `new` và NULL ở các trạng thái khác, nên mỗi URL chỉ có tối đa một report `new` kể cả khi gửi đồng thời), thời điểm báo gần nhất, thời điểm admin xử lý xong và người xử lý (`resolved_by`, nullable — ID của user admin đã bấm resolve; foreign key tới `users.id` với `ON DELETE SET NULL`). `video_status_logs.video_id` là foreign key tới `videos.id` với `ON DELETE CASCADE` nên xoá video cũng xoá log trạng thái của nó.
 
 ## Một số tình huống gặp lỗi, cách xử lý, Q&A
 
@@ -574,6 +582,9 @@ Không chắc có cần lệnh nào không thì cứ chạy hết — không h�
 | WebSocket kết nối được nhưng tiến độ transcode không bao giờ cập nhật live; dispatch event qua tinker báo `Pusher error: 404 Not Found` | Thiếu `location /apps/` trong cấu hình reverse-proxy Reverb | Thêm `location /apps/` proxy sang cùng port Reverb |
 | `systemctl restart nginx`/`php-fpm-84` báo lỗi nhưng service vẫn chạy (aaPanel) | Script khởi động kiểu LSB xử lý sai "restart" khi service đã chạy | Dùng `/etc/init.d/nginx reload` và `/etc/init.d/php-fpm-84 restart` thay vì `systemctl restart` |
 
+**Q: Cả site bị đứng khi đang upload video, mở trang Upload rất chậm?**
+Chỉ xảy ra với server dev (`php artisan serve`) vì nó chạy đơn luồng: khi một request đang chạy (upload chunk 8 MB) thì mọi request khác, kể cả chuyển trang và polling trạng thái, phải chờ. Chạy bằng `PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload` (xem bước 4). Production dùng Nginx + PHP-FPM xử lý request song song nên không bị.
+
 **Q: Quên mật khẩu admin thì sao?**
 Chạy lại `php artisan admin:create <username>` (hoặc full path PHP 8.4 nếu dùng aaPanel) — lệnh này upsert theo `username`, chạy lại cùng username sẽ đổi mật khẩu tài khoản đó thay vì báo lỗi trùng.
 
@@ -581,7 +592,7 @@ Chạy lại `php artisan admin:create <username>` (hoặc full path PHP 8.4 n�
 Kiểm tra queue worker còn chạy không (`systemctl status hls-r2-studio-queue@1` hoặc xem terminal đang chạy `queue:work`) và xem log lỗi (`journalctl -u hls-r2-studio-queue@1 -f`). Nếu log có `Job timed out`, xem dòng troubleshooting tương ứng ở trên.
 
 **Q: Làm sao cho trang phát video ở domain khác gửi được report?**
-Thêm domain đó vào `allowed_origins` trong `config/cors.php` (mặc định chỉ cho phép domain khai báo sẵn trong file này). Route `/api/reports` có rate limit 5 lần/10 phút mỗi IP, cộng thêm 20 lần/10 phút mỗi `page_url`.
+Thêm domain đó vào `CORS_ALLOWED_ORIGINS` trong `.env` (phân tách bằng dấu phẩy; mặc định chỉ cho phép `https://toicovl.com`). Muốn từ chối report có host của `page_url` không phải của bạn, đặt `REPORT_ALLOWED_HOSTS` (danh sách host phân tách bằng dấu phẩy, khớp chính xác; để trống là không giới hạn). Route `/api/reports` có rate limit 5 lần/10 phút mỗi IP, cộng thêm 20 lần/10 phút mỗi `page_url`.
 
 **Q: Đổi giới hạn upload ở đâu?**
 Phải đổi đồng thời 3 nơi: `UPLOAD_MAX_SIZE_MB` trong `.env`, `upload_max_filesize`/`post_max_size` trong `php.ini`, và `client_max_body_size` trong Nginx — đổi 1 nơi mà thiếu 2 nơi còn lại vẫn sẽ bị chặn.
@@ -590,15 +601,20 @@ Phải đổi đồng thời 3 nơi: `UPLOAD_MAX_SIZE_MB` trong `.env`, `upload_
 Không bắt buộc, có giá trị mặc định hợp lý, thêm vào `.env` nếu muốn đổi:
 ```env
 UPLOAD_ABANDONED_TTL_HOURS=24       # dọn upload chunk bỏ dở sau bao lâu
-TRANSCODE_ORPHANED_TTL_HOURS=48     # dọn thư mục tạm băm HLS bị crash treo sau bao lâu
+TRANSCODE_ORPHANED_TTL_HOURS=60     # dọn thư mục tạm băm HLS bị crash treo sau bao lâu
 UPLOAD_ORPHANED_TTL_HOURS=72        # dọn file video gốc mồ côi sau bao lâu
 TRANSCODE_TIMEOUT_MULTIPLIER=8      # hệ số nhân với độ dài video để tính timeout băm HLS
 STORYBOARD_TILE_SIZE=160            # kích thước (px) mỗi ô trong ảnh lưới storyboard
+REVERB_ALLOWED_ORIGINS=*                 # các origin được phép kết nối Reverb, phân tách bằng dấu phẩy (mặc định `*`); trên production nên đặt bằng domain thật, vd https://domain-thật-của-bạn
+KEEP_ORIGINAL_UPLOAD=false          # true giữ file upload gốc trên đĩa; khi đó lệnh dọn file gốc mồ côi không làm gì
 DB_QUEUE_RETRY_AFTER=176400         # phải lớn hơn --timeout của queue worker
 ```
 
 **Q: App chạy sau reverse proxy HTTPS (aaPanel/Nginx/Cloudflare Tunnel) nhưng link asset ra `http://` (mixed content)?**
 Set `FORCE_HTTPS=true` trong `.env` (nếu không khai báo `FORCE_HTTPS` thì `APP_ENV=production` là đủ, nhưng `FORCE_HTTPS=false` copy từ `.env.example` sẽ ghi đè) — Laravel sẽ tự ép `https` cho mọi URL sinh ra. Không bật tuỳ chọn này trên môi trường dev local không có HTTPS thật, trình duyệt sẽ load lỗi asset.
+
+**Q: Làm sao để rate limit theo IP đáng tin cậy khi chạy sau reverse proxy?**
+Đặt `TRUSTED_PROXIES` trong `.env` là IP reverse proxy của bạn (phân tách bằng dấu phẩy; mặc định `*` tin mọi proxy). Nên giới hạn lại ở production để không thể giả mạo `X-Forwarded-For`, vì throttle login/report tính theo IP.
 
 **Q: Rate limit mặc định của các API là bao nhiêu?**
 Đăng nhập: 5 lần/phút. `/uploads/init`: 30 lần/phút. `/uploads/{id}/chunk`: 120 lần/phút. `/api/reports`: 5 lần/10 phút mỗi IP (cộng thêm 20 lần/10 phút mỗi `page_url`). Gặp lỗi "Too Many Requests" khi thao tác quá nhanh là do các giới hạn này.
