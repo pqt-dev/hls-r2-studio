@@ -10,15 +10,13 @@
  * Page script convention: a page that registers an interval or a
  * document/window level listener must expose a cleanup callback as
  * `window.__pageCleanup`. It is called and cleared right before the old
- * <main> content is swapped out, on every navigation (including back/forward
- * and the periodic reload used by the video list).
+ * <main> content is swapped out, on every navigation (including back/forward).
  */
 
 const ACTIVE_CLASSES = ['bg-primary', 'text-primary-foreground', 'shadow-sm', '[&>span:first-child]:bg-transparent', '[&_svg]:text-primary-foreground'];
 const INACTIVE_CLASSES = ['text-muted-foreground', 'hover:bg-accent', 'hover:text-foreground'];
 
 let navigationToken = 0;
-let navigating = false;
 
 function hardNavigate(url) {
     window.location.href = url;
@@ -86,32 +84,17 @@ function updateActiveNavLinks(nav) {
 async function swap(url, options) {
     navigationToken++;
     const token = navigationToken;
-    navigating = true;
 
-    try {
-        await performSwap(url, options, token);
-    } finally {
-        if (token === navigationToken) {
-            navigating = false;
-        }
-    }
+    await performSwap(url, options, token);
 }
 
-/**
- * `hardFallback` is false for the periodic refresh only: a transient failure
- * must not unload the document (that would abort an upload in progress), the
- * next tick simply tries again. An actual redirect (expired session) still
- * hands over to a real navigation.
- */
-async function performSwap(url, { push, nav, hardFallback = true }, token) {
+async function performSwap(url, { push, nav }, token) {
     let response;
 
     try {
         response = await fetch(url, { headers: { 'X-Requested-With': 'XMLHttpRequest' } });
     } catch (error) {
-        if (hardFallback) {
-            hardNavigate(url);
-        }
+        hardNavigate(url);
         return;
     }
 
@@ -121,9 +104,7 @@ async function performSwap(url, { push, nav, hardFallback = true }, token) {
     }
 
     if (!response.ok) {
-        if (hardFallback) {
-            hardNavigate(url);
-        }
+        hardNavigate(url);
         return;
     }
 
@@ -139,9 +120,7 @@ async function performSwap(url, { push, nav, hardFallback = true }, token) {
     const currentMain = document.querySelector('main');
 
     if (!incomingMain || !currentMain) {
-        if (hardFallback) {
-            hardNavigate(url);
-        }
+        hardNavigate(url);
         return;
     }
 
@@ -222,18 +201,4 @@ export default function initSoftNavigation() {
     window.addEventListener('popstate', function () {
         swap(window.location.href, { push: false, nav: nav });
     });
-
-    window.softNav = {
-        /**
-         * Refresh the current page in place, without unloading the document.
-         */
-        reload: function () {
-            if (navigating) {
-                // A navigation is already running; do not clobber it.
-                return;
-            }
-
-            swap(window.location.href, { push: false, nav: nav, hardFallback: false });
-        },
-    };
 }

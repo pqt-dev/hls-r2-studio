@@ -35,7 +35,7 @@
             <x-slot:trigger>
                 <x-ui.button variant="outline" id="status-filter-toggle" data-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
                     <span class="text-muted-foreground">Filter:</span>
-                    <span id="status-filter-label">{{ $currentStatusLabel }}</span>
+                    <span>{{ $currentStatusLabel }}</span>
                     <x-lucide-chevron-down class="w-4 h-4" />
                 </x-ui.button>
             </x-slot:trigger>
@@ -51,7 +51,7 @@
             <x-slot:trigger>
                 <x-ui.button variant="outline" id="sort-filter-toggle" data-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
                     <span class="text-muted-foreground">Sort:</span>
-                    <span id="sort-filter-label">{{ $currentSortLabel }}</span>
+                    <span>{{ $currentSortLabel }}</span>
                     <x-lucide-chevron-down class="w-4 h-4" />
                 </x-ui.button>
             </x-slot:trigger>
@@ -203,7 +203,7 @@
 
                 window.confirmDialog({
                     title: 'Mark report as resolved?',
-                    message: 'Mark "' + pageUrl + '" as resolved? You can still find it under the Resolved tab afterward.',
+                    message: 'Mark "' + pageUrl + '" as resolved? You can still find it under the Resolved filter afterward.',
                     confirmText: 'Mark resolved',
                     danger: false,
                 }).then(function (ok) {

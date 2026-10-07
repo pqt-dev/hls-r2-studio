@@ -18,7 +18,7 @@
         <x-ui.dropdown-menu id="date-filter" class="md:relative" panel-id="date-filter-panel" panel-class="w-full md:w-60">
             <x-slot:trigger>
                 <x-ui.button variant="outline" id="date-filter-toggle" data-dropdown-trigger aria-haspopup="menu" aria-expanded="false">
-                    <span id="date-filter-label">{{ $rangeLabel }}</span>
+                    <span>{{ $rangeLabel }}</span>
                     <x-lucide-chevron-down class="w-4 h-4" />
                 </x-ui.button>
             </x-slot:trigger>
@@ -108,7 +108,7 @@
                     </x-ui.table-header>
                     <tbody class="[&_tr:last-child]:border-0 max-md:block">
                         @foreach ($completedVideos as $video)
-                            @include('videos._row', ['video' => $video, 'selectable' => true])
+                            @include('videos._row', ['video' => $video, 'selectable' => true, 'disk' => $disk])
                         @endforeach
                     </tbody>
                 </x-ui.table>

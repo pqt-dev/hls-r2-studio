@@ -17,7 +17,7 @@
             <div class="w-14 h-14 rounded-lg flex items-center justify-center bg-muted"><x-lucide-clapperboard class="w-7 h-7 text-foreground" /></div>
             <div>
                 <div class="font-semibold text-foreground mb-1">Welcome back!</div>
-                <div class="text-muted-foreground text-sm">{{ now()->translatedFormat('l, d/m/Y H:i') }}</div>
+                <div class="text-muted-foreground text-sm">{{ now()->toDisplay('l, d/m/Y H:i') }}</div>
             </div>
         </div>
     </div>
@@ -56,7 +56,7 @@
                         <x-lucide-hard-drive class="w-5 h-5 text-orange-600" />
                     </div>
                 </div>
-                <div class="text-2xl font-semibold text-foreground leading-tight">{{ $diskPercent }}%</div>
+                <div class="text-2xl font-semibold text-foreground leading-tight">{{ $diskPercent !== null ? $diskPercent.'%' : '—' }}</div>
                 <div class="text-sm text-muted-foreground mt-1">Server Disk</div>
                 <div class="text-xs text-muted-foreground mt-1">Used: {{ $diskUsedGb ?? '—' }} GB / {{ $diskTotalGb ?? '—' }} GB</div>
             </x-ui.card-content>

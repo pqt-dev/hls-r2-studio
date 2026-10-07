@@ -5,72 +5,86 @@
 @section('breadcrumb', 'Home / Upload Video')
 
 @section('content')
-    <x-ui.card class="max-w-xl overflow-hidden">
-        <x-ui.card-header class="border-b border-border">
-            <x-ui.card-title class="inline-flex items-center gap-2"><x-lucide-cloud-upload class="w-4 h-4" /> Upload Video</x-ui.card-title>
-        </x-ui.card-header>
+    <form id="upload-form" class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-start"
+          data-max-size-mb="{{ config('videos.max_upload_size_mb') }}"
+          data-chunk-size-mb="{{ config('videos.chunk_size_mb') }}">
+        <x-ui.card class="overflow-hidden min-w-0">
+            <x-ui.card-header class="border-b border-border">
+                <x-ui.card-title class="inline-flex items-center gap-2"><x-lucide-cloud-upload class="w-4 h-4" /> Upload videos</x-ui.card-title>
+                <p class="text-sm text-muted-foreground">Formats: mp4, mov, mkv, avi, webm. Maximum size {{ config('videos.max_upload_size_mb') }} MB.</p>
+            </x-ui.card-header>
 
-        <form id="upload-form" class="p-6 space-y-5"
-              data-max-size-mb="{{ config('videos.max_upload_size_mb') }}"
-              data-chunk-size-mb="{{ config('videos.chunk_size_mb') }}">
-            <div id="title-field-wrapper">
-                <x-ui.label for="title" class="block mb-2">Title (optional)</x-ui.label>
-                <x-ui.input type="text" name="title" id="title" value="{{ old('title') }}" />
-                <p id="title-multi-note" class="mt-1 text-xs text-muted-foreground hidden">Title is automatically taken from the filename when uploading multiple videos.</p>
-            </div>
-
-            <div>
-                <x-ui.label for="video" class="block mb-2">Video File</x-ui.label>
-                <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
-                <div id="dropzone"
-                     class="rounded-lg border-2 border-dashed border-input px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-foreground/40 hover:bg-muted/40">
-                    <div class="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-                        <x-lucide-cloud-upload class="w-8 h-8 text-foreground" />
+            <div class="p-4 sm:p-6 space-y-5">
+                <div>
+                    <x-ui.label for="video" class="block mb-2">Video File</x-ui.label>
+                    <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
+                    <div id="dropzone"
+                         class="rounded-lg border-2 border-dashed border-input px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-foreground/40 hover:bg-muted/40 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:border-input aria-disabled:hover:bg-transparent aria-disabled:[&_*]:cursor-not-allowed">
+                        <div class="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                            <x-lucide-cloud-upload class="w-8 h-8 text-foreground" />
+                        </div>
+                        <p id="dropzone-instruction" class="text-sm text-muted-foreground mb-3">Drag and drop video here, or</p>
+                        <x-ui.button type="button">
+                            <x-lucide-upload class="w-4 h-4" /> Choose video file
+                        </x-ui.button>
                     </div>
-                    <p id="dropzone-instruction" class="text-sm text-muted-foreground mb-3">Drag and drop video here, or</p>
-                    <x-ui.button type="button">
-                        <x-lucide-upload class="w-4 h-4" /> Choose video file
-                    </x-ui.button>
+                    <div id="selected-files-list" class="mt-2 space-y-1 hidden"></div>
                 </div>
-                <p class="mt-1 text-xs text-muted-foreground">Formats: mp4, mov, mkv, avi, webm. Maximum size {{ config('videos.max_upload_size_mb') }} MB.</p>
-                <div id="selected-files-list" class="mt-2 space-y-1 hidden"></div>
+
+                <div id="title-field-wrapper">
+                    <x-ui.label for="title" class="block mb-2">Title (optional)</x-ui.label>
+                    <x-ui.input type="text" name="title" id="title" value="{{ old('title') }}" class="disabled:pointer-events-auto! disabled:cursor-not-allowed" />
+                    <p id="title-multi-note" class="mt-1 text-xs text-muted-foreground hidden">Title is automatically taken from the filename when uploading multiple videos.</p>
+                </div>
+
+                <x-ui.alert variant="destructive" id="upload-error" class="hidden"></x-ui.alert>
+
+                <x-ui.alert variant="warning" id="upload-warning" class="hidden">
+                    <x-lucide-triangle-alert class="w-4 h-4 shrink-0" />
+                    Please do not reload or close this tab while the upload is in progress.
+                </x-ui.alert>
             </div>
 
-            <x-ui.alert variant="destructive" id="upload-error" class="hidden"></x-ui.alert>
+            <div class="flex flex-col gap-3 border-t border-border bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <p id="selection-summary" class="text-sm text-muted-foreground">No files selected</p>
+                <x-ui.button type="submit" id="upload-submit" class="w-full sm:w-auto disabled:pointer-events-auto! disabled:cursor-not-allowed disabled:hover:bg-primary">
+                    <x-lucide-upload class="w-4 h-4" /> Start upload
+                </x-ui.button>
+            </div>
+        </x-ui.card>
 
-            <x-ui.button type="submit" id="upload-submit">
-                Upload
-            </x-ui.button>
-
-            <x-ui.alert variant="warning" id="upload-warning" class="hidden">
-                <x-lucide-triangle-alert class="w-4 h-4 shrink-0" />
-                Please do not reload or close this tab while the upload is in progress.
-            </x-ui.alert>
-
+        <div class="space-y-4 min-w-0">
             <x-ui.card id="upload-progress-card" class="overflow-hidden">
-                <div class="bg-muted border-b border-border px-4 py-2 flex items-center justify-between gap-2">
-                    <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Upload Progress</h3>
-                    <x-ui.button variant="outline" size="sm" id="clear-queue-btn">
+                <div class="bg-muted border-b border-border px-4 py-3 flex items-start justify-between gap-2">
+                    <div class="min-w-0">
+                        <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Processing Queue <x-ui.badge variant="secondary" id="upload-queue-count">0</x-ui.badge></h3>
+                        <p class="mt-1 text-xs text-muted-foreground">Upload and processing status of each file</p>
+                    </div>
+                    <x-ui.button variant="outline" size="sm" id="clear-queue-btn" class="shrink-0">
                         <x-lucide-trash-2 class="w-3.5 h-3.5" /> Clear queue
                     </x-ui.button>
                 </div>
                 <div class="p-4">
                     <div id="upload-queue" class="space-y-3"></div>
-                    <p id="upload-queue-empty" class="text-sm text-muted-foreground text-center py-4">No files in queue.</p>
+                    <p id="upload-queue-empty" class="text-sm text-muted-foreground text-center py-6">No files in queue. Select videos to start uploading.</p>
                 </div>
             </x-ui.card>
 
             <x-ui.card class="overflow-hidden">
                 <div class="bg-muted border-b border-border px-4 py-2 flex items-center justify-between gap-2">
-                    <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Log</h3>
-                    <x-ui.button variant="outline" size="sm" id="clear-log-btn">
+                    <h3 class="min-w-0 text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Activity Log</h3>
+                    <x-ui.button variant="outline" size="sm" id="clear-log-btn" class="shrink-0" title="Hides these lines in this browser only. Stored logs are not deleted.">
                         <x-lucide-trash-2 class="w-3.5 h-3.5" /> Clear log
                     </x-ui.button>
                 </div>
                 <div class="p-4">
-                    <div id="upload-log" class="font-mono text-xs text-muted-foreground space-y-1 max-h-40 overflow-y-auto break-words">
+                    <div id="upload-log" class="font-mono text-xs text-muted-foreground space-y-1 max-h-72 overflow-y-auto break-words">
                         <p class="text-muted-foreground" data-log-placeholder>Ready.</p>
                     </div>
+                </div>
+                <div id="upload-log-note" class="border-t border-border px-4 py-3 flex items-start gap-1.5 text-xs text-muted-foreground">
+                    <x-lucide-info class="w-3.5 h-3.5 shrink-0 mt-px" />
+                    <p>Clear log only hides these lines in this browser. Stored logs are not deleted.</p>
                 </div>
             </x-ui.card>
 
@@ -79,8 +93,8 @@
                     View video list
                 </x-ui.button>
             </div>
-        </form>
-    </x-ui.card>
+        </div>
+    </form>
 
     @push('scripts')
         <script>
@@ -100,6 +114,8 @@
                 const summaryBox = document.getElementById('upload-summary');
                 const logBox = document.getElementById('upload-log');
                 const uploadWarning = document.getElementById('upload-warning');
+                const selectionSummary = document.getElementById('selection-summary');
+                const queueCountBadge = document.getElementById('upload-queue-count');
 
                 const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const allowedExtensions = ['mp4', 'mov', 'mkv', 'avi', 'webm'];
@@ -112,60 +128,450 @@
                 let isUploading = false;
                 const uploadedVideos = {};
                 const historyLoadedForVideoIds = new Set();
+                let replayPromise = Promise.resolve();
+                let replayDone = false;
+                let replayRetried = false;
+                let batchPending = [];
 
                 window.__uploadQueueRegistry = window.__uploadQueueRegistry || {};
+
+                // Tells the global progress ring that the registry changed (it re-reads the registry on each render).
+                // Frequent progress ticks pass `throttle` so they fire at most ~4 times per second.
+                let registryNotifyTimer = null;
+                let registryLastNotifyAt = 0;
+                function notifyUploadRegistry(throttle) {
+                    const wait = throttle ? Math.max(0, 250 - (Date.now() - registryLastNotifyAt)) : 0;
+                    if (registryNotifyTimer !== null) {
+                        if (wait > 0) {
+                            return;
+                        }
+                        clearTimeout(registryNotifyTimer);
+                        registryNotifyTimer = null;
+                    }
+                    const fire = function () {
+                        registryNotifyTimer = null;
+                        registryLastNotifyAt = Date.now();
+                        window.dispatchEvent(new CustomEvent('upload-registry:update'));
+                    };
+                    if (wait > 0) {
+                        registryNotifyTimer = setTimeout(fire, wait);
+                    } else {
+                        fire();
+                    }
+                }
 
                 function generateQueueId() {
                     return 'q' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
                 }
 
-                const LOG_DISMISSED_KEY = 'hls_upload_log_dismissed';
+                const ACTIVITY_LOG_STORE_URL = @json(route('activity-log.store', [], false));
+                const ACTIVITY_LOG_INDEX_URL = @json(route('activity-log.index', [], false));
+                const OUTBOX_KEY = 'hls_activity_outbox';
+                const OUTBOX_MAX = 1000;
+                const OUTBOX_BATCH = 50;
+                const REPLAY_CID_MAX = 100;
+                const OUTBOX_DEBOUNCE_MS = 500;
+                const CLEARED_AT_KEY = 'hls_activity_cleared_at';
 
-                function loadDismissedLog() {
+                // Shared across script instances (soft navigation) so entries are never sent twice:
+                // a batch is moved from `items` to `inflight` BEFORE the request and put back on failure.
+                if (!window.__activityOutbox) {
+                    let stored = [];
                     try {
-                        const raw = localStorage.getItem(LOG_DISMISSED_KEY);
-                        if (!raw) {
-                            return [];
+                        const raw = sessionStorage.getItem(OUTBOX_KEY);
+                        const parsed = raw ? JSON.parse(raw) : [];
+                        if (Array.isArray(parsed)) {
+                            stored = parsed.filter(function (entry) {
+                                return entry && typeof entry.message === 'string';
+                            }).slice(-OUTBOX_MAX);
                         }
-                        const parsed = JSON.parse(raw);
-                        return Array.isArray(parsed) ? parsed : [];
                     } catch (e) {
-                        return [];
+                        // sessionStorage unavailable — the outbox simply starts empty
+                    }
+                    window.__activityOutbox = { items: stored, inflight: [], timer: null, flushing: null };
+                }
+                const outbox = window.__activityOutbox;
+
+                function persistOutbox() {
+                    try {
+                        const all = outbox.inflight.concat(outbox.items);
+                        if (all.length === 0) {
+                            sessionStorage.removeItem(OUTBOX_KEY);
+                        } else {
+                            sessionStorage.setItem(OUTBOX_KEY, JSON.stringify(all));
+                        }
+                    } catch (e) {
+                        // best-effort only
                     }
                 }
 
-                function saveDismissedLog(ids) {
+                function scheduleOutboxFlush() {
+                    clearTimeout(outbox.timer);
+                    outbox.timer = setTimeout(function () {
+                        outbox.timer = null;
+                        flushOutbox();
+                    }, OUTBOX_DEBOUNCE_MS);
+                }
+
+                // Stable per-line id, generated when the line is created and sent with every delivery attempt so the
+                // server can ignore an entry it already stored (retries, a reload while a request was in flight, ...).
+                function makeCid() {
                     try {
-                        localStorage.setItem(LOG_DISMISSED_KEY, JSON.stringify(ids));
+                        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                            return crypto.randomUUID();
+                        }
                     } catch (e) {
-                        // localStorage unavailable (private mode, quota, etc.) — cache is best-effort only
+                        // randomUUID needs a secure context; fall through
+                    }
+                    return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 12) + Math.random().toString(36).slice(2, 8);
+                }
+
+                // Lines are persisted in creation order: insert by ts (after any entry with an equal or older ts).
+                function enqueueOutbox(entry) {
+                    const ts = Number.isFinite(entry.ts) ? entry.ts : Date.now();
+                    let index = outbox.items.length;
+                    while (index > 0 && Number.isFinite(outbox.items[index - 1].ts) && outbox.items[index - 1].ts > ts) {
+                        index--;
+                    }
+                    outbox.items.splice(index, 0, entry);
+                    if (outbox.items.length > OUTBOX_MAX) {
+                        outbox.items = outbox.items.slice(-OUTBOX_MAX);
+                    }
+                    persistOutbox();
+                    scheduleOutboxFlush();
+                }
+
+                function flushOutbox() {
+                    if (outbox.flushing) {
+                        return outbox.flushing;
+                    }
+                    if (outbox.items.length === 0) {
+                        return Promise.resolve();
+                    }
+                    outbox.flushing = (async function () {
+                        try {
+                            while (outbox.items.length > 0) {
+                                if (navigator.onLine === false) {
+                                    break;
+                                }
+                                const batch = outbox.items.splice(0, OUTBOX_BATCH);
+                                // Stable sort so row ids (same-second created_at ties) follow creation order.
+                                batch.sort(function (a, b) {
+                                    return (Number.isFinite(a.ts) ? a.ts : 0) - (Number.isFinite(b.ts) ? b.ts : 0);
+                                });
+                                outbox.inflight = batch;
+                                persistOutbox();
+
+                                let settled = false;
+                                try {
+                                    const meta = document.querySelector('meta[name="csrf-token"]');
+                                    const response = await fetch(ACTIVITY_LOG_STORE_URL, {
+                                        method: 'POST',
+                                        keepalive: true,
+                                        credentials: 'same-origin',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Accept': 'application/json',
+                                            'X-CSRF-TOKEN': meta ? meta.getAttribute('content') : csrfToken,
+                                        },
+                                        body: JSON.stringify({ entries: batch }),
+                                    });
+                                    // Dropped only on success or a validation-type 4xx (retrying cannot help).
+                                    // Network errors, 5xx, 429, 401, 419 and any other status keep the batch for a later retry.
+                                    settled = response.ok || [400, 404, 413, 422].indexOf(response.status) !== -1;
+                                } catch (e) {
+                                    settled = false;
+                                }
+
+                                outbox.inflight = [];
+                                if (!settled) {
+                                    outbox.items = batch.concat(outbox.items).sort(function (a, b) {
+                                        return (Number.isFinite(a.ts) ? a.ts : 0) - (Number.isFinite(b.ts) ? b.ts : 0);
+                                    }).slice(-OUTBOX_MAX);
+                                    persistOutbox();
+                                    break;
+                                }
+                                persistOutbox();
+                            }
+                        } catch (e) {
+                            // never surface outbox problems to the UI
+                        } finally {
+                            outbox.flushing = null;
+                        }
+                    })();
+                    return outbox.flushing;
+                }
+
+                function getClearedAt() {
+                    try {
+                        const value = parseInt(localStorage.getItem(CLEARED_AT_KEY), 10);
+                        return Number.isFinite(value) ? value : 0;
+                    } catch (e) {
+                        return 0;
+                    }
+                }
+
+                function setClearedAt(value) {
+                    try {
+                        localStorage.setItem(CLEARED_AT_KEY, String(value));
+                    } catch (e) {
+                        // best-effort only
                     }
                 }
 
                 const transcodeStageLabels = {
                     queued: 'Queued',
+                    merging: 'Merging chunks',
                     transcoding: 'Transcoding',
                     generating_thumbnail: 'Generating thumbnail',
                     generating_storyboard: 'Generating storyboard',
                     uploading_r2: 'Uploading to R2',
                 };
 
-                const STAGES_WITHOUT_PERCENT = ['generating_thumbnail', 'generating_storyboard'];
-
                 function formatStageStatus(stage, progress) {
                     const stageLabel = transcodeStageLabels[stage] || stage;
-                    if (STAGES_WITHOUT_PERCENT.includes(stage)) {
-                        return stageLabel;
-                    }
                     return stageLabel + ' — ' + progress + '%';
                 }
 
-                window.addEventListener('beforeunload', function (e) {
-                    if (isUploading) {
-                        e.preventDefault();
-                        e.returnValue = '';
+                // Single source of truth for server-origin log lines (already stored by the server, so the
+                // client never posts them back). Used by realtime events, history catch-up and DB replay.
+                function buildStatusMessage(title, status, stage, progress) {
+                    if (status === 'pending') {
+                        return { message: title + ' is queued for processing.', className: null };
                     }
-                });
+                    if (status === 'processing') {
+                        return { message: title + ': ' + formatStageStatus(stage, progress), className: null };
+                    }
+                    if (status === 'ready') {
+                        return { message: title + ' finished transcoding.', className: 'text-orange-600 font-medium' };
+                    }
+                    if (status === 'failed') {
+                        return { message: title + ' failed to process.', className: null };
+                    }
+                    return null;
+                }
+
+                // Derived only from message + level so a replayed client line looks exactly like the realtime one.
+                function clientLineClass(message, level) {
+                    if (level === 'error') {
+                        return 'text-destructive font-medium';
+                    }
+                    if (/ uploaded successfully\. \(\d+\/\d+\)$/.test(message) || /^Upload finished: \d+\/\d+ file\(s\) uploaded\./.test(message)) {
+                        return 'text-foreground font-medium';
+                    }
+                    return null;
+                }
+
+                function enqueueClientLine(line, uploadId, videoId) {
+                    enqueueOutbox({
+                        upload_id: uploadId || null,
+                        video_id: videoId || null,
+                        level: line.level,
+                        message: String(line.message).slice(0, 500),
+                        ts: line.ts,
+                        cid: line.cid,
+                        ...(line.kind ? { kind: line.kind } : {}),
+                    });
+                }
+
+                // Client-origin line: shown now AND persisted through the outbox. Pass `deferTo` (an array) to
+                // show the line but hold it until the upload id is known (see releaseDeferred()).
+                function logClient(message, opts) {
+                    opts = opts || {};
+                    const level = opts.level === 'error' ? 'error' : 'info';
+                    const ts = Number.isFinite(opts.ts) ? opts.ts : Date.now();
+                    if (!opts.silent) {
+                        appendLog(message, clientLineClass(message, level), undefined, ts);
+                    }
+
+                    const line = { message: message, level: level, ts: ts, kind: opts.kind, cid: makeCid() };
+                    if (Array.isArray(opts.deferTo)) {
+                        opts.deferTo.push(line);
+                        return;
+                    }
+                    enqueueClientLine(line, opts.uploadId, opts.videoId);
+                }
+
+                function releaseDeferred(lines, uploadId, videoId) {
+                    lines.splice(0).sort(function (a, b) { return a.ts - b.ts; }).forEach(function (line) {
+                        enqueueClientLine(line, uploadId, videoId);
+                    });
+                }
+
+                function resolveItemIds(item) {
+                    const reg = item && item.queueId ? window.__uploadQueueRegistry[item.queueId] : null;
+                    return {
+                        uploadId: (item && item.uploadId) || (reg && reg.uploadId) || null,
+                        videoId: (item && item.videoId) || (reg && reg.videoId) || null,
+                    };
+                }
+
+                function logItem(item, message, level) {
+                    const ids = resolveItemIds(item);
+                    logClient(message, { level: level, uploadId: ids.uploadId, videoId: ids.videoId });
+                }
+
+                // Registered once globally so it keeps protecting an in-flight upload
+                // across soft navigation, without stacking duplicates on re-entry.
+                if (!window.__uploadBeforeUnloadBound) {
+                    window.__uploadBeforeUnloadBound = true;
+                    window.addEventListener('beforeunload', function (e) {
+                        if (window.__uploadInProgress) {
+                            e.preventDefault();
+                            e.returnValue = '';
+                        }
+                    });
+                }
+
+                // The file being uploaded right now (owned by the instance running the upload loop), mirrored in
+                // sessionStorage so the next page load can record an interruption the pagehide request missed.
+                const UPLOAD_ACTIVE_KEY = 'hls_upload_active';
+                const UPLOAD_ID_PATTERN = /^[0-9a-f-]{36}$/;
+
+                function writeActiveMarker(active) {
+                    try {
+                        sessionStorage.setItem(UPLOAD_ACTIVE_KEY, JSON.stringify({
+                            name: active.name,
+                            uploadId: active.uploadId,
+                            remaining: active.remaining,
+                            ts: active.ts,
+                            reported: active.reported,
+                        }));
+                    } catch (e) {
+                        // best-effort only
+                    }
+                }
+
+                function clearActiveMarker() {
+                    try {
+                        sessionStorage.removeItem(UPLOAD_ACTIVE_KEY);
+                    } catch (e) {
+                        // best-effort only
+                    }
+                }
+
+                function buildInterruptedMessage(name, remaining) {
+                    return 'Upload interrupted: the page was reloaded or closed while uploading ' + name + '.'
+                        + (remaining > 0 ? ' ' + remaining + ' more file(s) were not started.' : '')
+                        + ' The upload did not finish and no video will be processed.';
+                }
+
+                // Lines still held back for an upload id (the first /uploads/init has not answered yet) would die with
+                // the page: queue them now, with whatever ids are known (none -> misc rows), keeping their ts.
+                function releaseActiveDeferred(active) {
+                    if (typeof active.getDeferred !== 'function') {
+                        return;
+                    }
+                    active.getDeferred().forEach(function (lines) {
+                        if (Array.isArray(lines)) {
+                            releaseDeferred(lines, active.uploadId, null);
+                        }
+                    });
+                }
+
+                function reportInterrupted(active) {
+                    if (active.reported) {
+                        return;
+                    }
+                    active.reported = true;
+                    releaseActiveDeferred(active);
+                    logClient(buildInterruptedMessage(active.name, active.remaining), {
+                        level: 'error',
+                        uploadId: active.uploadId,
+                        kind: 'interrupted',
+                    });
+                    writeActiveMarker(active);
+                    clearTimeout(outbox.timer);
+                    outbox.timer = null;
+                    flushOutbox();
+                }
+
+                function beginActiveUpload(item, getRemaining) {
+                    const active = {
+                        name: item.file.name,
+                        uploadId: null,
+                        queueId: item.queueId,
+                        remaining: getRemaining(),
+                        ts: Date.now(),
+                        reported: false,
+                        getRemaining: getRemaining,
+                        reportInterrupted: function () {
+                            reportInterrupted(active);
+                        },
+                    };
+                    window.__uploadActive = active;
+                    writeActiveMarker(active);
+                    return active;
+                }
+
+                function touchActiveUpload(active, patch) {
+                    if (!active || window.__uploadActive !== active) {
+                        return;
+                    }
+                    Object.assign(active, patch);
+                    active.remaining = active.getRemaining();
+                    active.ts = Date.now();
+                    writeActiveMarker(active);
+                }
+
+                function endActiveUpload(active) {
+                    if (active && window.__uploadActive === active) {
+                        window.__uploadActive = null;
+                        clearActiveMarker();
+                    }
+                }
+
+                // bfcache (persisted) page hides are not an interruption: the page can come back alive.
+                function reportActiveInterrupted(event) {
+                    try {
+                        const active = window.__uploadActive;
+                        if (event && event.persisted) {
+                            return;
+                        }
+                        if (active && !active.reported && typeof active.reportInterrupted === 'function') {
+                            active.reportInterrupted();
+                        }
+                    } catch (e) {
+                        // never block the page from unloading
+                    }
+                }
+
+                // Registered once globally (not removed by __pageCleanup) so it keeps covering an in-flight upload.
+                if (!window.__uploadPageHideBound) {
+                    window.__uploadPageHideBound = true;
+                    window.addEventListener('pagehide', reportActiveInterrupted);
+                }
+
+                // Next page load: a leftover unreported marker means the pagehide request never went out.
+                function recoverInterruptedUpload() {
+                    try {
+                        if (window.__uploadInProgress || window.__uploadActive) {
+                            return; // soft-navigated back while an upload is still running
+                        }
+                        const raw = sessionStorage.getItem(UPLOAD_ACTIVE_KEY);
+                        if (!raw) {
+                            return;
+                        }
+                        let marker = null;
+                        try {
+                            marker = JSON.parse(raw);
+                        } catch (e) {
+                            marker = null;
+                        }
+                        if (marker && marker.reported !== true && typeof marker.name === 'string') {
+                            logClient(buildInterruptedMessage(marker.name, Number(marker.remaining) || 0), {
+                                level: 'error',
+                                uploadId: typeof marker.uploadId === 'string' && UPLOAD_ID_PATTERN.test(marker.uploadId) ? marker.uploadId : null,
+                                kind: 'interrupted',
+                                ts: Number.isFinite(marker.ts) ? marker.ts : undefined,
+                                silent: true, // the replay renders it from the DB/outbox; showing it here too would duplicate it
+                            });
+                        }
+                        clearActiveMarker();
+                    } catch (e) {
+                        // best-effort only
+                    }
+                }
 
                 function showError(message) {
                     errorBox.textContent = message;
@@ -181,17 +587,36 @@
                     summaryBox.classList.add('hidden');
                 }
 
-                function appendLog(message, extraClass, time) {
+                // Lines are kept in chronological order by data-ts (ms epoch), because history
+                // fetches for several videos can finish in any order.
+                function appendLog(message, extraClass, time, timestamp) {
                     const placeholder = logBox.querySelector('[data-log-placeholder]');
                     if (placeholder) {
                         placeholder.remove();
                     }
+                    const ts = Number.isFinite(timestamp) ? timestamp : Date.now();
                     const line = document.createElement('p');
                     if (extraClass) {
                         line.className = extraClass;
                     }
+                    line.dataset.ts = String(ts);
                     line.textContent = '[' + (time || new Date().toLocaleTimeString()) + '] ' + message;
-                    logBox.appendChild(line);
+
+                    const lines = logBox.querySelectorAll('p[data-ts]');
+                    let anchor = null;
+                    for (let i = lines.length - 1; i >= 0; i--) {
+                        if (Number(lines[i].dataset.ts) <= ts) {
+                            anchor = lines[i];
+                            break;
+                        }
+                    }
+                    if (anchor) {
+                        anchor.after(line);
+                    } else if (lines.length > 0) {
+                        lines[0].before(line);
+                    } else {
+                        logBox.appendChild(line);
+                    }
                     logBox.scrollTop = logBox.scrollHeight;
                 }
 
@@ -209,35 +634,76 @@
                     return new Promise((resolve) => setTimeout(resolve, ms));
                 }
 
+                const NETWORK_ERROR_MESSAGE = 'Network connection lost: the browser could not reach the server. Check your internet connection and upload the file again.';
+
+                // fetch() rejections (no HTTP response): Chrome 'Failed to fetch', Firefox 'NetworkError when attempting to fetch resource.', Safari 'Load failed'.
+                function isNetworkFailure(err) {
+                    if (navigator.onLine === false) {
+                        return true;
+                    }
+                    return err instanceof TypeError && /failed to fetch|networkerror|load failed|network request failed/i.test(err.message || '');
+                }
+
                 async function fetchWithRetry(url, options, maxRetries = 3) {
                     let lastError;
+                    let lastIsHttpError = false;
                     for (let attempt = 1; attempt <= maxRetries; attempt++) {
+                        let retryDelayMs = 1000;
+                        let retryable = true;
                         try {
                             const response = await fetch(url, options);
                             if (!response.ok) {
                                 let message = `Request failed (HTTP ${response.status}).`;
-                                try {
-                                    const data = await response.json();
-                                    if (data && data.message) {
-                                        message = data.message;
+                                if (response.status === 419) {
+                                    message = 'Your session has expired. Please reload the page and sign in again.';
+                                } else {
+                                    try {
+                                        const data = await response.json();
+                                        if (data && data.message) {
+                                            message = data.message;
+                                        }
+                                    } catch (e) {
+                                        // ignore JSON parse error, keep default message
                                     }
-                                } catch (e) {
-                                    // ignore JSON parse error, keep default message
                                 }
-                                throw new Error(message);
+                                // Only 5xx and 429 are transient; any other 4xx is final.
+                                retryable = response.status >= 500 || response.status === 429;
+                                if (response.status === 429) {
+                                    const retryAfter = parseInt(response.headers.get('Retry-After'), 10);
+                                    if (retryAfter > 0) {
+                                        retryDelayMs = Math.min(retryAfter, 30) * 1000;
+                                    }
+                                }
+                                lastError = new Error(message);
+                                lastIsHttpError = true;
+                                if (!retryable) {
+                                    throw lastError;
+                                }
+                            } else {
+                                return await response.json();
                             }
-                            return await response.json();
                         } catch (err) {
-                            lastError = err;
-                            if (attempt < maxRetries) {
-                                await sleep(1000);
+                            if (!retryable) {
+                                throw err;
                             }
+                            lastError = err;
+                            lastIsHttpError = false;
                         }
+                        if (attempt < maxRetries) {
+                            await sleep(retryDelayMs);
+                        }
+                    }
+                    if (!lastIsHttpError && isNetworkFailure(lastError)) {
+                        const networkError = new Error(NETWORK_ERROR_MESSAGE);
+                        networkError.isNetworkError = true;
+                        throw networkError;
                     }
                     throw lastError;
                 }
 
                 async function loadVideoHistory(videoId) {
+                    // Wait for the DB replay so ids it already rendered are never rendered twice.
+                    await replayPromise;
                     if (historyLoadedForVideoIds.has(videoId)) {
                         return;
                     }
@@ -261,24 +727,16 @@
                         return;
                     }
 
+                    const clearedAt = getClearedAt();
+
                     logs.forEach(function (log) {
-                        const time = new Date(log.created_at).toLocaleTimeString();
-                        let message = null;
-                        let logClass = null;
-
-                        if (log.status === 'pending') {
-                            message = entry.title + ' is queued for processing.';
-                        } else if (log.status === 'processing') {
-                            message = entry.title + ': ' + formatStageStatus(log.stage, log.progress);
-                        } else if (log.status === 'ready') {
-                            message = entry.title + ' finished transcoding.';
-                            logClass = 'text-orange-600 font-medium';
-                        } else if (log.status === 'failed') {
-                            message = entry.title + ' failed to process.';
+                        const createdAt = new Date(log.created_at);
+                        if (createdAt.getTime() <= clearedAt) {
+                            return;
                         }
-
-                        if (message) {
-                            appendLog(message, logClass, time);
+                        const built = buildStatusMessage(entry.title, log.status, log.stage, log.progress);
+                        if (built) {
+                            appendLog(built.message, built.className, createdAt.toLocaleTimeString(), createdAt.getTime());
                         }
                     });
 
@@ -286,6 +744,144 @@
                     entry.status = lastLog.status;
                     entry.stage = lastLog.stage;
                     entry.progress = lastLog.progress;
+
+                    if (lastLog.status === 'ready' || lastLog.status === 'failed') {
+                        removeFinishedQueueRow(entry);
+                    }
+                }
+
+                // Renders the persisted Activity Log (newest 10 groups + misc rows) in DB order, then seeds
+                // uploadedVideos / historyLoadedForVideoIds so nothing is rendered twice afterwards.
+                async function runReplay(isRetry) {
+                    try {
+                        await Promise.race([flushOutbox(), sleep(3000)]);
+                    } catch (e) {
+                        // ignore
+                    }
+
+                    // Ask the server which pending lines it already stored (it ignores a cid it has seen), so a line
+                    // is never rendered both from the DB rows and from the leftover outbox.
+                    const pendingLines = outbox.inflight.concat(outbox.items);
+                    const pendingCids = pendingLines.map(function (line) { return line.cid; }).filter(Boolean).slice(-REPLAY_CID_MAX);
+
+                    let data;
+                    try {
+                        data = await fetchWithRetry(ACTIVITY_LOG_INDEX_URL + (pendingCids.length > 0 ? '?cids=' + encodeURIComponent(pendingCids.join(',')) : ''), {
+                            headers: { 'Accept': 'application/json' },
+                            credentials: 'same-origin',
+                        }, 1);
+                    } catch (err) {
+                        return; // keep "Ready."; retried once when the tab becomes visible again
+                    }
+                    if (!data || !Array.isArray(data.entries)) {
+                        return;
+                    }
+                    replayDone = true;
+
+                    if (isRetry && logBox.querySelector('p[data-ts]')) {
+                        return; // realtime lines already rendered; avoid duplicating them
+                    }
+
+                    const clearedAt = getClearedAt();
+                    const videosMap = data.videos || {};
+                    const lastServerRow = {};
+
+                    data.entries.forEach(function (row) {
+                        const parsed = Date.parse(row.created_at);
+                        const ts = Number.isFinite(parsed) ? parsed : Date.now();
+                        const isServerRow = row.message === null || row.message === undefined;
+                        const videoId = row.video_id ? Number(row.video_id) : null;
+
+                        if (isServerRow && videoId) {
+                            lastServerRow[videoId] = row;
+                            historyLoadedForVideoIds.add(videoId);
+                        }
+                        if (ts <= clearedAt) {
+                            return;
+                        }
+
+                        const time = new Date(ts).toLocaleTimeString();
+                        if (isServerRow) {
+                            const info = videoId ? videosMap[videoId] : null;
+                            const title = (info && info.title) || (videoId ? 'Video #' + videoId : 'Video');
+                            const built = buildStatusMessage(title, row.status, row.stage, row.progress);
+                            if (built) {
+                                appendLog(built.message, built.className, time, ts);
+                            }
+                        } else {
+                            appendLog(row.message, clientLineClass(row.message, row.level), time, ts);
+                        }
+                    });
+
+                    Object.keys(videosMap).forEach(function (id) {
+                        const last = lastServerRow[id];
+                        const existing = uploadedVideos[id];
+                        if (existing) {
+                            if (last) {
+                                existing.status = last.status;
+                                existing.stage = last.stage;
+                                existing.progress = last.progress;
+                                if (last.status === 'ready' || last.status === 'failed') {
+                                    removeFinishedQueueRow(existing);
+                                }
+                            }
+                            return;
+                        }
+                        uploadedVideos[id] = {
+                            title: videosMap[id].title,
+                            item: null,
+                            status: last ? last.status : videosMap[id].status,
+                            stage: last ? last.stage : null,
+                            progress: last ? last.progress : 0,
+                            videoId: Number(id),
+                        };
+                    });
+
+                    // Lines that could not be sent yet are not in the DB; show them (once) so the log stays complete.
+                    const storedCids = new Set(Array.isArray(data.stored_cids) ? data.stored_cids : []);
+                    if (storedCids.size > 0) {
+                        outbox.items = outbox.items.filter(function (line) { return !(line.cid && storedCids.has(line.cid)); });
+                        persistOutbox();
+                    }
+                    const renderedCids = new Set();
+                    pendingLines.forEach(function (line) {
+                        if (line.cid) {
+                            if (storedCids.has(line.cid) || renderedCids.has(line.cid)) {
+                                return;
+                            }
+                            renderedCids.add(line.cid);
+                        }
+                        if (line.ts > clearedAt) {
+                            appendLog(line.message, clientLineClass(line.message, line.level), new Date(line.ts).toLocaleTimeString(), line.ts);
+                        }
+                    });
+                }
+
+                // Removes the queue card of a finished (ready/failed) video and drops its registry entry.
+                // Idempotent: safe to call more than once for the same entry.
+                function removeFinishedQueueRow(entry) {
+                    const item = entry.item;
+                    if (item) {
+                        const liveRow = findLiveQueueRow(item.queueId);
+                        const row = liveRow || item.row;
+                        if (row) {
+                            row.remove();
+                        }
+                        currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
+                        updateQueueEmptyState();
+                    }
+                    const registry = window.__uploadQueueRegistry;
+                    Object.keys(registry).forEach(function (key) {
+                        const reg = registry[key];
+                        const sameQueueId = !!entry.queueId && reg.queueId === entry.queueId;
+                        const sameVideo = entry.videoId !== null && entry.videoId !== undefined
+                            && reg.videoId !== null && reg.videoId !== undefined
+                            && Number(reg.videoId) === Number(entry.videoId);
+                        if (sameQueueId || sameVideo) {
+                            delete registry[key];
+                        }
+                    });
+                    notifyUploadRegistry();
                 }
 
                 function updateTitleVisibility() {
@@ -304,6 +900,8 @@
                 function renderSelectedFilesList() {
                     const files = Array.from(fileInput.files);
                     selectedFilesList.innerHTML = '';
+
+                    updateSelectionSummary(files);
 
                     if (files.length === 0) {
                         selectedFilesList.classList.add('hidden');
@@ -350,6 +948,39 @@
                     });
                 }
 
+                function updateSelectionSummary(files) {
+                    if (files.length === 0) {
+                        selectionSummary.textContent = 'No files selected';
+                        return;
+                    }
+                    const total = files.reduce(function (sum, file) { return sum + file.size; }, 0);
+                    selectionSummary.textContent = files.length + (files.length === 1 ? ' file' : ' files') + ' \u00b7 ' + formatSize(total);
+                }
+
+                // Locks/unlocks the form for an instance that does not run the upload loop itself.
+                let formLocked = false;
+
+                // Shared visual lock for the dropzone (dimmed, not-allowed cursor via aria-disabled variants).
+                function setDropzoneDisabled(disabled) {
+                    dropzone.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+                }
+
+                function setUploadLocked(locked) {
+                    formLocked = locked;
+                    submitButton.disabled = locked;
+                    fileInput.disabled = locked;
+                    setDropzoneDisabled(locked);
+                    if (locked) {
+                        titleInput.disabled = true;
+                        uploadWarning.classList.remove('hidden');
+                        selectionSummary.textContent = 'Upload in progress…';
+                    } else {
+                        updateTitleVisibility();
+                        uploadWarning.classList.add('hidden');
+                        updateSelectionSummary(Array.from(fileInput.files));
+                    }
+                }
+
                 function removeSelectedFile(index) {
                     const dataTransfer = new DataTransfer();
                     Array.from(fileInput.files).forEach(function (file, i) {
@@ -365,6 +996,7 @@
                 function hideSelectedFilesList() {
                     selectedFilesList.classList.add('hidden');
                     selectedFilesList.innerHTML = '';
+                    updateSelectionSummary([]);
                 }
 
                 fileInput.addEventListener('change', function () {
@@ -373,6 +1005,9 @@
                 });
 
                 dropzone.addEventListener('click', function () {
+                    if (formLocked || isUploading) {
+                        return;
+                    }
                     fileInput.click();
                 });
 
@@ -397,19 +1032,25 @@
                     return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
                 }
 
-                window.addEventListener('dragover', function (e) {
+                const handleWindowDragOver = function (e) {
                     e.preventDefault();
                     setDropzoneDragging(isPointerOverDropzone(e));
-                });
+                };
 
-                window.addEventListener('dragleave', function (e) {
+                const handleWindowDragLeave = function (e) {
                     if (!e.relatedTarget) {
                         setDropzoneDragging(false);
                     }
-                });
+                };
 
-                window.addEventListener('drop', function (e) {
+                const handleWindowDrop = function (e) {
+                    // Still cancel the default action so the browser does not navigate to the dropped file.
                     e.preventDefault();
+
+                    if (isUploading || window.__uploadInProgress) {
+                        return;
+                    }
+
                     setDropzoneDragging(false);
 
                     if (!isPointerOverDropzone(e)) {
@@ -428,38 +1069,45 @@
                     fileInput.files = dataTransfer.files;
 
                     fileInput.dispatchEvent(new Event('change'));
-                });
+                };
+
+                window.addEventListener('dragover', handleWindowDragOver);
+                window.addEventListener('dragleave', handleWindowDragLeave);
+                window.addEventListener('drop', handleWindowDrop);
 
                 clearQueueBtn.addEventListener('click', function () {
                     let clearedCount = 0;
-                    currentQueueItems.forEach(function (item) {
-                        if (!item.cleared && item.statusEl.textContent === 'Pending') {
+                    currentQueueItems.slice().forEach(function (item) {
+                        const row = findLiveQueueRow(item.queueId) || item.row;
+                        const isError = !!row && row.dataset.state === 'error';
+                        if (!item.cleared && (isError || item.statusEl.textContent === 'Pending')) {
                             item.cleared = true;
-                            item.row.remove();
+                            row.remove();
+                            currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
                             if (item.queueId) {
                                 delete window.__uploadQueueRegistry[item.queueId];
+                                notifyUploadRegistry();
                             }
-                            clearedCount++;
+                            if (!isError) {
+                                clearedCount++;
+                            }
                         }
                     });
                     updateQueueEmptyState();
                     if (clearedCount > 0) {
-                        appendLog('Cleared pending file(s) from queue.');
+                        logClient('Cleared pending file(s) from queue.');
                     }
                 });
 
                 const clearLogBtn = document.getElementById('clear-log-btn');
 
                 clearLogBtn.addEventListener('click', function () {
-                    const visibleIds = recentVideos.map(function (video) {
-                        return String(video.id);
-                    }).concat(Object.keys(uploadedVideos));
-                    saveDismissedLog(Array.from(new Set(visibleIds)));
-
+                    setClearedAt(Date.now());
                     logBox.innerHTML = '<p class="text-muted-foreground" data-log-placeholder>Ready.</p>';
                 });
 
                 function updateQueueEmptyState() {
+                    queueCountBadge.textContent = String(queueList.children.length);
                     if (queueList.children.length === 0) {
                         queueEmptyPlaceholder.classList.remove('hidden');
                     } else {
@@ -473,7 +1121,7 @@
 
                     const transcodeLabel = document.createElement('p');
                     transcodeLabel.className = 'text-xs font-medium text-muted-foreground mb-1';
-                    transcodeLabel.textContent = 'Transcoding';
+                    transcodeLabel.textContent = 'Processing';
 
                     const transcodeBarWrapper = document.createElement('div');
                     transcodeBarWrapper.className = 'w-full bg-border rounded-full h-2.5';
@@ -578,6 +1226,7 @@
                     });
 
                     updateQueueEmptyState();
+                    notifyUploadRegistry();
 
                     return items;
                 }
@@ -604,6 +1253,7 @@
                         entry.status = 'uploading';
                         entry.uploadPercent = percent;
                         entry.statusText = text;
+                        notifyUploadRegistry(true);
                     }
                 }
 
@@ -617,35 +1267,106 @@
 
                     if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
                         window.__uploadQueueRegistry[item.queueId].statusText = text;
+                        notifyUploadRegistry(true);
                     }
                 }
 
-                async function uploadFile(item) {
+                function dismissQueueRow(queueId) {
+                    const row = findLiveQueueRow(queueId);
+                    if (row) {
+                        row.remove();
+                    }
+                    currentQueueItems = currentQueueItems.filter(function (qi) { return qi.queueId !== queueId; });
+                    delete window.__uploadQueueRegistry[queueId];
+                    notifyUploadRegistry();
+                    updateQueueEmptyState();
+                }
+
+                // Turns a queue row into a failed-upload row: red status, no processing section, Dismiss button.
+                function renderErrorRow(row, text) {
+                    if (!row) {
+                        return;
+                    }
+                    row.dataset.state = 'error';
+
+                    const statusEl = row.querySelector('[data-role="upload-status"]');
+                    if (statusEl) {
+                        statusEl.textContent = text;
+                        statusEl.classList.remove('text-muted-foreground');
+                        statusEl.classList.add('text-destructive');
+                    }
+                    const transcodeWrapper = row.querySelector('[data-role="transcode-wrapper"]');
+                    if (transcodeWrapper) {
+                        transcodeWrapper.classList.add('hidden');
+                    }
+
+                    if (!row.querySelector('[data-role="dismiss-error"]')) {
+                        const queueId = row.dataset.queueId;
+                        const dismissBtn = document.createElement('button');
+                        dismissBtn.type = 'button';
+                        dismissBtn.dataset.role = 'dismiss-error';
+                        dismissBtn.className = 'mt-2 inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors border border-input bg-background text-foreground shadow-xs hover:bg-accent hover:text-accent-foreground px-3 py-2 md:py-1.5 text-xs';
+                        dismissBtn.textContent = 'Dismiss';
+                        dismissBtn.addEventListener('click', function () {
+                            dismissQueueRow(queueId);
+                        });
+                        row.appendChild(dismissBtn);
+                    }
+                }
+
+                function markItemError(item, message) {
+                    const text = 'Error: ' + message;
+                    setItemStatus(item, text);
+                    if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
+                        const regEntry = window.__uploadQueueRegistry[item.queueId];
+                        regEntry.status = 'error';
+                        regEntry.statusText = text;
+                        notifyUploadRegistry();
+                    }
+                    renderErrorRow(findLiveQueueRow(item.queueId) || item.row, text);
+                }
+
+                async function uploadFile(item, title, active) {
                     const file = item.file;
-                    const title = fileInput.files.length > 1 ? '' : titleInput.value;
 
                     setItemStatus(item, 'Uploading...');
                     if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
                         window.__uploadQueueRegistry[item.queueId].status = 'uploading';
+                        notifyUploadRegistry();
                     }
-                    const uploadStartTime = new Date().toLocaleTimeString();
-                    appendLog('Uploading ' + file.name + '...');
+                    // Lines logged before /uploads/init answers are held until the upload id is known.
+                    item.preInit = [];
+                    logClient('Uploading ' + file.name + '...', { deferTo: item.preInit });
 
-                    const initData = await fetchWithRetry('/uploads/init', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
-                            'Accept': 'application/json',
-                        },
-                        body: JSON.stringify({
-                            filename: file.name,
-                            total_size: file.size,
-                            title: title,
-                        }),
-                    }, 1);
+                    let initData;
+                    try {
+                        initData = await fetchWithRetry('/uploads/init', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'X-CSRF-TOKEN': csrfToken,
+                                'Accept': 'application/json',
+                            },
+                            body: JSON.stringify({
+                                filename: file.name,
+                                total_size: file.size,
+                                title: title,
+                            }),
+                        }, 1);
+                    } catch (err) {
+                        releaseDeferred(item.preInit, null, null); // no association possible -> misc rows
+                        throw err;
+                    }
 
                     const uploadId = initData.upload_id;
+                    item.uploadId = uploadId;
+                    touchActiveUpload(active, { uploadId: uploadId });
+                    if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
+                        window.__uploadQueueRegistry[item.queueId].uploadId = uploadId;
+                        notifyUploadRegistry();
+                    }
+                    releaseDeferred(item.preInit, uploadId, null);
+                    releaseDeferred(batchPending, uploadId, null);
                     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
                     let bytesSent = 0;
 
@@ -666,12 +1387,12 @@
                         });
 
                         bytesSent += (end - start);
+                        touchActiveUpload(active, {});
                         setItemProgress(item, Math.round((bytesSent / file.size) * 100));
                     }
 
-                    setItemStatus(item, 'Merging chunk');
-                    const processingStartTime = new Date().toLocaleTimeString();
-                    appendLog('Finishing upload for ' + file.name + '...');
+                    setItemStatus(item, 'Finalizing upload');
+                    logItem(item, 'Finishing upload for ' + file.name + '...');
 
                     const completeData = await fetchWithRetry('/uploads/' + uploadId + '/complete', {
                         method: 'POST',
@@ -687,7 +1408,11 @@
                         }),
                     }, 1);
 
+                    // The video exists now, so a reload from here on does not interrupt this file.
+                    endActiveUpload(active);
+
                     if (completeData && completeData.video_id) {
+                        item.videoId = completeData.video_id;
                         uploadedVideos[completeData.video_id] = {
                             title: completeData.video_title || file.name,
                             item: item,
@@ -695,6 +1420,7 @@
                             stage: null,
                             progress: 0,
                             queueId: item.queueId,
+                            videoId: completeData.video_id,
                         };
 
                         const liveRowAfterComplete = findLiveQueueRow(item.queueId);
@@ -713,6 +1439,7 @@
                             regEntry.status = 'pending';
                             regEntry.stage = null;
                             regEntry.progress = 0;
+                            notifyUploadRegistry();
                         }
 
                         loadVideoHistory(completeData.video_id);
@@ -725,6 +1452,10 @@
 
                 form.addEventListener('submit', async function (e) {
                     e.preventDefault();
+                    if (window.__uploadInProgress && !isUploading) {
+                        showError('An upload is already running. Please wait until it finishes.');
+                        return;
+                    }
                     hideError();
                     hideSummary();
 
@@ -754,9 +1485,13 @@
                     submitButton.disabled = true;
                     fileInput.disabled = true;
                     isUploading = true;
+                    setDropzoneDisabled(true);
+                    window.__uploadInProgress = true;
                     uploadWarning.classList.remove('hidden');
 
-                    appendLog('Starting upload of ' + files.length + ' file(s).');
+                    // Held until the first file's upload id is known, then attached to it.
+                    batchPending = [];
+                    logClient('Starting upload of ' + files.length + ' file(s).', { deferTo: batchPending });
 
                     hideSelectedFilesList();
 
@@ -767,33 +1502,101 @@
                         return !item.cleared;
                     }).length;
 
+                    const batchTitle = files.length > 1 ? '' : titleInput.value;
                     let successCount = 0;
+                    let networkFailedCount = 0;
 
                     for (const item of items) {
                         if (item.cleared) {
                             continue;
                         }
+                        const active = beginActiveUpload(item, function () {
+                            return items.slice(items.indexOf(item) + 1).filter(function (other) {
+                                return !other.cleared;
+                            }).length;
+                        });
+                        // Lines still held back for an upload id; flushed by the pagehide handler if the page unloads first.
+                        active.getDeferred = function () {
+                            return [batchPending, item.preInit];
+                        };
                         try {
-                            const videoId = await uploadFile(item);
+                            await uploadFile(item, batchTitle, active);
                             successCount++;
-                            appendLog(item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')', 'text-foreground font-medium');
+                            logItem(item, item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')');
                         } catch (err) {
-                            setItemStatus(item, 'Error: ' + (err.message || 'An error occurred during upload.'));
-                            appendLog(item.file.name + ' failed: ' + (err.message || 'An error occurred during upload.'));
-                            if (item.queueId) {
-                                delete window.__uploadQueueRegistry[item.queueId];
+                            if (err && err.isNetworkError) {
+                                networkFailedCount++;
                             }
+                            const failMessage = err.message || 'An error occurred during upload.';
+                            markItemError(item, failMessage);
+                            logItem(item, item.file.name + ' failed: ' + failMessage, 'error');
+                        } finally {
+                            endActiveUpload(active);
                         }
                     }
 
                     submitButton.disabled = false;
                     fileInput.disabled = false;
                     isUploading = false;
+                    setDropzoneDisabled(false);
+                    window.__uploadInProgress = false;
+                    window.dispatchEvent(new CustomEvent('upload:finished'));
                     uploadWarning.classList.add('hidden');
 
+                    // Reset the form so a re-submit does not re-upload this batch; failed files must be re-selected.
+                    fileInput.value = '';
+                    titleInput.value = '';
+                    updateTitleVisibility();
+                    hideSelectedFilesList();
+
                     summaryBox.classList.remove('hidden');
-                    appendLog('Upload finished: ' + successCount + '/' + consideredCount + ' succeeded.', 'text-foreground font-medium');
+
+                    let lastIds = { uploadId: null, videoId: null };
+                    for (let i = items.length - 1; i >= 0; i--) {
+                        const ids = resolveItemIds(items[i]);
+                        if (ids.uploadId) {
+                            lastIds = ids;
+                            break;
+                        }
+                    }
+                    releaseDeferred(batchPending, null, null); // no file ever got an upload id -> misc rows
+                    if (consideredCount > 0) {
+                        const failedCount = consideredCount - successCount;
+                        let summaryMessage;
+                        let summaryLevel = 'error';
+                        if (failedCount === 0) {
+                            summaryMessage = 'Upload finished: ' + successCount + '/' + consideredCount + ' file(s) uploaded. Processing continues in the background.';
+                            summaryLevel = 'info';
+                        } else if (networkFailedCount === failedCount && successCount === 0) {
+                            summaryMessage = 'Upload failed: 0/' + consideredCount + ' file(s) uploaded because the network connection was lost. The upload was stopped and no video will be processed.';
+                        } else if (networkFailedCount === failedCount) {
+                            summaryMessage = 'Upload finished with errors: ' + successCount + '/' + consideredCount + ' file(s) uploaded. ' + failedCount + ' file(s) failed because the network connection was lost and will not be processed.';
+                        } else if (successCount === 0) {
+                            summaryMessage = 'Upload failed: 0/' + consideredCount + ' file(s) uploaded. The upload was stopped and no video will be processed.';
+                        } else {
+                            summaryMessage = 'Upload finished with errors: ' + successCount + '/' + consideredCount + ' file(s) uploaded. ' + failedCount + ' file(s) failed and will not be processed.';
+                        }
+                        logClient(summaryMessage, { level: summaryLevel, uploadId: lastIds.uploadId, videoId: lastIds.videoId });
+                    }
                 });
+
+                // Registry entry that represents the same file as a DB video: (a) already linked to it, or (b) not yet
+                // linked (the /complete response was not processed yet) with the same filename and size.
+                function findRegistryEntryForVideo(video) {
+                    const entries = Object.values(window.__uploadQueueRegistry);
+                    const linked = entries.find(function (r) {
+                        return r.videoId !== null && r.videoId !== undefined && Number(r.videoId) === Number(video.id);
+                    });
+                    if (linked) {
+                        return linked;
+                    }
+                    return entries.find(function (r) {
+                        return (r.videoId === null || r.videoId === undefined)
+                            && r.status !== 'error'
+                            && (r.title === video.original_filename || r.title === video.title)
+                            && Number(r.size) === Number(video.original_size_bytes);
+                    }) || null;
+                }
 
                 function hydrateActiveVideos() {
                     @php
@@ -812,6 +1615,20 @@
                     const activeVideos = @json($activeVideosForJs);
 
                     activeVideos.forEach(function (video) {
+                        // The same file may already be tracked by the registry (upload started on another script
+                        // instance): reuse its queueId so a single row is shown and later removal works.
+                        const registryMatch = findRegistryEntryForVideo(video);
+                        if (registryMatch) {
+                            registryMatch.videoId = video.id;
+                            registryMatch.status = video.status;
+                            registryMatch.stage = video.stage || null;
+                            registryMatch.progress = video.progress || 0;
+                            notifyUploadRegistry();
+                            adoptRegistryEntry(registryMatch);
+                            loadVideoHistory(video.id);
+                            return;
+                        }
+
                         const item = createQueueRow(video.title || video.original_filename, video.original_size_bytes || 0);
                         item.bar.style.width = '100%';
                         item.statusEl.textContent = 'Done';
@@ -832,6 +1649,7 @@
                             status: video.status,
                             stage: video.stage,
                             progress: video.progress,
+                            videoId: video.id,
                         };
 
                         loadVideoHistory(video.id);
@@ -883,6 +1701,7 @@
                         stage: registryEntry.stage || null,
                         progress: registryEntry.progress || 0,
                         queueId: registryEntry.queueId,
+                        videoId: registryEntry.videoId,
                     };
 
                     uploadedVideos[registryEntry.videoId] = entry;
@@ -895,6 +1714,16 @@
 
                     Object.keys(registry).forEach(function (queueId) {
                         const entry = registry[queueId];
+
+                        // Failed upload kept across soft navigation: show it as an error row (not retried).
+                        if (entry.status === 'error') {
+                            const errorItem = createQueueRow(entry.title, entry.size, queueId);
+                            queueList.appendChild(errorItem.row);
+                            currentQueueItems.push(errorItem);
+                            errorItem.bar.style.width = (entry.uploadPercent || 0) + '%';
+                            renderErrorRow(errorItem.row, entry.statusText || 'Error: Upload failed.');
+                            return;
+                        }
 
                         // Already rendered via hydrateActiveVideos() from server-side DB state — avoid duplicating the row.
                         if (entry.videoId && uploadedVideos[entry.videoId]) {
@@ -918,44 +1747,19 @@
                     updateQueueEmptyState();
                 }
 
-                @php
-                    $recentVideosForJs = $recentVideos->map(function ($video) {
-                        return [
-                            'id' => $video->id,
-                            'title' => $video->title,
-                            'original_filename' => $video->original_filename,
-                            'status' => $video->status,
-                            'created_at' => optional($video->created_at)->toDisplay('H:i:s'),
-                            'updated_at' => optional($video->updated_at)->toDisplay('H:i:s'),
-                        ];
-                    });
-                @endphp
-                const recentVideos = @json($recentVideosForJs);
+                // Started before hydrateActiveVideos()/rebuildQueueFromRegistry(): loadVideoHistory() and
+                // applyStatusSnapshot() wait on it so replayed history is never rendered twice.
+                recoverInterruptedUpload();
+                replayPromise = runReplay(false);
 
                 hydrateActiveVideos();
                 rebuildQueueFromRegistry();
 
-                const dismissedLogIds = loadDismissedLog();
-
-                recentVideos.forEach(function (video) {
-                    const videoIdStr = String(video.id);
-
-                    if (dismissedLogIds.includes(videoIdStr)) {
-                        return;
-                    }
-
-                    if (!uploadedVideos[video.id]) {
-                        uploadedVideos[video.id] = {
-                            title: video.title || video.original_filename,
-                            item: null,
-                            status: video.status,
-                            stage: null,
-                            progress: 0,
-                        };
-                    }
-
-                    loadVideoHistory(video.id);
-                });
+                // Soft-navigated back while another (older) instance still runs the upload loop: this instance
+                // must not start a second upload in parallel.
+                if (window.__uploadInProgress === true && !isUploading) {
+                    setUploadLocked(true);
+                }
 
                 function activeVideoIds() {
                     const ids = Object.keys(uploadedVideos).filter(function (id) {
@@ -981,8 +1785,6 @@
                 const MAX_RECONNECT_DELAY_MS = 30000;
                 let reconnectAttempts = 0;
 
-                let hasConnectedBefore = false;
-
                 async function resyncStatus() {
                     const ids = activeVideoIds();
                     if (ids.length === 0) {
@@ -1001,36 +1803,39 @@
                     data.forEach(applyStatusSnapshot);
                 }
 
+                function handleVideoStatusUpdated(e) {
+                    applyStatusSnapshot({ id: e.videoId, status: e.status, stage: e.stage, progress: e.progress });
+                }
+
                 function subscribeToVideoChannel() {
                     if (!window.Echo) {
                         return;
                     }
 
-                    window.Echo.channel('videos').stopListening('.video.status-updated');
-                    window.Echo.channel('videos').listen('.video.status-updated', function (e) {
-                        applyStatusSnapshot({ id: e.videoId, status: e.status, stage: e.stage, progress: e.progress });
-                    });
+                    // Unbind only this page's handler; other listeners (e.g. the sidebar badge) must stay attached.
+                    window.Echo.channel('videos').stopListening('.video.status-updated', handleVideoStatusUpdated);
+                    window.Echo.channel('videos').listen('.video.status-updated', handleVideoStatusUpdated);
                 }
 
-                function handleConnectionStateChange(states) {
-                    console.log('[Echo] connection state changed:', states.previous, '->', states.current);
+                let reconnectTimeoutId = null;
 
+                function handleConnectionStateChange(states) {
                     if (states.current === 'connected') {
                         reconnectAttempts = 0;
                         subscribeToVideoChannel();
                         resyncStatus();
-                        hasConnectedBefore = true;
                     } else if (states.current === 'unavailable' || states.current === 'failed') {
                         reconnectAttempts++;
 
                         if (reconnectAttempts > MAX_RECONNECT_ATTEMPTS) {
-                            appendLog('Lost real-time connection. Please reload the page to see the latest status.', 'text-destructive font-medium');
+                            logClient('Lost real-time connection. Please reload the page to see the latest status.', { level: 'error' });
                             return;
                         }
 
                         const delay = Math.min(BASE_RECONNECT_DELAY_MS * Math.pow(2, reconnectAttempts - 1), MAX_RECONNECT_DELAY_MS);
 
-                        setTimeout(function () {
+                        clearTimeout(reconnectTimeoutId);
+                        reconnectTimeoutId = setTimeout(function () {
                             window.Echo.connector.pusher.connect();
                         }, delay);
                     }
@@ -1038,15 +1843,58 @@
 
                 function handleVisibilityChange() {
                     if (document.visibilityState === 'visible') {
+                        if (!replayDone && !replayRetried) {
+                            replayRetried = true;
+                            replayPromise = runReplay(true);
+                        }
                         resyncStatus();
                     }
                 }
+
+                function handleOutboxVisibility() {
+                    // Flush when returning to the tab, and immediately when hiding it (keepalive lets the request
+                    // outlive the page, so lines created right before leaving are not lost).
+                    clearTimeout(outbox.timer);
+                    outbox.timer = null;
+                    flushOutbox();
+                }
+
+                function handlePageHide(event) {
+                    // Queue the "upload interrupted" line first so the flush below sends it in the same request.
+                    reportActiveInterrupted(event);
+                    clearTimeout(outbox.timer);
+                    outbox.timer = null;
+                    flushOutbox();
+                }
+
+                function handleOnline() {
+                    flushOutbox();
+                }
+
+                window.addEventListener('online', handleOnline);
+                document.addEventListener('visibilitychange', handleOutboxVisibility);
+                window.addEventListener('pagehide', handlePageHide);
+
+                // The instance that runs the upload loop announces the end of the batch; every other instance
+                // that locked its form at init unlocks here (the running instance never locked itself this way).
+                function handleUploadFinished() {
+                    if (!formLocked) {
+                        return;
+                    }
+                    setUploadLocked(false);
+                }
+
+                window.addEventListener('upload:finished', handleUploadFinished);
 
                 function initializeLiveUpdates() {
                     subscribeToVideoChannel();
 
                     if (window.Echo && window.Echo.connector && window.Echo.connector.pusher) {
                         window.Echo.connector.pusher.connection.bind('state_change', handleConnectionStateChange);
+
+                        if (window.Echo.connector.pusher.connection.state === 'connected') {
+                            resyncStatus();
+                        }
                     }
 
                     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -1059,16 +1907,25 @@
                 }
 
                 window.__pageCleanup = function () {
+                    window.removeEventListener('dragover', handleWindowDragOver);
+                    window.removeEventListener('dragleave', handleWindowDragLeave);
+                    window.removeEventListener('drop', handleWindowDrop);
+                    clearTimeout(reconnectTimeoutId);
                     if (window.Echo) {
-                        window.Echo.channel('videos').stopListening('.video.status-updated');
+                        window.Echo.channel('videos').stopListening('.video.status-updated', handleVideoStatusUpdated);
                     }
                     if (window.Echo && window.Echo.connector && window.Echo.connector.pusher) {
                         window.Echo.connector.pusher.connection.unbind('state_change', handleConnectionStateChange);
                     }
                     document.removeEventListener('visibilitychange', handleVisibilityChange);
+                    window.removeEventListener('online', handleOnline);
+                    document.removeEventListener('visibilitychange', handleOutboxVisibility);
+                    window.removeEventListener('pagehide', handlePageHide);
+                    window.removeEventListener('upload:finished', handleUploadFinished);
                 };
 
                 async function applyStatusSnapshot(video) {
+                    await replayPromise;
                     let entry = uploadedVideos[video.id];
                     let justAdopted = false;
 
@@ -1106,6 +1963,7 @@
                         regEntry.status = video.status;
                         regEntry.stage = video.stage;
                         regEntry.progress = video.progress;
+                        notifyUploadRegistry(true);
                     }
 
                     function liveTranscodeEls() {
@@ -1123,9 +1981,10 @@
 
                     let message = null;
                     let logClass = null;
+                    const built = buildStatusMessage(entry.title, video.status, video.stage, video.progress);
 
                     if (video.status === 'pending') {
-                        message = entry.title + ' is queued for processing.';
+                        message = built.message;
                         if (item) {
                             const els = liveTranscodeEls();
                             if (els.wrapper) {
@@ -1138,7 +1997,7 @@
                     } else if (video.status === 'processing') {
                         if (progressChanged || stageChanged) {
                             const statusText = formatStageStatus(video.stage, video.progress);
-                            message = entry.title + ': ' + statusText;
+                            message = built.message;
                             if (item) {
                                 const els = liveTranscodeEls();
                                 if (els.wrapper) {
@@ -1153,32 +2012,12 @@
                             }
                         }
                     } else if (video.status === 'ready') {
-                        message = entry.title + ' finished transcoding.';
-                        logClass = 'text-orange-600 font-medium';
-                        if (item) {
-                            const els = liveTranscodeEls();
-                            if (els.row) {
-                                els.row.remove();
-                            }
-                            currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
-                            updateQueueEmptyState();
-                        }
-                        if (entry.queueId) {
-                            delete window.__uploadQueueRegistry[entry.queueId];
-                        }
+                        message = built.message;
+                        logClass = built.className;
+                        removeFinishedQueueRow(entry);
                     } else if (video.status === 'failed') {
-                        message = entry.title + ' failed to process.';
-                        if (item) {
-                            const els = liveTranscodeEls();
-                            if (els.row) {
-                                els.row.remove();
-                            }
-                            currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
-                            updateQueueEmptyState();
-                        }
-                        if (entry.queueId) {
-                            delete window.__uploadQueueRegistry[entry.queueId];
-                        }
+                        message = built.message;
+                        removeFinishedQueueRow(entry);
                     }
 
                     if (message) {
