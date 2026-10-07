@@ -148,6 +148,34 @@
         </div>
     </div>
 
+    <a href="{{ route('logs.index') }}" id="in-progress-ring" data-in-progress-ring data-state="active"
+       data-count-url="{{ route('videos.in-progress-count') }}"
+       data-videos="{{ json_encode($inProgressVideos) }}"
+       @if (count($inProgressVideos) < 1) hidden @endif
+       title="Processing videos"
+       class="ip-ring fixed z-20 flex h-16 w-16 items-center justify-center rounded-full sm:h-[72px] sm:w-[72px]"
+       style="right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom));">
+        <span class="ip-ring-glow" aria-hidden="true"></span>
+        <svg class="ip-ring-spin absolute inset-0 h-full w-full" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+            <circle cx="36" cy="36" r="34" stroke="rgb(255 255 255 / 0.55)" stroke-width="2" stroke-linecap="round" stroke-dasharray="36 178" />
+        </svg>
+        <svg class="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 72 72" fill="none" aria-hidden="true">
+            <defs>
+                <linearGradient id="in-progress-ring-gradient" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0" stop-color="#fbbf24" />
+                    <stop offset="1" stop-color="#f97316" />
+                </linearGradient>
+            </defs>
+            <circle cx="36" cy="36" r="30" stroke="rgb(255 255 255 / 0.15)" stroke-width="5" />
+            <circle cx="36" cy="36" r="30" class="ip-ring-progress" stroke-width="5" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" data-ring-progress />
+        </svg>
+        <span class="ip-ring-label relative text-[15px] font-extrabold leading-none tabular-nums sm:text-[18px]" aria-hidden="true" data-ring-label></span>
+        <svg class="ip-ring-check relative h-7 w-7 sm:h-8 sm:w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L19 7.5" />
+        </svg>
+        <span class="sr-only" role="status" aria-live="polite" data-ring-status></span>
+    </a>
+
     <x-ui.dialog id="confirm-modal" role="alertdialog" class="z-[60] p-4" panelClass="max-w-sm" initialFocus="panel" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message">
         <div class="grid gap-4 p-6">
             <x-ui.dialog-header class="flex-row items-start gap-3">

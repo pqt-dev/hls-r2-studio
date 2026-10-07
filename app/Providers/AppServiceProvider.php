@@ -3,11 +3,14 @@
 namespace App\Providers;
 
 use App\Models\Setting;
+use App\Models\Video;
 use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Middleware\TrustProxies;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -25,7 +28,10 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        if (env('FORCE_HTTPS', config('app.env') === 'production')) {
+        // Config is not loaded yet in bootstrap/app.php, so the trusted proxy list is applied here.
+        TrustProxies::at(config('app.trusted_proxies'));
+
+        if (config('app.force_https')) {
             URL::forceScheme('https');
         }
 
@@ -37,6 +43,10 @@ class AppServiceProvider extends ServiceProvider
             }
 
             return $this->clone()->timezone($timezone)->format($format);
+        });
+
+        View::composer('layouts.app', function ($view) {
+            $view->with('inProgressVideos', Video::inProgressSnapshot());
         });
 
         RateLimiter::for('report-page-url', function (Request $request) {
