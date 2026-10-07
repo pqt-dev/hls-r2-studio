@@ -22,7 +22,7 @@ class SettingsDisplayTimezoneTest extends TestCase
     public function test_display_timezone_can_be_updated(): void
     {
         $response = $this->put('/settings/display', [
-            'videos_per_page' => 24,
+            'videos_per_page' => 10,
             'display_timezone' => 'Asia/Tokyo',
         ]);
 
@@ -35,7 +35,7 @@ class SettingsDisplayTimezoneTest extends TestCase
     public function test_invalid_display_timezone_is_rejected(): void
     {
         $response = $this->from('/settings')->put('/settings/display', [
-            'videos_per_page' => 24,
+            'videos_per_page' => 10,
             'display_timezone' => 'Not/A_Real_Timezone',
         ]);
 

@@ -1,13 +1,7 @@
 <?php
 
-use Illuminate\Foundation\Inspiring;
-use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
 
-Artisan::command('inspire', function () {
-    $this->comment(Inspiring::quote());
-})->purpose('Display an inspiring quote');
-
-Schedule::command('uploads:cleanup-abandoned')->daily();
-Schedule::command('videos:cleanup-orphaned-tmp')->daily();
-Schedule::command('videos:cleanup-orphaned-uploads')->daily();
+Schedule::command('uploads:cleanup-abandoned')->daily()->withoutOverlapping();
+Schedule::command('videos:cleanup-orphaned-tmp')->daily()->withoutOverlapping();
+Schedule::command('videos:cleanup-orphaned-uploads')->daily()->withoutOverlapping();

@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\Report;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class ReportApiTest extends TestCase
@@ -177,5 +178,33 @@ class ReportApiTest extends TestCase
             'status' => 'new',
             'report_count' => 1,
         ]);
+    }
+
+    public function test_page_url_host_outside_allowed_hosts_returns_422(): void
+    {
+        config(['videos.report_allowed_hosts' => ['toicovl.com']]);
+
+        $response = $this->postJson('/api/reports', [
+            'page_url' => 'https://evil.example.com/some-post',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('page_url');
+        $this->assertDatabaseCount('reports', 0);
+    }
+
+    public function test_page_url_host_inside_allowed_hosts_is_accepted(): void
+    {
+        if (! in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true)) {
+            $this->markTestSkipped('The reports migration uses MySQL-only SHA2(); requires a mysql/mariadb connection.');
+        }
+
+        config(['videos.report_allowed_hosts' => ['toicovl.com']]);
+
+        $response = $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+        ]);
+
+        $response->assertStatus(201);
     }
 }

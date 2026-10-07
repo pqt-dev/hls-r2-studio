@@ -43,6 +43,36 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Trusted Proxies
+    |--------------------------------------------------------------------------
+    |
+    | Comma-separated list of proxy IPs/CIDRs whose X-Forwarded-* headers are
+    | trusted, or '*' to trust every proxy. Restrict this to your reverse
+    | proxy in production so X-Forwarded-For cannot be spoofed.
+    |
+    */
+
+    'trusted_proxies' => (function () {
+        $value = trim((string) env('TRUSTED_PROXIES', '*'));
+
+        return $value === '*'
+            ? '*'
+            : array_values(array_filter(array_map('trim', explode(',', $value))));
+    })(),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Force HTTPS
+    |--------------------------------------------------------------------------
+    |
+    | Force every generated URL to use https. Defaults to true in production.
+    |
+    */
+
+    'force_https' => env('FORCE_HTTPS', env('APP_ENV', 'production') === 'production'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application URL
     |--------------------------------------------------------------------------
     |

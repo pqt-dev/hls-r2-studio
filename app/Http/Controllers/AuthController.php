@@ -29,7 +29,6 @@ class AuthController extends Controller
         }
 
         Log::warning('Failed login attempt', [
-            'username' => $credentials['username'],
             'ip' => $request->ip(),
         ]);
 

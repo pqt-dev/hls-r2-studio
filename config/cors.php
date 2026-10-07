@@ -19,7 +19,7 @@ return [
 
     'allowed_methods' => ['POST', 'OPTIONS'],
 
-    'allowed_origins' => ['https://toicovl.com'],
+    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', 'https://toicovl.com'))))),
 
     'allowed_origins_patterns' => [],
 
