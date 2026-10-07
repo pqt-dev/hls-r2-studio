@@ -57,4 +57,15 @@ class AuthProtectedRoutesTest extends TestCase
 
         $response->assertOk();
     }
+
+    public function test_upload_page_contains_network_failure_wording(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        $this->get('/upload')
+            ->assertOk()
+            ->assertSee('Network connection lost: the browser could not reach the server. Check your internet connection and upload the file again.', false)
+            ->assertSee('file(s) uploaded because the network connection was lost. The upload was stopped and no video will be processed.', false)
+            ->assertSee('file(s) failed because the network connection was lost and will not be processed.', false);
+    }
 }
