@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\ActivityLogController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\EmbedController;
 use App\Http\Controllers\ReportController;
@@ -21,6 +22,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/', [VideoController::class, 'overview'])->name('dashboard.overview');
     Route::get('/videos', [VideoController::class, 'index'])->name('videos.index');
     Route::get('/upload', [VideoController::class, 'create'])->name('videos.create');
+    Route::get('/videos/in-progress-count', [VideoController::class, 'inProgressCount'])->name('videos.in-progress-count');
     Route::get('/videos/status', [VideoController::class, 'status'])->name('videos.status');
     Route::post('/videos/{video}/image', [VideoController::class, 'storeImage'])->name('videos.image.store')->middleware('throttle:20,1');
     Route::delete('/videos/{video}/image', [VideoController::class, 'destroyImage'])->name('videos.image.destroy');
@@ -30,6 +32,9 @@ Route::middleware('auth')->group(function () {
     Route::put('/videos/{video}', [VideoController::class, 'update'])->name('videos.update');
     Route::get('/logs', [VideoController::class, 'logs'])->name('logs.index');
 
+    Route::get('/activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
+    Route::post('/activity-log', [ActivityLogController::class, 'store'])->name('activity-log.store')->middleware('throttle:120,1');
+
     Route::post('/uploads/init', [VideoController::class, 'initUpload'])->name('uploads.init')->middleware('throttle:30,1');
     Route::post('/uploads/{uploadId}/chunk', [VideoController::class, 'uploadChunk'])->name('uploads.chunk')->where('uploadId', '[0-9a-f-]{36}')->middleware('throttle:120,1');
     Route::post('/uploads/{uploadId}/complete', [VideoController::class, 'completeUpload'])->name('uploads.complete')->where('uploadId', '[0-9a-f-]{36}');
@@ -38,6 +43,7 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings/r2', [SettingsController::class, 'updateR2'])->name('settings.r2');
     Route::put('/settings/transcode', [SettingsController::class, 'updateTranscode'])->name('settings.transcode');
     Route::put('/settings/display', [SettingsController::class, 'updateDisplay'])->name('settings.display');
+    Route::put('/settings/embed', [SettingsController::class, 'updateEmbed'])->name('settings.embed');
     Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password');
 
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');

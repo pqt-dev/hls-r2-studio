@@ -10,8 +10,20 @@ class VideoStatusLog extends Model
 
     protected $fillable = [
         'video_id',
+        'upload_id',
+        'level',
+        'message',
         'status',
         'stage',
         'progress',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'video_id' => 'integer',
+            'progress' => 'integer',
+            'created_at' => 'datetime',
+        ];
+    }
 }

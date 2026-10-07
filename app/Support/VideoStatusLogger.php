@@ -4,14 +4,11 @@ namespace App\Support;
 
 use App\Events\VideoStatusUpdated;
 use App\Models\VideoStatusLog;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class VideoStatusLogger
 {
-    private const MAX_TRACKED_VIDEOS = 5;
-
     public static function record(int $videoId, string $status, ?string $stage, int $progress): void
     {
         try {
@@ -29,19 +26,8 @@ class VideoStatusLogger
 
     private static function persist(int $videoId, string $status, ?string $stage, int $progress): void
     {
-        $trackedVideoIds = VideoStatusLog::query()->distinct()->pluck('video_id');
-
-        if (! $trackedVideoIds->contains($videoId) && $trackedVideoIds->count() >= self::MAX_TRACKED_VIDEOS) {
-            $oldestVideoId = VideoStatusLog::query()
-                ->select('video_id')
-                ->groupBy('video_id')
-                ->orderBy(DB::raw('MIN(created_at)'))
-                ->value('video_id');
-
-            if ($oldestVideoId !== null) {
-                VideoStatusLog::where('video_id', $oldestVideoId)->delete();
-            }
-        }
+        // Cheap indexed check: pruning runs only when a video starts a new group, never per tick.
+        $isNewGroup = ! VideoStatusLog::where('video_id', $videoId)->exists();
 
         VideoStatusLog::create([
             'video_id' => $videoId,
@@ -49,5 +35,9 @@ class VideoStatusLogger
             'stage' => $stage,
             'progress' => $progress,
         ]);
+
+        if ($isNewGroup) {
+            ActivityLog::prune();
+        }
     }
 }
