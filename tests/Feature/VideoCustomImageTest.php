@@ -24,7 +24,7 @@ class VideoCustomImageTest extends TestCase
         // Setting::r2Disk() builds its disk with Storage::build(), which
         // Storage::fake() cannot intercept, so hand back a fake disk instead.
         $this->disk = Storage::fake('r2-fake');
-        Storage::partialMock()->shouldReceive('build')->andReturn($this->disk);
+        Storage::partialMock()->shouldReceive('build')->andReturnUsing(fn () => $this->disk);
 
         $this->actingAs(User::factory()->create(['username' => 'tester']));
     }
@@ -196,6 +196,35 @@ class VideoCustomImageTest extends TestCase
 
         $this->assertNull($video->fresh()->custom_image_path);
         $this->disk->assertMissing($path);
+    }
+
+    public function test_destroy_keeps_the_column_and_returns_an_error_when_the_r2_delete_fails(): void
+    {
+        $path = self::PREFIX.'custom-ABCDEFGH.webp';
+        $this->disk->put($path, 'img');
+        $video = $this->makeVideo(self::PREFIX, $path);
+
+        $this->disk = \Mockery::mock($this->disk)->makePartial();
+        $this->disk->shouldReceive('delete')->once()->andReturn(false);
+
+        $this->deleteJson(route('videos.image.destroy', $video))
+            ->assertStatus(500)
+            ->assertJsonStructure(['message']);
+
+        $this->assertSame($path, $video->fresh()->custom_image_path);
+    }
+
+    public function test_destroy_keeps_the_column_when_the_r2_delete_throws(): void
+    {
+        $path = self::PREFIX.'custom-ABCDEFGH.webp';
+        $video = $this->makeVideo(self::PREFIX, $path);
+
+        $this->disk = \Mockery::mock($this->disk)->makePartial();
+        $this->disk->shouldReceive('delete')->once()->andThrow(new \RuntimeException('R2 down'));
+
+        $this->deleteJson(route('videos.image.destroy', $video))->assertStatus(500);
+
+        $this->assertSame($path, $video->fresh()->custom_image_path);
     }
 
     public function test_destroy_returns_404_when_there_is_no_custom_image(): void

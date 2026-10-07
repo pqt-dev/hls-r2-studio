@@ -35,12 +35,16 @@ class CleanupOrphanedTranscodeTmp extends Command
 
         $deletedCount = 0;
 
-        // Detect crashed jobs by querying videos stuck in 'processing', rather
+        // Detect crashed jobs by querying videos stuck in 'processing' (or in
+        // the merge stage, which keeps the video 'pending'), rather
         // than relying on the temp directory existing: the directory may
         // already be gone (deleted by another process, or never created due
         // to a very early crash), which would otherwise leave the video stuck
         // forever.
-        $stuckVideos = Video::where('status', 'processing')
+        $stuckVideos = Video::where(function ($query) {
+            $query->where('status', 'processing')
+                ->orWhere(fn ($merging) => $merging->where('status', 'pending')->where('stage', 'merging'));
+        })
             ->where('updated_at', '<', $cutoff)
             ->get();
 
@@ -54,9 +58,14 @@ class CleanupOrphanedTranscodeTmp extends Command
 
             $this->cleanupRemoteFiles($video);
 
+            $lastUpdate = $video->updated_at->toIso8601String();
+            $lastStage = $video->stage;
+
             $video->status = 'failed';
             $video->stage = 'failed';
             $video->error_message = 'Processing was interrupted unexpectedly and could not be completed. Please try uploading the video again.';
+            $video->failed_at = now();
+            $video->error_detail = "Marked as failed by videos:cleanup-orphaned-tmp: no progress update for more than {$ttlHours} hours while processing (last update {$lastUpdate}, stage {$lastStage}).";
             $video->save();
         }
 

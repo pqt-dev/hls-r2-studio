@@ -18,12 +18,12 @@ class VideoBulkDestroyTest extends TestCase
         $this->actingAs(User::factory()->create(['username' => 'tester']));
     }
 
-    private function makeVideo(string $title, ?string $diskPrefix = null): Video
+    private function makeVideo(string $title, ?string $diskPrefix = null, string $status = 'ready'): Video
     {
         return Video::create([
             'title' => $title,
             'original_filename' => "{$title}.mp4",
-            'status' => 'ready',
+            'status' => $status,
             'disk_prefix' => $diskPrefix,
         ]);
     }
@@ -46,7 +46,7 @@ class VideoBulkDestroyTest extends TestCase
         ]);
     }
 
-    public function test_it_deletes_every_record_even_when_r2_cleanup_fails(): void
+    public function test_it_keeps_records_and_reports_an_error_when_r2_cleanup_fails(): void
     {
         $this->pointR2AtUnreachableEndpoint();
 
@@ -58,9 +58,26 @@ class VideoBulkDestroyTest extends TestCase
         ]);
 
         $response->assertRedirect(route('videos.index'));
-        $response->assertSessionHas('status', 'Deleted 2 videos.');
+        $response->assertSessionHas('error', 'Deleted 0 videos (2 failed — check logs).');
 
-        $this->assertSame(0, Video::count());
+        $this->assertSame(2, Video::count());
+        $this->assertSame('2026/09/17/first/', $first->fresh()->disk_prefix);
+    }
+
+    public function test_it_skips_pending_and_processing_videos(): void
+    {
+        $ready = $this->makeVideo('ready');
+        $pending = $this->makeVideo('pending', null, 'pending');
+        $processing = $this->makeVideo('processing', null, 'processing');
+
+        $response = $this->delete('/videos/bulk-destroy', [
+            'selected_ids' => [$ready->id, $pending->id, $processing->id],
+        ]);
+
+        $response->assertRedirect(route('videos.index'));
+        $response->assertSessionHas('success', 'Deleted 1 videos (2 skipped: still processing).');
+
+        $this->assertEqualsCanonicalizing([$pending->id, $processing->id], Video::pluck('id')->all());
     }
 
     public function test_it_keeps_deleting_the_remaining_videos_when_one_fails(): void
@@ -80,7 +97,7 @@ class VideoBulkDestroyTest extends TestCase
         ]);
 
         $response->assertRedirect(route('videos.index'));
-        $response->assertSessionHas('status', 'Deleted 2 videos (1 failed — check logs).');
+        $response->assertSessionHas('success', 'Deleted 2 videos (1 failed — check logs).');
 
         $this->assertSame([$broken->id], Video::pluck('id')->all());
     }

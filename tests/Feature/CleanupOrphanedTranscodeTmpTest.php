@@ -121,6 +121,24 @@ class CleanupOrphanedTranscodeTmpTest extends TestCase
         );
     }
 
+    public function test_it_records_failed_at_and_error_detail_when_marking_a_stuck_video_failed(): void
+    {
+        Storage::fake('local');
+        config(['videos.orphaned_transcode_ttl_hours' => 48]);
+
+        $video = $this->makeVideo(['stage' => 'uploading_r2']);
+        $this->markStuckSince($video, now()->subHours(72));
+
+        $this->artisan('videos:cleanup-orphaned-tmp');
+
+        $video->refresh();
+        $this->assertNotNull($video->failed_at);
+        $this->assertTrue($video->failed_at->greaterThan(now()->subMinute()));
+        $this->assertStringContainsString('videos:cleanup-orphaned-tmp', $video->error_detail);
+        $this->assertStringContainsString('more than 48 hours', $video->error_detail);
+        $this->assertStringContainsString('stage uploading_r2', $video->error_detail);
+    }
+
     public function test_it_deletes_directory_when_video_is_already_in_a_terminal_state(): void
     {
         Storage::fake('local');
@@ -167,5 +185,30 @@ class CleanupOrphanedTranscodeTmpTest extends TestCase
         $video->refresh();
         $this->assertSame('processing', $video->status);
         $this->assertNull($video->error_message);
+    }
+
+    public function test_it_fails_a_video_stuck_pending_in_the_merging_stage(): void
+    {
+        $video = $this->makeVideo(['status' => 'pending', 'stage' => 'merging']);
+        $this->markStuckSince($video, now()->subHours(config('videos.orphaned_transcode_ttl_hours') + 1));
+
+        $this->artisan('videos:cleanup-orphaned-tmp')->assertSuccessful();
+
+        $video->refresh();
+        $this->assertSame('failed', $video->status);
+        $this->assertSame('failed', $video->stage);
+        $this->assertStringContainsString('stage merging', $video->error_detail);
+    }
+
+    public function test_it_leaves_recent_merging_and_plain_queued_pending_videos_alone(): void
+    {
+        $recentMerging = $this->makeVideo(['status' => 'pending', 'stage' => 'merging']);
+        $oldQueued = $this->makeVideo(['status' => 'pending', 'stage' => 'queued']);
+        $this->markStuckSince($oldQueued, now()->subHours(config('videos.orphaned_transcode_ttl_hours') + 1));
+
+        $this->artisan('videos:cleanup-orphaned-tmp')->assertSuccessful();
+
+        $this->assertSame('pending', $recentMerging->fresh()->status);
+        $this->assertSame('pending', $oldQueued->fresh()->status);
     }
 }

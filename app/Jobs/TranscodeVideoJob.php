@@ -3,10 +3,13 @@
 namespace App\Jobs;
 
 use App\Exceptions\StorageConfigurationException;
+use App\Jobs\Concerns\FailsVideo;
 use App\Models\Setting;
 use App\Models\Video;
 use App\Services\StoryboardGenerator;
 use App\Services\ThumbnailGenerator;
+use App\Support\UploadAssembler;
+use App\Support\VideoProgress;
 use App\Support\VideoStatusLogger;
 use Aws\CommandPool;
 use Aws\S3\S3Client;
@@ -23,7 +26,7 @@ use Throwable;
 
 class TranscodeVideoJob implements ShouldQueue
 {
-    use Queueable;
+    use FailsVideo, Queueable;
 
     public $tries = 1;
 
@@ -55,12 +58,33 @@ class TranscodeVideoJob implements ShouldQueue
     private const UNKNOWN_DURATION_TIMEOUT_SECONDS = 172800;
 
     /**
+     * Id of the chunked upload whose chunks this job must merge into
+     * $localUploadPath first. Declared with an explicit default (instead of
+     * being promoted) so jobs serialized before this property existed still
+     * unserialize with a null value and skip the merge stage.
+     */
+    public ?string $uploadId = null;
+
+    /**
+     * True when MergeUploadChunksJob already assembled the original file, so
+     * no merge happens here but the progress scale still includes the merge
+     * share. Declared with a default so jobs serialized before this property
+     * existed unserialize as false.
+     */
+    public bool $merged = false;
+
+    /**
      * Create a new job instance.
      */
     public function __construct(
         public int $videoId,
         public string $localUploadPath,
-    ) {}
+        ?string $uploadId = null,
+        bool $merged = false,
+    ) {
+        $this->uploadId = $uploadId;
+        $this->merged = $merged;
+    }
 
     /**
      * Execute the job.
@@ -68,28 +92,43 @@ class TranscodeVideoJob implements ShouldQueue
     public function handle(): void
     {
         // Atomically claim this video for processing: only proceed if it is
-        // not already marked 'processing'. This prevents two workers from
-        // running the same transcode concurrently if the same job ever gets
-        // dispatched or picked up twice (e.g. due to queue retry_after).
+        // still 'pending'. This prevents two workers from running the same
+        // transcode concurrently, and stops a duplicate delivery from
+        // re-processing (and wiping the R2 files of) a video that has already
+        // finished or failed (e.g. due to queue retry_after).
+        // A job queued after a separate merge keeps the progress reached so
+        // far; the overall progress must never move backwards.
+        $claimedAttributes = ['status' => 'processing', 'stage' => 'queued'];
+
+        if (! $this->merged) {
+            $claimedAttributes['progress'] = 0;
+        }
+
         $claimed = Video::where('id', $this->videoId)
-            ->where('status', '!=', 'processing')
-            ->update(['status' => 'processing', 'stage' => 'queued', 'progress' => 0]);
+            ->where('status', 'pending')
+            ->update($claimedAttributes);
 
         if ($claimed === 0) {
-            Log::warning("TranscodeVideoJob skipped: video {$this->videoId} is already being processed or in a terminal state.");
+            Log::warning("TranscodeVideoJob skipped: video {$this->videoId} is not pending (already processing or finished).");
 
             return;
         }
 
         $video = Video::findOrFail($this->videoId);
+        $video->progress = $this->overallProgress($video, 'queued');
+        $video->save();
 
         $tmpDir = Storage::disk('local')->path("hls_tmp/{$this->videoId}");
 
         try {
+            if ($this->uploadId !== null && ! File::exists($this->localUploadPath)) {
+                UploadAssembler::assemble($video, $this->uploadId, $this->localUploadPath);
+            }
+
             $duration = $this->probeDuration($this->localUploadPath);
             $video->duration = $duration;
             $video->stage = 'transcoding';
-            $video->progress = 2;
+            $video->progress = $this->overallProgress($video, 'transcoding');
             $video->save();
             VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
 
@@ -98,17 +137,19 @@ class TranscodeVideoJob implements ShouldQueue
             $this->runTranscode($this->localUploadPath, $tmpDir, $duration, $video);
 
             $video->fill($this->probeOutputInfo($tmpDir));
-            $video->progress = 90;
+            $video->progress = $this->overallProgress($video, 'transcoding', 1.0);
             $video->save();
             VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
 
             $video->stage = 'generating_thumbnail';
+            $video->progress = $this->overallProgress($video, 'generating_thumbnail');
             $video->save();
             VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
 
             (new ThumbnailGenerator)->generate($this->localUploadPath, $tmpDir, $duration, $video->output_width, $video->output_height, $this->videoId);
 
             $video->stage = 'generating_storyboard';
+            $video->progress = $this->overallProgress($video, 'generating_storyboard');
             $video->save();
             VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
 
@@ -122,7 +163,7 @@ class TranscodeVideoJob implements ShouldQueue
             }
 
             $video->stage = 'uploading_r2';
-            $video->progress = 92;
+            $video->progress = $this->overallProgress($video, 'uploading_r2');
             $video->save();
             VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
 
@@ -153,22 +194,91 @@ class TranscodeVideoJob implements ShouldQueue
 
             $this->cleanup($tmpDir);
         } catch (Throwable $e) {
-            $video->status = 'failed';
-            $video->stage = 'failed';
-            $video->error_message = $e instanceof StorageConfigurationException
-                ? 'Unable to process this video due to a server storage configuration issue. Please contact the administrator.'
-                : 'Unable to process this video. The file may be corrupted, in an unsupported format, or the server ran out of resources while processing it. Please check the file and try again.';
-            $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            // Every step below is best-effort so that a failure in one of them
+            // can neither skip the remaining cleanup nor mask the original
+            // exception, which is always rethrown.
+            $failedWhileMerging = $video->stage === 'merging';
 
-            $this->cleanupRemoteFiles($video);
+            $this->markFailed($video, $e);
 
-            $this->cleanup($tmpDir);
+            try {
+                $video->save();
+            } catch (Throwable $saveError) {
+                Log::warning('Failed to persist the failed status for video '.$this->videoId.': '.$saveError->getMessage());
+            }
+
+            try {
+                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            } catch (Throwable $logError) {
+                Log::warning('Failed to record the failed status log for video '.$this->videoId.': '.$logError->getMessage());
+            }
+
+            try {
+                $this->cleanupRemoteFiles($video);
+            } catch (Throwable $cleanupError) {
+                Log::warning('Failed to clean up R2 files after job failure for video '.$this->videoId.': '.$cleanupError->getMessage());
+            }
+
+            try {
+                $this->cleanup($tmpDir);
+            } catch (Throwable $cleanupError) {
+                Log::warning('Failed to clean up temp files after job failure for video '.$this->videoId.': '.$cleanupError->getMessage());
+            }
+
+            $this->cleanupUpload($failedWhileMerging);
 
             Log::error('TranscodeVideoJob failed for video '.$this->videoId.': '.$e->getMessage());
 
             throw $e;
         }
+    }
+
+    /**
+     * Called by Laravel when the job fails, including cases where handle()'s
+     * catch block never ran (e.g. worker killed or timed out). Idempotent:
+     * does nothing unless the video is still marked 'processing'.
+     */
+    public function failed(Throwable $e): void
+    {
+        $video = Video::find($this->videoId);
+
+        if (! $video || $video->status !== 'processing') {
+            return;
+        }
+
+        $failedWhileMerging = $video->stage === 'merging';
+
+        $this->markFailed($video, $e);
+        $video->save();
+        VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+
+        try {
+            $this->cleanupRemoteFiles($video);
+        } catch (Throwable $cleanupError) {
+            Log::warning('Failed to clean up R2 files after job failure for video '.$this->videoId.': '.$cleanupError->getMessage());
+        }
+
+        try {
+            $this->cleanup(Storage::disk('local')->path("hls_tmp/{$this->videoId}"));
+        } catch (Throwable $cleanupError) {
+            Log::warning('Failed to clean up temp files after job failure for video '.$this->videoId.': '.$cleanupError->getMessage());
+        }
+
+        $this->cleanupUpload($failedWhileMerging);
+
+        Log::error('TranscodeVideoJob failed for video '.$this->videoId.': '.$e->getMessage());
+    }
+
+    /**
+     * Overall progress for being $stageFraction through $stage, never lower
+     * than what the video already reports so the number only moves forward.
+     */
+    private function overallProgress(Video $video, string $stage, float $stageFraction = 0.0): int
+    {
+        return max(
+            (int) $video->progress,
+            VideoProgress::overall($stage, $stageFraction, (int) $video->original_size_bytes, $this->uploadId !== null || $this->merged)
+        );
     }
 
     private function probeDuration(string $filePath): ?float
@@ -351,7 +461,7 @@ class TranscodeVideoJob implements ShouldQueue
                     $outTimeMs = $this->readProgressIncrement($progressHandle, $leftover);
 
                     if ($outTimeMs !== null && $duration !== null && $duration > 0) {
-                        $percent = min(88, (int) round((($outTimeMs / 1000000) / $duration) * 100 * 0.86 + 2));
+                        $percent = $this->overallProgress($video, 'transcoding', ($outTimeMs / 1000000) / $duration);
 
                         if ($percent !== $video->progress) {
                             try {
@@ -501,7 +611,7 @@ class TranscodeVideoJob implements ShouldQueue
                     // and model writes below need no extra locking.
                     'fulfilled' => function ($result, $index) use (&$uploadedCount, $totalFiles, $video): void {
                         $uploadedCount++;
-                        $percent = self::uploadProgressPercent($uploadedCount, $totalFiles);
+                        $percent = $this->overallProgress($video, 'uploading_r2', $uploadedCount / $totalFiles);
 
                         if ($percent !== $video->progress) {
                             try {
@@ -543,7 +653,7 @@ class TranscodeVideoJob implements ShouldQueue
             if ($this->retryUpload($client, $bucket, $prefix, $files[$index], $detector)) {
                 unset($failures[$index]);
                 $uploadedCount++;
-                $percent = self::uploadProgressPercent($uploadedCount, $totalFiles);
+                $percent = $this->overallProgress($video, 'uploading_r2', $uploadedCount / $totalFiles);
 
                 if ($percent !== $video->progress) {
                     try {
@@ -658,19 +768,6 @@ class TranscodeVideoJob implements ShouldQueue
     private static function isUploadableFile(\SplFileInfo $file): bool
     {
         return in_array(strtolower($file->getExtension()), ['ts', 'm3u8', 'jpg', 'json'], true);
-    }
-
-    /**
-     * Overall job progress while uploading: the upload phase spans 92% to 99%,
-     * proportional to the number of files actually uploaded so far.
-     */
-    private static function uploadProgressPercent(int $uploadedCount, int $totalFiles): int
-    {
-        if ($totalFiles <= 0) {
-            return 92;
-        }
-
-        return 92 + (int) round(($uploadedCount / $totalFiles) * 7);
     }
 
     /**

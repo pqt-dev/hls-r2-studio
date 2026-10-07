@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Jobs\TranscodeVideoJob;
+use App\Models\Video;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
 use Tests\TestCase;
@@ -108,26 +109,52 @@ class TranscodeVideoJobTest extends TestCase
         unlink($path);
     }
 
-    #[DataProvider('uploadProgressProvider')]
-    public function test_upload_progress_percent_tracks_only_successfully_uploaded_files(int $uploaded, int $total, int $expected): void
+    public function test_overall_progress_never_decreases_across_the_merge_to_transcode_transition(): void
     {
-        $method = new ReflectionMethod(TranscodeVideoJob::class, 'uploadProgressPercent');
-        $closure = $method->getClosure();
+        $job = new TranscodeVideoJob(1, '/tmp/does-not-matter.mp4', 'upload-id');
+        $closure = (new ReflectionMethod(TranscodeVideoJob::class, 'overallProgress'))->getClosure($job);
 
-        $this->assertSame($expected, $closure($uploaded, $total));
+        $video = new Video;
+        $video->original_size_bytes = 500 * 1048576;
+        $video->progress = 0;
+
+        $samples = [
+            ['queued', 0.0],
+            ['merging', 0.0],
+            ['merging', 0.5],
+            ['merging', 1.0],
+            ['transcoding', 0.0],
+            ['transcoding', 0.4],
+            ['transcoding', 1.0],
+            ['generating_thumbnail', 0.0],
+            ['generating_storyboard', 0.0],
+            ['uploading_r2', 0.0],
+            ['uploading_r2', 1.0],
+        ];
+
+        $previous = 0;
+
+        foreach ($samples as [$stage, $fraction]) {
+            $video->progress = $closure($video, $stage, $fraction);
+
+            $this->assertGreaterThanOrEqual($previous, $video->progress, "{$stage} {$fraction}");
+            $this->assertLessThanOrEqual(99, $video->progress);
+            $previous = $video->progress;
+        }
+
+        $this->assertGreaterThan(0, $closure(new Video, 'merging'));
     }
 
-    public static function uploadProgressProvider(): array
+    public function test_overall_progress_keeps_the_current_value_when_the_computed_one_is_lower(): void
     {
-        return [
-            'nothing uploaded yet' => [0, 10, 92],
-            'half uploaded' => [5, 10, 96],
-            'all uploaded' => [10, 10, 99],
-            'single file done' => [1, 1, 99],
-            // Guard against a division by zero when the output directory is
-            // empty; the upload phase simply stays at its starting value.
-            'no files at all' => [0, 0, 92],
-        ];
+        $job = new TranscodeVideoJob(1, '/tmp/does-not-matter.mp4', 'upload-id');
+        $closure = (new ReflectionMethod(TranscodeVideoJob::class, 'overallProgress'))->getClosure($job);
+
+        $video = new Video;
+        $video->original_size_bytes = 10 * 1048576;
+        $video->progress = 80;
+
+        $this->assertSame(80, $closure($video, 'transcoding', 0.0));
     }
 
     #[DataProvider('uploadRetryDelayProvider')]

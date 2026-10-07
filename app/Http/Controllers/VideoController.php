@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Jobs\TranscodeVideoJob;
+use App\Jobs\MergeUploadChunksJob;
 use App\Models\Setting;
 use App\Models\Video;
 use App\Models\VideoStatusLog;
+use App\Support\VideoProgress;
+use App\Support\VideoStatusLogger;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Log;
@@ -15,6 +17,27 @@ use Illuminate\Validation\Rule;
 
 class VideoController extends Controller
 {
+    /**
+     * Extra bytes a received chunk may exceed the configured chunk size by.
+     */
+    private const CHUNK_SIZE_TOLERANCE_BYTES = 1024;
+
+    /**
+     * Free disk space that must remain on top of the upload size before a
+     * chunked upload is assembled.
+     */
+    private const DISK_FREE_MARGIN_BYTES = 256 * 1024 * 1024;
+
+    /**
+     * Newest entries shown in each of the Success / Error lists on the Logs page.
+     */
+    private const LOG_LIST_LIMIT = 10;
+
+    /**
+     * Maximum rows shown in the Logs page "In Progress" card.
+     */
+    private const IN_PROGRESS_LIST_LIMIT = 25;
+
     /**
      * Display a listing of the videos.
      */
@@ -102,8 +125,12 @@ class VideoController extends Controller
         $applySearch = function ($query) use ($search) {
             if ($search) {
                 $query->where(function ($q) use ($search) {
-                    $q->where('title', 'like', "%{$search}%")
-                        ->orWhere('original_filename', 'like', "%{$search}%");
+                    // "!" is the escape character: unlike a backslash it needs no
+                    // special handling in either MySQL or SQLite string literals.
+                    $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
+
+                    $q->whereRaw("title LIKE ? ESCAPE '!'", [$pattern])
+                        ->orWhereRaw("original_filename LIKE ? ESCAPE '!'", [$pattern]);
                 });
             }
         };
@@ -142,6 +169,7 @@ class VideoController extends Controller
         return view('videos.index', compact(
             'completedVideos',
             'deleteFromR2',
+            'disk',
             'perPage',
             'allowedPerPage',
             'search',
@@ -192,7 +220,7 @@ class VideoController extends Controller
 
         $diskTotal = disk_total_space(storage_path());
         $diskFree = disk_free_space(storage_path());
-        $diskPercent = round((($diskTotal - $diskFree) / $diskTotal) * 100);
+        $diskPercent = $diskTotal ? round((($diskTotal - $diskFree) / $diskTotal) * 100) : null;
         $diskUsedGb = round(($diskTotal - $diskFree) / 1024 / 1024 / 1024, 1);
         $diskTotalGb = round($diskTotal / 1024 / 1024 / 1024, 1);
 
@@ -223,9 +251,7 @@ class VideoController extends Controller
             ->limit(100)
             ->get();
 
-        $recentVideos = Video::orderBy('created_at', 'desc')->limit(5)->get()->reverse()->values();
-
-        return view('videos.create', compact('activeVideos', 'recentVideos'));
+        return view('videos.create', compact('activeVideos'));
     }
 
     /**
@@ -255,11 +281,23 @@ class VideoController extends Controller
     }
 
     /**
+     * Return the videos that are queued or being processed, with their progress.
+     */
+    public function inProgressCount()
+    {
+        $videos = Video::inProgressSnapshot();
+
+        return response()->json(['count' => count($videos), 'videos' => $videos]);
+    }
+
+    /**
      * Return the full status/stage/progress history for the given video.
      */
     public function statusLog(Video $video)
     {
+        // Server-origin rows only: client-origin lines (message set) come from GET /activity-log.
         $logs = VideoStatusLog::where('video_id', $video->id)
+            ->whereNull('message')
             ->orderBy('created_at')
             ->get(['status', 'stage', 'progress', 'created_at']);
 
@@ -274,7 +312,7 @@ class VideoController extends Controller
         $maxSizeBytes = config('videos.max_upload_size_mb') * 1024 * 1024;
 
         $validated = $request->validate([
-            'filename' => ['required', 'string', 'regex:/\.(mp4|mov|mkv|avi|webm)$/i'],
+            'filename' => ['required', 'string', 'max:255', 'regex:/\.(mp4|mov|mkv|avi|webm)\z/i'],
             'total_size' => ['required', 'integer', 'min:1', "max:{$maxSizeBytes}"],
             'title' => ['nullable', 'string', 'max:255'],
         ]);
@@ -310,7 +348,11 @@ class VideoController extends Controller
 
         $chunkIndex = (int) $request->header('X-Chunk-Index');
 
-        if ($chunkIndex < 0) {
+        // When the metadata is unusable the check is skipped here and the
+        // session is refused after the body is read (see declaredUploadSize()).
+        $declaredTotal = $this->declaredUploadSize($uploadDir);
+
+        if ($chunkIndex < 0 || ($declaredTotal !== null && $chunkIndex > $this->maxChunkIndex($declaredTotal))) {
             return response()->json([
                 'message' => 'The chunk index of this upload is invalid. Please try uploading again.',
             ], 422);
@@ -330,7 +372,10 @@ class VideoController extends Controller
             }
 
             $input = $request->getContent(true);
-            $copied = stream_copy_to_stream($input, $tmpHandle);
+            // Read at most one byte past the limit so an oversized body is
+            // detected without ever being written to disk in full.
+            $maxChunkBytes = $this->maxChunkBytes();
+            $copied = stream_copy_to_stream($input, $tmpHandle, $maxChunkBytes + 1);
             fclose($input);
             fclose($tmpHandle);
 
@@ -338,7 +383,17 @@ class VideoController extends Controller
                 throw new \RuntimeException('Failed to read chunk data from request body.');
             }
 
-            $declaredSize = $this->declaredUploadSize($uploadDir);
+            if ($copied > $maxChunkBytes) {
+                $this->deleteFile($tmpPath, "rejecting chunk {$chunkIndex} of upload {$uploadId} that exceeds the chunk size limit");
+
+                Log::warning("Upload {$uploadId}: chunk {$chunkIndex} exceeds the chunk size limit of {$maxChunkBytes} bytes.");
+
+                return response()->json([
+                    'message' => 'Chunk exceeds the maximum allowed chunk size.',
+                ], 413);
+            }
+
+            $declaredSize = $declaredTotal;
 
             // Without the declared size the upload limit cannot be enforced,
             // so the session is refused rather than accepted unchecked.
@@ -403,6 +458,61 @@ class VideoController extends Controller
         }
 
         return (int) $meta['total_size'];
+    }
+
+    /**
+     * Read the filename and total size stored at init, or null when the
+     * metadata is missing or invalid.
+     *
+     * @return array{filename: string, total_size: int}|null
+     */
+    private function uploadMeta(string $uploadDir): ?array
+    {
+        $metaPath = "{$uploadDir}/meta.json";
+
+        if (! Storage::disk('local')->exists($metaPath)) {
+            return null;
+        }
+
+        $meta = json_decode((string) Storage::disk('local')->get($metaPath), true);
+
+        if (! is_array($meta) || ! isset($meta['filename'], $meta['total_size']) || ! is_string($meta['filename'])) {
+            return null;
+        }
+
+        return ['filename' => $meta['filename'], 'total_size' => (int) $meta['total_size']];
+    }
+
+    /**
+     * Highest chunk index a client using the configured chunk size can send
+     * for the declared total size, plus a tolerance of one index.
+     */
+    private function maxChunkIndex(int $totalSize): int
+    {
+        // ceil(total / chunk) - 1 is the last index; +1 is the tolerance.
+        return (int) ceil($totalSize / $this->configuredChunkSizeBytes());
+    }
+
+    private function configuredChunkSizeBytes(): float
+    {
+        return max(1.0, (float) config('videos.chunk_size_mb') * 1024 * 1024);
+    }
+
+    /**
+     * Largest body accepted for a single chunk: the configured chunk size
+     * plus a small tolerance.
+     */
+    private function maxChunkBytes(): int
+    {
+        return (int) ceil($this->configuredChunkSizeBytes()) + self::CHUNK_SIZE_TOLERANCE_BYTES;
+    }
+
+    /**
+     * Free bytes on the filesystem holding the given path, or false when unknown.
+     */
+    protected function freeDiskSpace(string $path): float|false
+    {
+        return @disk_free_space($path);
     }
 
     /**
@@ -471,15 +581,15 @@ class VideoController extends Controller
     }
 
     /**
-     * Finalize a chunked upload: assemble the file, create the video record,
-     * and dispatch the transcode job.
+     * Finalize a chunked upload: run the cheap integrity checks, create the
+     * video record and dispatch the transcode job, which merges the chunks.
      */
     public function completeUpload(Request $request, string $uploadId)
     {
         $maxSizeBytes = config('videos.max_upload_size_mb') * 1024 * 1024;
 
         $request->validate([
-            'filename' => ['required', 'string', 'regex:/\.(mp4|mov|mkv|avi|webm)$/i'],
+            'filename' => ['required', 'string', 'max:255', 'regex:/\.(mp4|mov|mkv|avi|webm)\z/i'],
             'total_size' => ['required', 'integer', 'min:1', "max:{$maxSizeBytes}"],
             'title' => ['nullable', 'string', 'max:255'],
         ]);
@@ -492,6 +602,14 @@ class VideoController extends Controller
             abort(404);
         }
 
+        // meta.json (written at init) is the source of truth for the filename
+        // and total size; the request values are only validated.
+        $meta = $this->uploadMeta($uploadDir);
+
+        if ($meta === null) {
+            abort(404);
+        }
+
         $chunkIndexes = $this->storedChunkIndexes($uploadDir);
 
         if ($chunkIndexes === []) {
@@ -501,12 +619,13 @@ class VideoController extends Controller
         $expectedCount = end($chunkIndexes) + 1;
 
         if (count($chunkIndexes) !== $expectedCount) {
-            $missingIndex = null;
-            foreach (range(0, $expectedCount - 1) as $index) {
-                if (! in_array($index, $chunkIndexes, true)) {
-                    $missingIndex = $index;
+            $missingIndex = 0;
+            foreach ($chunkIndexes as $storedIndex) {
+                if ($storedIndex !== $missingIndex) {
                     break;
                 }
+
+                $missingIndex++;
             }
 
             Log::warning("Upload {$uploadId} is missing chunk {$missingIndex}: received ".count($chunkIndexes)." of {$expectedCount} expected parts.");
@@ -520,74 +639,48 @@ class VideoController extends Controller
             ], 422);
         }
 
-        $totalSize = (int) $request->input('total_size');
-        $filename = $request->input('filename');
-        $extension = pathinfo($filename, PATHINFO_EXTENSION);
-        $uuid = (string) Str::uuid();
-        $newFilename = "{$uuid}.{$extension}";
+        $totalSize = $meta['total_size'];
+        $filename = $meta['filename'];
 
-        $disk->makeDirectory('uploads');
-        $localUploadPath = $disk->path("uploads/{$newFilename}");
+        // The chunks are merged later by the queue job, so the cheap checks
+        // that the merge used to provide happen here instead.
+        $storedSize = $this->storedChunksSize($uploadDir);
 
-        try {
-            $outputHandle = fopen($localUploadPath, 'wb');
-            if ($outputHandle === false) {
-                throw new \RuntimeException('Unable to open the assembled upload file for writing.');
-            }
-
-            try {
-                foreach ($chunkIndexes as $index) {
-                    $chunkHandle = fopen($disk->path("{$chunksDir}/{$index}.chunk"), 'rb');
-                    if ($chunkHandle === false) {
-                        throw new \RuntimeException("Unable to open chunk {$index} of upload {$uploadId}.");
-                    }
-
-                    try {
-                        if (stream_copy_to_stream($chunkHandle, $outputHandle) === false) {
-                            throw new \RuntimeException("Failed to append chunk {$index} of upload {$uploadId}.");
-                        }
-                    } finally {
-                        fclose($chunkHandle);
-                    }
-                }
-            } finally {
-                fclose($outputHandle);
-            }
-        } catch (\Throwable $e) {
-            $this->deleteFile($localUploadPath, "cleaning up after a failed assembly of upload {$uploadId}");
-
-            Log::error("Failed to finalize upload {$uploadId}: {$e->getMessage()}");
-
-            return response()->json([
-                'message' => 'Failed to finalize the uploaded file.',
-            ], 500);
-        }
-
-        clearstatcache(true, $localUploadPath);
-        $actualSize = filesize($localUploadPath);
-
-        if ($actualSize !== $totalSize) {
-            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} after a size mismatch");
+        if ($storedSize !== $totalSize) {
             $disk->deleteDirectory($uploadDir);
 
-            Log::warning("Assembled file size mismatch for upload {$uploadId}: received {$actualSize} bytes, expected {$totalSize} bytes.");
+            Log::warning("Chunk size mismatch for upload {$uploadId}: received {$storedSize} bytes, expected {$totalSize} bytes.");
 
             return response()->json([
                 'message' => 'The uploaded file appears incomplete or corrupted. Please try uploading again.',
             ], 422);
         }
 
-        $disk->deleteDirectory($uploadDir);
-
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
-        $mimeType = $finfo ? finfo_file($finfo, $localUploadPath) : false;
+        $mimeType = $finfo ? finfo_file($finfo, $disk->path("{$chunksDir}/{$chunkIndexes[0]}.chunk")) : false;
 
         if (! $mimeType || ! str_starts_with($mimeType, 'video/')) {
-            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} that is not a video file");
+            $disk->deleteDirectory($uploadDir);
 
             return response()->json([
                 'message' => 'File content does not appear to be a valid video.',
             ], 422);
+        }
+
+        $extension = pathinfo($filename, PATHINFO_EXTENSION);
+        $newFilename = Str::uuid().".{$extension}";
+
+        $disk->makeDirectory('uploads');
+        $localUploadPath = $disk->path("uploads/{$newFilename}");
+
+        $freeSpace = $this->freeDiskSpace($disk->path('uploads'));
+
+        if ($freeSpace !== false && $freeSpace < $totalSize + self::DISK_FREE_MARGIN_BYTES) {
+            Log::warning("Not enough free disk space to assemble upload {$uploadId}: {$freeSpace} bytes free, need {$totalSize} bytes plus a ".self::DISK_FREE_MARGIN_BYTES.' byte margin.');
+
+            return response()->json([
+                'message' => 'The server does not have enough free disk space to process this upload.',
+            ], 507);
         }
 
         try {
@@ -596,9 +689,11 @@ class VideoController extends Controller
                 'original_filename' => $filename,
                 'original_size_bytes' => $totalSize,
                 'status' => 'pending',
+                'progress' => VideoProgress::overall('queued', 0, $totalSize, true),
+                'upload_id' => $uploadId,
             ]);
         } catch (\Throwable $e) {
-            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} after the video record could not be created");
+            $disk->deleteDirectory($uploadDir);
 
             Log::error("Failed to create video record for upload {$uploadId}: {$e->getMessage()}");
 
@@ -607,23 +702,30 @@ class VideoController extends Controller
             ], 500);
         }
 
+        // Lines the browser logged before the video existed join the video's group.
+        VideoStatusLog::where('upload_id', $uploadId)->whereNull('video_id')->update(['video_id' => $video->id]);
+
         try {
-            TranscodeVideoJob::dispatch($video->id, $localUploadPath);
+            MergeUploadChunksJob::dispatch($video->id, $localUploadPath, $uploadId);
         } catch (\Throwable $e) {
-            $this->deleteFile($localUploadPath, "discarding upload {$uploadId} after the transcode job could not be queued");
+            // There is no resume feature: the client restarts from scratch.
+            $disk->deleteDirectory($uploadDir);
 
             try {
                 $video->delete();
             } catch (\Throwable $deleteError) {
-                Log::error("Failed to remove video record {$video->id} after its transcode job could not be queued: {$deleteError->getMessage()}");
+                Log::error("Failed to remove video record {$video->id} after its merge job could not be queued: {$deleteError->getMessage()}");
             }
 
-            Log::error("Failed to queue transcode job for upload {$uploadId}: {$e->getMessage()}");
+            Log::error("Failed to queue merge job for upload {$uploadId}: {$e->getMessage()}");
 
             return response()->json([
                 'message' => 'Unable to queue this video for processing. Please try again.',
             ], 500);
         }
+
+        // Announce the queued video so every client counts it in the batch before its job starts.
+        VideoStatusLogger::record($video->id, 'pending', null, (int) $video->progress);
 
         return response()->json([
             'redirect' => route('videos.index'),
@@ -637,14 +739,27 @@ class VideoController extends Controller
      */
     public function logs()
     {
+        $limit = self::LOG_LIST_LIMIT;
+        $inProgressLimit = self::IN_PROGRESS_LIST_LIMIT;
+        $inProgressStatuses = ['pending', 'processing'];
+
         $totalCount = Video::count();
         $successCount = Video::where('status', 'ready')->count();
         $errorCount = Video::where('status', 'failed')->count();
+        $processingCount = Video::whereIn('status', $inProgressStatuses)->count();
 
-        $successLogs = Video::where('status', 'ready')->orderBy('created_at', 'desc')->limit(50)->get();
-        $errorLogs = Video::where('status', 'failed')->orderBy('created_at', 'desc')->limit(50)->get();
+        $successLogs = Video::where('status', 'ready')->orderBy('created_at', 'desc')->limit($limit)->get();
+        $errorLogs = Video::where('status', 'failed')
+            ->orderByRaw('COALESCE(failed_at, updated_at) DESC')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get();
+        $processingVideos = Video::whereIn('status', $inProgressStatuses)->orderBy('created_at', 'asc')->limit($inProgressLimit)->get();
 
-        return view('logs.index', compact('totalCount', 'successCount', 'errorCount', 'successLogs', 'errorLogs'));
+        return view('logs.index', compact(
+            'totalCount', 'successCount', 'errorCount', 'processingCount',
+            'successLogs', 'errorLogs', 'processingVideos', 'limit', 'inProgressLimit'
+        ));
     }
 
     /**
@@ -728,7 +843,12 @@ class VideoController extends Controller
             return response()->json(['message' => 'This video has no custom image.'], 404);
         }
 
-        $this->deleteR2Object(Setting::current()->r2Disk(), $video->custom_image_path, $video);
+        // Keep the DB path when the object could not be deleted, otherwise it would be orphaned on R2.
+        if (! $this->deleteR2Object(Setting::current()->r2Disk(), $video->custom_image_path, $video)) {
+            return response()->json([
+                'message' => 'Failed to delete the image. Please try again.',
+            ], 500);
+        }
 
         $video->update(['custom_image_path' => null]);
 
@@ -736,17 +856,21 @@ class VideoController extends Controller
     }
 
     /**
-     * Best-effort delete of one R2 object; failures are logged, not thrown.
+     * Delete one R2 object; failures are logged, not thrown. Returns whether the object was deleted.
      */
-    private function deleteR2Object($disk, string $path, Video $video): void
+    private function deleteR2Object($disk, string $path, Video $video): bool
     {
         try {
-            if (! $disk->delete($path)) {
-                Log::warning("Unable to delete custom image '{$path}' of video {$video->id} from R2.");
+            if ($disk->delete($path)) {
+                return true;
             }
+
+            Log::warning("Unable to delete custom image '{$path}' of video {$video->id} from R2.");
         } catch (\Throwable $e) {
             Log::warning("Unable to delete custom image '{$path}' of video {$video->id} from R2: {$e->getMessage()}");
         }
+
+        return false;
     }
 
     /**
@@ -754,9 +878,17 @@ class VideoController extends Controller
      */
     public function destroy(Video $video)
     {
+        if ($this->isBeingProcessed($video)) {
+            return redirect()->route('videos.index')->with('error', 'This video is still being processed and cannot be deleted yet.');
+        }
+
         $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
 
-        $this->deleteVideo($video, $deleteFromR2);
+        try {
+            $this->deleteVideo($video, $deleteFromR2);
+        } catch (\Throwable $e) {
+            return redirect()->route('videos.index')->with('error', 'Could not delete the files on R2; the video was kept so you can retry.');
+        }
 
         if ($deleteFromR2) {
             return redirect()->route('videos.index')->with('success', 'Video has been deleted.');
@@ -778,8 +910,15 @@ class VideoController extends Controller
         $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
         $successCount = 0;
         $failedCount = 0;
+        $skippedCount = 0;
 
         foreach (Video::whereIn('id', $validated['selected_ids'])->get() as $video) {
+            if ($this->isBeingProcessed($video)) {
+                $skippedCount++;
+
+                continue;
+            }
+
             try {
                 $this->deleteVideo($video, $deleteFromR2);
                 $successCount++;
@@ -790,25 +929,51 @@ class VideoController extends Controller
             }
         }
 
-        $status = $failedCount > 0
-            ? "Deleted {$successCount} videos ({$failedCount} failed — check logs)."
-            : "Deleted {$successCount} videos.";
+        $details = [];
 
-        return redirect()->route('videos.index')->with('status', $status);
+        if ($failedCount > 0) {
+            $details[] = "{$failedCount} failed — check logs";
+        }
+
+        if ($skippedCount > 0) {
+            $details[] = "{$skippedCount} skipped: still processing";
+        }
+
+        $message = "Deleted {$successCount} videos".($details ? ' ('.implode(', ', $details).')' : '').'.';
+
+        $flashKey = $successCount === 0 && $failedCount > 0 ? 'error' : 'success';
+
+        return redirect()->route('videos.index')->with($flashKey, $message);
+    }
+
+    /**
+     * Whether the video is still queued or being transcoded.
+     */
+    private function isBeingProcessed(Video $video): bool
+    {
+        return in_array($video->status, ['pending', 'processing'], true);
     }
 
     /**
      * Delete a single video's record and, optionally, its files on R2.
+     *
+     * @throws \RuntimeException when the R2 files could not be deleted; the record is kept so the delete can be retried.
      */
     private function deleteVideo(Video $video, bool $deleteFromR2): void
     {
         if ($video->disk_prefix && $deleteFromR2) {
             try {
-                if (! Setting::current()->r2Disk()->deleteDirectory($video->disk_prefix)) {
-                    Log::error("Failed to delete R2 files for video {$video->id} (disk_prefix: {$video->disk_prefix}); they may need to be removed manually.");
-                }
+                $deleted = Setting::current()->r2Disk()->deleteDirectory($video->disk_prefix);
             } catch (\Throwable $e) {
                 Log::error("Failed to delete R2 files for video {$video->id} (disk_prefix: {$video->disk_prefix}): {$e->getMessage()}");
+
+                throw new \RuntimeException("Failed to delete R2 files for video {$video->id}.", 0, $e);
+            }
+
+            if (! $deleted) {
+                Log::error("Failed to delete R2 files for video {$video->id} (disk_prefix: {$video->disk_prefix}); the record was kept so the delete can be retried.");
+
+                throw new \RuntimeException("Failed to delete R2 files for video {$video->id}.");
             }
         }
 

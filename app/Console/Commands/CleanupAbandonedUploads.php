@@ -2,6 +2,7 @@
 
 namespace App\Console\Commands;
 
+use App\Models\Video;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Storage;
 
@@ -29,10 +30,17 @@ class CleanupAbandonedUploads extends Command
         $ttlHours = config('videos.abandoned_upload_ttl_hours');
         $cutoff = now()->subHours($ttlHours)->getTimestamp();
 
+        // A chunk directory may still be waiting for its merge in the queue.
+        $activeUploadIds = Video::inProgress()->whereNotNull('upload_id')->pluck('upload_id')->all();
+
         $directories = Storage::disk('local')->directories('chunked_uploads');
         $deletedCount = 0;
 
         foreach ($directories as $directory) {
+            if (in_array(basename($directory), $activeUploadIds, true)) {
+                continue;
+            }
+
             $lastModified = $this->lastActivityAt($directory);
 
             if ($lastModified !== false && $lastModified < $cutoff) {

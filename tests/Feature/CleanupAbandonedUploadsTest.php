@@ -2,11 +2,15 @@
 
 namespace Tests\Feature;
 
+use App\Models\Video;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class CleanupAbandonedUploadsTest extends TestCase
 {
+    use RefreshDatabase;
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -57,6 +61,37 @@ class CleanupAbandonedUploadsTest extends TestCase
     {
         $this->makeUploadDirectory('stalled-session', now()->subHours(48)->getTimestamp());
         $this->storeChunk('stalled-session', 0, now()->subHours(30)->getTimestamp());
+
+        $this->artisan('uploads:cleanup-abandoned');
+
+        Storage::disk('local')->assertDirectoryEmpty('chunked_uploads');
+    }
+
+    public function test_it_keeps_a_stale_directory_whose_video_is_still_waiting_for_its_merge(): void
+    {
+        foreach (['pending', 'processing'] as $status) {
+            $uploadId = "queued-{$status}";
+            $this->makeUploadDirectory($uploadId, now()->subHours(48)->getTimestamp());
+            $this->storeChunk($uploadId, 0, now()->subHours(48)->getTimestamp());
+
+            Video::create(['title' => 'v', 'original_filename' => 'v.mp4', 'status' => $status, 'upload_id' => $uploadId]);
+        }
+
+        $this->artisan('uploads:cleanup-abandoned');
+
+        Storage::disk('local')->assertExists('chunked_uploads/queued-pending/chunks/0.chunk');
+        Storage::disk('local')->assertExists('chunked_uploads/queued-processing/chunks/0.chunk');
+    }
+
+    public function test_it_deletes_a_stale_directory_whose_video_is_already_finished(): void
+    {
+        foreach (['ready', 'failed'] as $status) {
+            $uploadId = "done-{$status}";
+            $this->makeUploadDirectory($uploadId, now()->subHours(48)->getTimestamp());
+            $this->storeChunk($uploadId, 0, now()->subHours(48)->getTimestamp());
+
+            Video::create(['title' => 'v', 'original_filename' => 'v.mp4', 'status' => $status, 'upload_id' => $uploadId]);
+        }
 
         $this->artisan('uploads:cleanup-abandoned');
 

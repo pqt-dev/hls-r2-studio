@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Video extends Model
@@ -20,6 +21,9 @@ class Video extends Model
         'custom_image_path',
         'duration',
         'error_message',
+        'error_detail',
+        'failed_at',
+        'upload_id',
         'output_width',
         'output_height',
         'output_fps',
@@ -36,7 +40,36 @@ class Video extends Model
         'output_fps' => 'float',
         'output_bitrate_kbps' => 'integer',
         'storyboards' => 'array',
+        'failed_at' => 'datetime',
     ];
+
+    /**
+     * Videos that are still queued or being transcoded.
+     */
+    public function scopeInProgress(Builder $query): Builder
+    {
+        return $query->whereIn('status', ['pending', 'processing']);
+    }
+
+    /**
+     * Compact list of queued/processing videos (id, status, progress, upload_id) for the floating progress ring.
+     *
+     * @return list<array{id: int, status: string, progress: int, upload_id: string|null}>
+     */
+    public static function inProgressSnapshot(int $limit = 100): array
+    {
+        return static::inProgress()
+            ->orderBy('id')
+            ->limit($limit)
+            ->get(['id', 'status', 'progress', 'upload_id'])
+            ->map(fn (Video $video) => [
+                'id' => $video->id,
+                'status' => $video->status,
+                'progress' => max(0, min(100, (int) $video->progress)),
+                'upload_id' => $video->upload_id,
+            ])
+            ->all();
+    }
 
     public function getFormattedSizeAttribute(): string
     {

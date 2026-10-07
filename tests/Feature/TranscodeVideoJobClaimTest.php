@@ -25,7 +25,7 @@ class TranscodeVideoJobClaimTest extends TestCase
         Log::shouldReceive('warning')
             ->once()
             ->withArgs(fn (string $message) => str_contains($message, (string) $video->id)
-                && str_contains($message, 'already being processed'));
+                && str_contains($message, 'is not pending'));
 
         // A nonexistent local upload path guarantees the job would blow up
         // immediately (ffprobe failure) if it ever reached the transcode
@@ -41,7 +41,7 @@ class TranscodeVideoJobClaimTest extends TestCase
         $this->assertSame(42, $video->progress);
     }
 
-    public function test_handle_claims_a_non_processing_video_before_proceeding(): void
+    public function test_handle_claims_a_pending_video_before_proceeding(): void
     {
         $video = Video::create([
             'title' => 'Pending video',
@@ -67,5 +67,34 @@ class TranscodeVideoJobClaimTest extends TestCase
         $video->refresh();
 
         $this->assertSame('failed', $video->status);
+    }
+
+    public function test_handle_does_not_claim_ready_or_failed_videos_and_leaves_them_untouched(): void
+    {
+        foreach (['ready', 'failed'] as $status) {
+            $video = Video::create([
+                'title' => "{$status} video",
+                'original_filename' => 'test.mp4',
+                'status' => $status,
+                'stage' => $status,
+                'progress' => $status === 'ready' ? 100 : 40,
+                'disk_prefix' => "2026/01/01/{$status}-video/",
+                'playlist_path' => "2026/01/01/{$status}-video/playlist.m3u8",
+            ]);
+
+            // If the job claimed the video it would fail at ffprobe and sweep
+            // the R2 prefix; returning without an exception proves it did not.
+            $job = new TranscodeVideoJob($video->id, '/tmp/this-input-does-not-exist-'.uniqid().'.mp4');
+            $job->handle();
+
+            $fresh = Video::find($video->id);
+
+            $this->assertNotNull($fresh);
+            $this->assertSame($status, $fresh->status);
+            $this->assertSame($status, $fresh->stage);
+            $this->assertSame($video->progress, $fresh->progress);
+            $this->assertSame($video->disk_prefix, $fresh->disk_prefix);
+            $this->assertSame($video->playlist_path, $fresh->playlist_path);
+        }
     }
 }
