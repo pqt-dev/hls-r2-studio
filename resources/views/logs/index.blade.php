@@ -88,8 +88,8 @@
                                     <stop offset="100%" stop-color="#f97316" />
                                 </linearGradient>
                             </defs>
-                            <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" stroke-width="8" />
-                            <circle cx="50" cy="50" r="42" fill="none" stroke="url(#live-ring-gradient)" stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - $overallPercent }}" class="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-500" data-live-ring-arc />
+                            <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" stroke-width="5" />
+                            <circle cx="50" cy="50" r="42" fill="none" stroke="url(#live-ring-gradient)" stroke-width="5" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - $overallPercent }}" class="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-500" data-live-ring-arc />
                         </svg>
                         <div class="absolute inset-0 flex flex-col items-center justify-center">
                             <div class="text-lg font-extrabold leading-none tabular-nums whitespace-nowrap"><span data-overall-current>{{ $processingVideos->isEmpty() ? 0 : 1 }}</span> of <span data-overall-total>{{ $processingCount }}</span></div>

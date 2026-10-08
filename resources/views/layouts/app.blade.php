@@ -158,7 +158,7 @@
        style="right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom));">
         <span class="ip-ring-glow" aria-hidden="true"></span>
         <svg class="ip-ring-spin absolute inset-0 h-full w-full" viewBox="0 0 72 72" fill="none" aria-hidden="true">
-            <circle cx="36" cy="36" r="34" stroke="rgb(255 255 255 / 0.55)" stroke-width="2" stroke-linecap="round" stroke-dasharray="36 178" />
+            <circle cx="36" cy="36" r="34" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-dasharray="36 178" />
         </svg>
         <svg class="absolute inset-0 h-full w-full -rotate-90" viewBox="0 0 72 72" fill="none" aria-hidden="true">
             <defs>
@@ -167,8 +167,8 @@
                     <stop offset="1" stop-color="#f97316" />
                 </linearGradient>
             </defs>
-            <circle cx="36" cy="36" r="30" stroke="rgb(255 255 255 / 0.15)" stroke-width="5" />
-            <circle cx="36" cy="36" r="30" class="ip-ring-progress" stroke-width="5" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" data-ring-progress />
+            <circle cx="36" cy="36" r="30" stroke="#e2e8f0" stroke-width="3" />
+            <circle cx="36" cy="36" r="30" class="ip-ring-progress" stroke-width="3" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" data-ring-progress />
         </svg>
         <span class="ip-ring-label relative text-[11px] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap sm:text-[13px]" aria-hidden="true" data-ring-label></span>
         <svg class="ip-ring-check relative h-7 w-7 sm:h-8 sm:w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
