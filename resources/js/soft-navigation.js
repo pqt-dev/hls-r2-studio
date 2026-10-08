@@ -156,6 +156,16 @@ async function performSwap(url, { push, nav }, token) {
     scripts.forEach(injectScript);
 }
 
+function isSoftNavTarget(link, nav) {
+    if (link.hasAttribute('data-soft-nav')) {
+        return true;
+    }
+
+    return nav.contains(link)
+        || Boolean(link.closest('main'))
+        || Boolean(link.closest('#in-progress-ring, [data-in-progress-ring]'));
+}
+
 function shouldIntercept(event, link) {
     if (event.defaultPrevented || event.button !== 0) {
         return false;
@@ -165,7 +175,7 @@ function shouldIntercept(event, link) {
         return false;
     }
 
-    if (link.hasAttribute('download')) {
+    if (link.hasAttribute('download') || link.hasAttribute('data-no-soft-nav')) {
         return false;
     }
 
@@ -177,28 +187,60 @@ function shouldIntercept(event, link) {
         return false;
     }
 
-    return !(link.getAttribute('href') || '').startsWith('#');
+    const href = (link.getAttribute('href') || '').trim();
+
+    if (href.startsWith('#') || /^(mailto:|tel:|javascript:)/i.test(href)) {
+        return false;
+    }
+
+    return true;
+}
+
+let initialized = false;
+
+function withoutHash(url) {
+    return url.split('#')[0];
 }
 
 export default function initSoftNavigation() {
     const nav = document.querySelector('aside nav');
 
-    if (!nav) {
+    if (!nav || initialized) {
         return;
     }
 
-    nav.addEventListener('click', function (event) {
-        const link = event.target.closest('a[href]');
+    initialized = true;
 
-        if (!link || !nav.contains(link) || !shouldIntercept(event, link)) {
+    // Delegated on document so links outside the sidebar (the floating progress
+    // ring, links inside <main>, pagination...) also avoid a full page load,
+    // which would fire beforeunload and abort a running upload.
+    document.addEventListener('click', function (event) {
+        const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+
+        if (!link || !isSoftNavTarget(link, nav) || !shouldIntercept(event, link)) {
             return;
         }
 
         event.preventDefault();
+
+        // Same URL (including query/hash): nothing to load and no duplicate history entry.
+        if (link.href === window.location.href) {
+            return;
+        }
+
+        loadedUrl = withoutHash(link.href);
         swap(link.href, { push: true, nav: nav });
     });
 
+    let loadedUrl = withoutHash(window.location.href);
+
     window.addEventListener('popstate', function () {
+        // Fragment-only changes (#anchor) do not need a page swap.
+        if (withoutHash(window.location.href) === loadedUrl) {
+            return;
+        }
+
+        loadedUrl = withoutHash(window.location.href);
         swap(window.location.href, { push: false, nav: nav });
     });
 }
