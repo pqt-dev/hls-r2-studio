@@ -8,39 +8,47 @@
     <div id="logs-content">
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5 mb-3.5">
             <x-ui.card>
-                <x-ui.card-content>
-                    <div class="w-11 h-11 rounded-full flex items-center justify-center bg-muted mb-3">
-                        <x-lucide-upload class="w-5 h-5 text-foreground" />
+                <x-ui.card-content class="flex items-center gap-4 p-4">
+                    <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center shrink-0">
+                        <x-lucide-upload class="w-5 h-5 text-slate-700 stroke-[1.75]" />
                     </div>
-                    <div class="text-2xl font-semibold text-foreground leading-tight">{{ $totalCount }}</div>
-                    <div class="text-sm text-muted-foreground mt-1">Total Uploads</div>
+                    <div class="min-w-0">
+                        <div class="text-2xl font-semibold text-foreground leading-tight">{{ $totalCount }}</div>
+                        <div class="text-sm text-muted-foreground mt-1">Total Uploads</div>
+                    </div>
                 </x-ui.card-content>
             </x-ui.card>
             <x-ui.card>
-                <x-ui.card-content>
-                    <div class="w-11 h-11 rounded-full flex items-center justify-center bg-emerald-50 mb-3">
-                        <x-lucide-circle-check class="w-5 h-5 text-emerald-600" />
+                <x-ui.card-content class="flex items-center gap-4 p-4">
+                    <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 ring-1 ring-inset ring-emerald-200/70 flex items-center justify-center shrink-0">
+                        <x-lucide-badge-check class="w-5 h-5 text-emerald-600 stroke-[1.75]" />
                     </div>
-                    <div class="text-2xl font-semibold text-foreground leading-tight">{{ $successCount }}</div>
-                    <div class="text-sm text-muted-foreground mt-1">Successful</div>
+                    <div class="min-w-0">
+                        <div class="text-2xl font-semibold text-foreground leading-tight">{{ $successCount }}</div>
+                        <div class="text-sm text-muted-foreground mt-1">Successful</div>
+                    </div>
                 </x-ui.card-content>
             </x-ui.card>
             <x-ui.card>
-                <x-ui.card-content>
-                    <div class="w-11 h-11 rounded-full flex items-center justify-center bg-amber-50 mb-3">
-                        <x-lucide-loader-circle class="w-5 h-5 text-amber-600" />
+                <x-ui.card-content class="flex items-center gap-4 p-4">
+                    <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-amber-50 to-amber-100 ring-1 ring-inset ring-amber-200/70 flex items-center justify-center shrink-0">
+                        <x-lucide-hourglass class="w-5 h-5 text-amber-600 stroke-[1.75] {{ $processingCount > 0 ? 'motion-safe:animate-pulse' : '' }}" />
                     </div>
-                    <div class="text-2xl font-semibold text-foreground leading-tight">{{ $processingCount }}</div>
-                    <div class="text-sm text-muted-foreground mt-1">Processing</div>
+                    <div class="min-w-0">
+                        <div class="text-2xl font-semibold text-foreground leading-tight">{{ $processingCount }}</div>
+                        <div class="text-sm text-muted-foreground mt-1">Processing</div>
+                    </div>
                 </x-ui.card-content>
             </x-ui.card>
             <x-ui.card>
-                <x-ui.card-content>
-                    <div class="w-11 h-11 rounded-full flex items-center justify-center bg-rose-50 mb-3">
-                        <x-lucide-circle-x class="w-5 h-5 text-rose-600" />
+                <x-ui.card-content class="flex items-center gap-4 p-4">
+                    <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-rose-50 to-rose-100 ring-1 ring-inset ring-rose-200/70 flex items-center justify-center shrink-0">
+                        <x-lucide-triangle-alert class="w-5 h-5 text-rose-600 stroke-[1.75]" />
                     </div>
-                    <div class="text-2xl font-semibold text-foreground leading-tight">{{ $errorCount }}</div>
-                    <div class="text-sm text-muted-foreground mt-1">Failed</div>
+                    <div class="min-w-0">
+                        <div class="text-2xl font-semibold text-foreground leading-tight">{{ $errorCount }}</div>
+                        <div class="text-sm text-muted-foreground mt-1">Failed</div>
+                    </div>
                 </x-ui.card-content>
             </x-ui.card>
         </div>
@@ -137,7 +145,7 @@
                                     <div class="text-xs text-slate-500 truncate {{ $dim }}">{{ $video->original_filename }}</div>
                                 @endif
                                 <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 {{ $isQueued ? 'bg-sky-100 text-sky-700 ring-sky-300' : $badgeColor }}">{{ $badge }}</span>
+                                    <span class="inline-flex items-center rounded-md px-2 py-0.5 text-xs font-semibold ring-1 {{ $isQueued ? 'bg-sky-100 text-sky-700 ring-sky-300' : $badgeColor }}">{{ $badge }}</span>
                                     @if ($stage !== $badge)
                                         <span class="text-xs text-slate-600 {{ $dim }}" data-video-stage>{{ $stage }}</span>
                                     @endif
@@ -161,19 +169,21 @@
             </div>
 
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
-            <x-ui.card class="overflow-hidden">
-                <div class="bg-rose-600 px-4 py-2.5 flex items-center justify-between">
-                    <h3 class="text-sm font-semibold text-white inline-flex items-center gap-2"><x-lucide-circle-x class="w-4 h-4" /> Error Logs</h3>
-                    <span class="text-xs font-semibold text-white/90">{{ $errorCount }}</span>
+            <x-ui.card class="overflow-hidden border-t-2 border-t-rose-500">
+                <div class="px-4 py-2.5 flex items-center justify-between border-b bg-rose-50/60 border-rose-100">
+                    <h3 class="text-sm font-semibold inline-flex items-center gap-2 text-rose-800"><x-lucide-triangle-alert class="w-4 h-4 stroke-[1.75] text-rose-600" /> Error Logs</h3>
+                    <span class="rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset bg-white text-rose-700 ring-rose-200">{{ $errorCount }}</span>
                 </div>
                 <div class="divide-y divide-border" data-log-list="error">
                     @forelse ($errorLogs as $log)
                         <div class="px-4 py-3" data-log-id="{{ $log->id }}">
                             <div class="flex items-center justify-between gap-2">
                                 <div class="min-w-0 font-medium text-foreground text-sm truncate">{{ $log->title }}</div>
-                                <div class="text-xs text-muted-foreground whitespace-nowrap shrink-0" title="Failed at">Failed {{ ($log->failed_at ?? $log->updated_at)->toDisplay() }}</div>
+                                <div class="text-xs text-muted-foreground whitespace-nowrap shrink-0" title="Failed at">Failed {{ ($log->failed_at ?? $log->updated_at)->toDisplay('j M Y, H:i') }}</div>
                             </div>
-                            <div class="text-xs text-muted-foreground truncate">{{ $log->original_filename }}</div>
+                            @if ($log->original_filename !== $log->title)
+                                <div class="text-xs text-muted-foreground truncate">{{ $log->original_filename }}</div>
+                            @endif
                             @if ($log->error_message)
                                 <div class="text-xs text-rose-600 mt-1 line-clamp-3 break-words">{{ $log->error_message }}</div>
                             @endif
@@ -193,20 +203,22 @@
                 @endif
             </x-ui.card>
 
-            <x-ui.card class="overflow-hidden">
-                <div class="bg-emerald-600 px-4 py-2.5 flex items-center justify-between">
-                    <h3 class="text-sm font-semibold text-white inline-flex items-center gap-2"><x-lucide-circle-check class="w-4 h-4" /> Success Logs</h3>
-                    <span class="text-xs font-semibold text-white/90">{{ $successCount }}</span>
+            <x-ui.card class="overflow-hidden border-t-2 border-t-emerald-500">
+                <div class="px-4 py-2.5 flex items-center justify-between border-b bg-emerald-50/60 border-emerald-100">
+                    <h3 class="text-sm font-semibold inline-flex items-center gap-2 text-emerald-800"><x-lucide-badge-check class="w-4 h-4 stroke-[1.75] text-emerald-600" /> Success Logs</h3>
+                    <span class="rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset bg-white text-emerald-700 ring-emerald-200">{{ $successCount }}</span>
                 </div>
                 <div class="divide-y divide-border" data-log-list="success">
                     @forelse ($successLogs as $log)
-                        <div class="px-4 py-3" data-log-id="{{ $log->id }}">
-                            <div class="flex items-center justify-between gap-2">
-                                <div class="min-w-0 font-medium text-foreground text-sm truncate">{{ $log->title }}</div>
-                                <div class="text-xs text-muted-foreground whitespace-nowrap shrink-0">{{ $log->created_at->toDisplay() }}</div>
+                        <div class="px-4 py-3 flex items-center justify-between gap-3" data-log-id="{{ $log->id }}">
+                            <div class="min-w-0">
+                                <div class="font-medium text-foreground text-sm truncate">{{ $log->title }}</div>
+                                @if ($log->original_filename !== $log->title)
+                                    <div class="text-xs text-muted-foreground truncate">{{ $log->original_filename }}</div>
+                                @endif
+                                <div class="text-xs text-muted-foreground">{{ $log->created_at->toDisplay('j M Y, H:i') }}</div>
                             </div>
-                            <div class="text-xs text-muted-foreground truncate">{{ $log->original_filename }}</div>
-                            <a href="{{ route('videos.index') }}" class="text-xs font-medium text-emerald-700 hover:underline">View in list</a>
+                            <x-ui.button variant="outline" size="sm" :href="route('videos.index')" class="shrink-0">View in list <x-lucide-arrow-right class="w-3.5 h-3.5" /></x-ui.button>
                         </div>
                     @empty
                         <div class="px-4 py-6 text-center text-sm text-muted-foreground">No success logs.</div>
@@ -412,7 +424,7 @@
                 const meta = document.createElement('div');
                 meta.className = 'mt-1 flex flex-wrap items-center gap-x-2 gap-y-1';
                 const badge = document.createElement('span');
-                badge.className = 'inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-300';
+                badge.className = 'inline-flex items-center rounded-md bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-300';
                 badge.textContent = 'Uploading';
                 const label = document.createElement('span');
                 label.className = 'text-xs text-slate-600';

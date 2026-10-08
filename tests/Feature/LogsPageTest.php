@@ -230,8 +230,8 @@ class LogsPageTest extends TestCase
         $card = $this->errorCard($this->get('/logs')->assertOk()->getContent());
 
         $this->assertStringContainsString('title="Failed at"', $card);
-        $this->assertStringContainsString($video->failed_at->toDisplay(), $card);
-        $this->assertStringNotContainsString($video->created_at->toDisplay(), $card);
+        $this->assertStringContainsString($video->failed_at->toDisplay('j M Y, H:i'), $card);
+        $this->assertStringNotContainsString($video->created_at->toDisplay('j M Y, H:i'), $card);
     }
 
     public function test_error_list_is_ordered_by_most_recently_failed_not_created(): void
