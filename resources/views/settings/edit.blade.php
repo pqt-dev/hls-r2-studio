@@ -6,16 +6,14 @@
 
 @section('content')
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
-        <x-ui.card class="min-w-0">
-            <x-ui.card-header>
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-sky-100 flex items-center justify-center shrink-0">
-                        <x-lucide-key-round class="w-4 h-4 text-sky-600" />
-                    </div>
-                    <x-ui.card-title class="text-lg">Change Password</x-ui.card-title>
+        <x-ui.card class="min-w-0 overflow-hidden">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-sky-100 ring-1 ring-inset ring-sky-200/70 flex items-center justify-center shrink-0">
+                    <x-lucide-key-round class="w-4 h-4 text-sky-600 stroke-[1.75]" />
                 </div>
-            </x-ui.card-header>
-            <x-ui.card-content>
+                <h3 class="text-sm font-semibold text-foreground">Change Password</h3>
+            </div>
+            <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.password') }}" class="space-y-5">
                     @csrf
                     @method('PUT')
@@ -41,23 +39,21 @@
                         <x-ui.input type="password" name="password_confirmation" id="password_confirmation" />
                     </div>
 
-                    <x-ui.button type="submit">
-                        Change password
-                    </x-ui.button>
+                    <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end">
+                        <x-ui.button type="submit" class="max-md:w-full">Change password</x-ui.button>
+                    </div>
                 </form>
             </x-ui.card-content>
         </x-ui.card>
 
-        <x-ui.card class="min-w-0">
-            <x-ui.card-header>
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
-                        <x-lucide-cloud class="w-4 h-4 text-orange-600" />
-                    </div>
-                    <x-ui.card-title class="text-lg">Cloudflare R2 Configuration</x-ui.card-title>
+        <x-ui.card class="min-w-0 overflow-hidden">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 ring-1 ring-inset ring-orange-200/70 flex items-center justify-center shrink-0">
+                    <x-lucide-cloud class="w-4 h-4 text-orange-600 stroke-[1.75]" />
                 </div>
-            </x-ui.card-header>
-            <x-ui.card-content>
+                <h3 class="text-sm font-semibold text-foreground">Cloudflare R2 Configuration</h3>
+            </div>
+            <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.r2') }}" class="space-y-5">
                     @csrf
                     @method('PUT')
@@ -118,23 +114,21 @@
                         </label>
                     </div>
 
-                    <x-ui.button type="submit">
-                        Save R2 configuration
-                    </x-ui.button>
+                    <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end">
+                        <x-ui.button type="submit" class="max-md:w-full">Save R2 configuration</x-ui.button>
+                    </div>
                 </form>
             </x-ui.card-content>
         </x-ui.card>
 
-        <x-ui.card class="min-w-0">
-            <x-ui.card-header>
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-muted flex items-center justify-center shrink-0">
-                        <x-lucide-video class="w-4 h-4 text-foreground" />
-                    </div>
-                    <x-ui.card-title class="text-lg">HLS Transcoding Options</x-ui.card-title>
+        <x-ui.card class="min-w-0 overflow-hidden">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center shrink-0">
+                    <x-lucide-film class="w-4 h-4 text-slate-700 stroke-[1.75]" />
                 </div>
-            </x-ui.card-header>
-            <x-ui.card-content>
+                <h3 class="text-sm font-semibold text-foreground">HLS Transcoding Options</h3>
+            </div>
+            <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.transcode') }}" class="space-y-5">
                     @csrf
                     @method('PUT')
@@ -170,23 +164,21 @@
                         @enderror
                     </div>
 
-                    <x-ui.button type="submit">
-                        Save transcoding options
-                    </x-ui.button>
+                    <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end">
+                        <x-ui.button type="submit" class="max-md:w-full">Save transcoding options</x-ui.button>
+                    </div>
                 </form>
             </x-ui.card-content>
         </x-ui.card>
 
-        <x-ui.card class="min-w-0">
-            <x-ui.card-header>
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                        <x-lucide-sliders-horizontal class="w-4 h-4 text-violet-600" />
-                    </div>
-                    <x-ui.card-title class="text-lg">Other Options</x-ui.card-title>
+        <x-ui.card class="min-w-0 overflow-hidden">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center shrink-0">
+                    <x-lucide-sliders-horizontal class="w-4 h-4 text-slate-600 stroke-[1.75]" />
                 </div>
-            </x-ui.card-header>
-            <x-ui.card-content>
+                <h3 class="text-sm font-semibold text-foreground">Other Options</h3>
+            </div>
+            <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.display') }}" class="space-y-5">
                     @csrf
                     @method('PUT')
@@ -218,23 +210,21 @@
                         @enderror
                     </div>
 
-                    <x-ui.button type="submit">
-                        Save other options
-                    </x-ui.button>
+                    <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end">
+                        <x-ui.button type="submit" class="max-md:w-full">Save other options</x-ui.button>
+                    </div>
                 </form>
             </x-ui.card-content>
         </x-ui.card>
 
-        <x-ui.card class="min-w-0">
-            <x-ui.card-header>
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
-                        <x-lucide-shield-check class="w-4 h-4 text-violet-600" />
-                    </div>
-                    <x-ui.card-title class="text-lg">Embed protection</x-ui.card-title>
+        <x-ui.card class="min-w-0 overflow-hidden">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-50 to-emerald-100 ring-1 ring-inset ring-emerald-200/70 flex items-center justify-center shrink-0">
+                    <x-lucide-shield-check class="w-4 h-4 text-emerald-600 stroke-[1.75]" />
                 </div>
-            </x-ui.card-header>
-            <x-ui.card-content>
+                <h3 class="text-sm font-semibold text-foreground">Embed protection</h3>
+            </div>
+            <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.embed') }}" class="space-y-5">
                     @csrf
                     @method('PUT')
@@ -248,9 +238,9 @@
                         @enderror
                     </div>
 
-                    <x-ui.button type="submit">
-                        Save embed protection
-                    </x-ui.button>
+                    <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end">
+                        <x-ui.button type="submit" class="max-md:w-full">Save embed protection</x-ui.button>
+                    </div>
                 </form>
             </x-ui.card-content>
         </x-ui.card>
