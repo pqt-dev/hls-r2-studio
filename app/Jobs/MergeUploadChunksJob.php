@@ -15,8 +15,8 @@ use Throwable;
 
 /**
  * Assembles the chunks of a finished chunked upload into the original file on
- * its own queue (config 'videos.merge_queue'), then hands the video over to
- * TranscodeVideoJob. The video stays 'pending' (stage 'merging') meanwhile.
+ * the queue, then hands the video over to TranscodeVideoJob. The video stays
+ * 'pending' (stage 'merging') meanwhile.
  */
 class MergeUploadChunksJob implements ShouldQueue
 {
@@ -33,9 +33,7 @@ class MergeUploadChunksJob implements ShouldQueue
         public int $videoId,
         public string $localUploadPath,
         public string $uploadId,
-    ) {
-        $this->onQueue(config('videos.merge_queue'));
-    }
+    ) {}
 
     public function handle(): void
     {

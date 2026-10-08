@@ -121,24 +121,10 @@ class ChunkedUploadTest extends TestCase
         $this->assertSame(VideoProgress::overall('queued', 0, strlen($content), true), $video->progress);
 
         Queue::assertNotPushed(TranscodeVideoJob::class);
-        Queue::assertPushedOn('default', MergeUploadChunksJob::class, fn (MergeUploadChunksJob $job) => $job->videoId === $video->id
+        Queue::assertPushed(MergeUploadChunksJob::class, fn (MergeUploadChunksJob $job) => $job->videoId === $video->id
             && $job->uploadId === $uploadId
             && str_starts_with($job->localUploadPath, Storage::disk('local')->path('uploads/'))
             && str_ends_with($job->localUploadPath, '.mp4'));
-    }
-
-    public function test_complete_pushes_the_merge_job_to_the_configured_queue(): void
-    {
-        Queue::fake();
-        config(['videos.merge_queue' => 'uploads']);
-
-        $content = $this->videoBytes(1000);
-        $uploadId = $this->initUpload('movie.mp4', strlen($content));
-        $this->sendChunk($uploadId, 0, $content)->assertOk();
-
-        $this->completeUpload($uploadId, 'movie.mp4', strlen($content))->assertOk();
-
-        Queue::assertPushedOn('uploads', MergeUploadChunksJob::class);
     }
 
     public function test_resending_the_same_chunk_does_not_duplicate_data(): void

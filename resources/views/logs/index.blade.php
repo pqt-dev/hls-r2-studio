@@ -110,7 +110,7 @@
                             @for ($i = 0; $i < $processingCount; $i++)
                                 @php($fill = $segmentFill($i))
                                 <div class="relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/15" data-live-segment>
-                                    <div class="live-seg-fill progress-stripes h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 motion-safe:transition-[width] motion-safe:duration-300" style="width: {{ $fill }}%"></div>
+                                    <div class="progress-stripes h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 motion-safe:transition-[width] motion-safe:duration-300" style="width: {{ $fill }}%"></div>
                                 </div>
                             @endfor
                         </div>
@@ -337,8 +337,8 @@
             let lastProgressAt = 0;
 
             const SEGMENT_TRACK = 'relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/15';
-            const SEGMENT_DONE = 'live-seg-fill h-full rounded-full bg-emerald-400 motion-safe:transition-[width] motion-safe:duration-300';
-            const SEGMENT_RUNNING = 'live-seg-fill progress-stripes h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 motion-safe:transition-[width] motion-safe:duration-300';
+            const SEGMENT_DONE = 'h-full rounded-full bg-emerald-400 motion-safe:transition-[width] motion-safe:duration-300';
+            const SEGMENT_RUNNING = 'progress-stripes h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 motion-safe:transition-[width] motion-safe:duration-300';
             let lastAnnounceKey = null;
 
             function setBar(bar, percent) {

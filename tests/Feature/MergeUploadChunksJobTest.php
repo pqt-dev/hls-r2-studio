@@ -106,15 +106,6 @@ class MergeUploadChunksJobTest extends TestCase
             && $job->queue === null);
     }
 
-    public function test_the_merge_queue_defaults_to_default_and_is_configurable(): void
-    {
-        $this->assertSame('default', (new MergeUploadChunksJob(1, '/x', self::UPLOAD_ID))->queue);
-
-        config(['videos.merge_queue' => 'uploads']);
-
-        $this->assertSame('uploads', (new MergeUploadChunksJob(1, '/x', self::UPLOAD_ID))->queue);
-    }
-
     public function test_the_claim_makes_a_second_run_a_no_op(): void
     {
         $content = $this->videoBytes(1000);
