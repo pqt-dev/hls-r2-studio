@@ -93,10 +93,6 @@
         animation: live-shimmer 1.4s ease-in-out infinite;
     }
 
-    .live-dot {
-        animation: live-pulse 1.4s ease-in-out infinite;
-    }
-
     .progress-stripes {
         background-image: linear-gradient(
             45deg,
@@ -137,7 +133,6 @@
             opacity: 0.5;
         }
 
-        .live-dot,
         .progress-stripes {
             animation: none;
         }
@@ -194,16 +189,6 @@
     }
     to {
         transform: translateX(250%);
-    }
-}
-
-@keyframes live-pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.3;
     }
 }
 
@@ -346,6 +331,29 @@
     .ip-ring-spin,
     .ip-ring-check {
         animation: none !important;
+    }
+}
+
+/* Indeterminate bar inside the delete progress card (#delete-overlay in videos/index.blade.php). */
+.indeterminate-bar {
+    width: 40%;
+    animation: indeterminate-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes indeterminate-slide {
+    from {
+        transform: translateX(-100%);
+    }
+    to {
+        transform: translateX(250%);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .indeterminate-bar {
+        width: 100%;
+        animation: none;
+        opacity: 0.6;
     }
 }
 

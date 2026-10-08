@@ -223,6 +223,21 @@
             </x-ui.dialog-footer>
         </form>
     </x-ui.dialog>
+
+    <div id="delete-overlay" class="hidden fixed inset-0 z-[70] items-center justify-center bg-black/30" role="status" aria-live="polite">
+        <div class="w-full max-w-sm mx-4 rounded-lg border border-border bg-background text-foreground shadow-lg p-5">
+            <div class="flex items-center gap-3">
+                <x-lucide-loader-circle class="w-6 h-6 shrink-0 text-foreground animate-spin" />
+                <div class="min-w-0">
+                    <p id="delete-overlay-label" class="text-sm font-medium text-foreground">Deleting video...</p>
+                    <p class="mt-0.5 text-xs text-muted-foreground">This may take a moment.</p>
+                </div>
+            </div>
+            <div class="mt-4 h-1.5 w-full overflow-hidden rounded-full bg-secondary" aria-hidden="true">
+                <div class="indeterminate-bar h-full rounded-full bg-primary"></div>
+            </div>
+        </div>
+    </div>
 @endsection
 
 @push('scripts')
@@ -241,14 +256,27 @@
                     danger: true
                 }).then(function (ok) {
                     if (!ok) return;
-                    const btn = form.querySelector('button[type="submit"]');
-                    btn.disabled = true;
-                    btn.textContent = 'Deleting...';
-                    btn.classList.add('opacity-60', 'cursor-not-allowed');
+                    showDeleteOverlay('Deleting video...');
                     form.submit();
                 });
                 return false;
             }
+
+            // Full-screen blocking overlay shown until the delete form navigates away.
+            function showDeleteOverlay(text) {
+                const overlay = document.getElementById('delete-overlay');
+                document.getElementById('delete-overlay-label').textContent = text;
+                overlay.classList.remove('hidden');
+                overlay.classList.add('flex');
+            }
+
+            // Restore the page when it is shown again from the back/forward cache.
+            window.addEventListener('pageshow', function (event) {
+                if (!event.persisted) return;
+                const overlay = document.getElementById('delete-overlay');
+                overlay.classList.add('hidden');
+                overlay.classList.remove('flex');
+            });
 
             let embedModalState = null;
 
@@ -694,6 +722,7 @@
                 const message = @json($deleteFromR2 ? 'Delete {COUNT} videos? The files on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete {COUNT} videos?');
                 window.confirmDialog({ title: 'Delete videos', message: message.replace('{COUNT}', count), confirmText: 'Delete', danger: true }).then(function (ok) {
                     if (!ok) return;
+                    showDeleteOverlay('Deleting ' + count + ' videos...');
                     document.getElementById('bulk-delete-form').submit();
                 });
                 return false;
