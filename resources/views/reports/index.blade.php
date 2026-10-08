@@ -69,24 +69,29 @@
             <x-lucide-circle-x class="w-4 h-4 shrink-0" />
             <span id="reports-error-banner-message"></span>
         </div>
-        <button type="button" id="reports-error-banner-close" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" aria-label="Dismiss">
+        <button type="button" id="reports-error-banner-close" class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-destructive transition-colors hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50" aria-label="Dismiss">
             <x-lucide-x class="w-4 h-4" />
         </button>
     </x-ui.alert>
 
     @if ($reports->isEmpty())
         <div class="rounded-lg border border-dashed border-input bg-background p-10 text-center text-muted-foreground">
+            <div class="mx-auto mb-3 w-11 h-11 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center"><x-lucide-flag class="w-5 h-5 text-slate-700 stroke-[1.75]" /></div>
             No reports found.
         </div>
     @else
         <x-ui.card class="overflow-x-auto">
+            <div class="px-4 py-2.5 flex items-center justify-between border-b border-border bg-muted/40">
+                <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-flag class="w-4 h-4 stroke-[1.75] text-slate-600" /> Reports</h3>
+                <span class="rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset bg-white text-slate-700 ring-slate-200">{{ $reports->total() }}</span>
+            </div>
             {{-- mobile-card:start (below md the table is restyled as stacked cards via max-md:* classes) --}}
             <x-ui.table class="max-md:block">
                 <x-ui.table-header class="max-md:hidden">
                     <x-ui.table-row :hover="false">
                         <x-ui.table-head>Page URL</x-ui.table-head>
-                        <x-ui.table-head class="hidden md:table-cell">Reason</x-ui.table-head>
-                        <x-ui.table-head class="hidden md:table-cell">Note</x-ui.table-head>
+                        <x-ui.table-head class="hidden xl:table-cell">Reason</x-ui.table-head>
+                        <x-ui.table-head class="hidden xl:table-cell">Note</x-ui.table-head>
                         <x-ui.table-head>Status</x-ui.table-head>
                         <x-ui.table-head class="hidden md:table-cell">Reports</x-ui.table-head>
                         <x-ui.table-head class="hidden md:table-cell">Reported At</x-ui.table-head>
@@ -97,62 +102,61 @@
                     @foreach ($reports as $report)
                         @php
                             $badge = match ($report->status) {
-                                'new' => ['outline', 'New'],
-                                'resolved' => ['success', 'Resolved'],
-                                default => ['secondary', $report->status],
+                                'new' => ['bg-amber-100 text-amber-700 ring-amber-300', 'New'],
+                                'resolved' => ['bg-emerald-100 text-emerald-700 ring-emerald-300', 'Resolved'],
+                                default => ['bg-slate-100 text-slate-700 ring-slate-300', $report->status],
                             };
                         @endphp
                         <x-ui.table-row data-report-row="{{ $report->id }}" class="max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:items-start max-md:gap-x-3 max-md:gap-y-2 max-md:p-3">
                             <x-ui.table-cell class="max-w-[10rem] md:max-w-xs truncate max-md:col-start-1 max-md:row-start-1 max-md:min-w-0 max-md:max-w-none max-md:whitespace-normal max-md:break-all max-md:p-0">
-                                <a href="{{ $report->page_url }}" target="_blank" rel="noopener noreferrer" title="{{ $report->page_url }}" class="underline {{ $report->report_count >= 5 ? 'text-destructive font-semibold' : 'text-emerald-700' }}">{{ $report->page_url }}</a>
+                                <a href="{{ $report->page_url }}" target="_blank" rel="noopener noreferrer" title="{{ $report->page_url }}" class="text-foreground hover:underline">{{ $report->page_url }}</a>
                                 @if ($report->related_count > 0)
                                     <span class="ml-1 text-xs text-muted-foreground" title="{{ $report->related_count }} other report(s) on record for this exact page URL (including past resolved incidents)">↻ {{ $report->related_count }}</span>
                                 @endif
+                                <div class="hidden md:block xl:hidden text-xs text-muted-foreground mt-0.5 truncate">{{ \App\Models\Report::REASONS[$report->reason] ?? ($report->reason ?? '—') }}</div>
                                 @if ($report->video)
                                     <div class="text-xs mt-0.5">
-                                        <a href="{{ route('videos.index', ['search' => $report->video->title]) }}" class="text-muted-foreground hover:text-foreground underline">
+                                        <a href="{{ route('videos.index', ['search' => $report->video->title]) }}" class="text-muted-foreground hover:text-foreground hover:underline">
                                             {{ $report->video->title }}
                                         </a>
                                     </div>
                                 @endif
                             </x-ui.table-cell>
-                            <x-ui.table-cell class="hidden md:table-cell text-muted-foreground max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-muted-foreground max-md:text-right max-md:before:content-['Reason']">{{ \App\Models\Report::REASONS[$report->reason] ?? ($report->reason ?? '—') }}</x-ui.table-cell>
-                            <x-ui.table-cell class="hidden md:table-cell text-muted-foreground max-w-xs truncate max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-muted-foreground max-md:max-w-none max-md:whitespace-normal max-md:break-words max-md:text-right max-md:before:content-['Note'] max-md:empty:hidden" title="{{ $report->note }}">{{ $report->note }}</x-ui.table-cell>
+                            <x-ui.table-cell class="hidden xl:table-cell text-muted-foreground max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-muted-foreground max-md:text-right max-md:before:content-['Reason']">{{ \App\Models\Report::REASONS[$report->reason] ?? ($report->reason ?? '—') }}</x-ui.table-cell>
+                            <x-ui.table-cell class="hidden xl:table-cell text-muted-foreground max-w-xs truncate max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-muted-foreground max-md:max-w-none max-md:whitespace-normal max-md:break-words max-md:text-right max-md:before:content-['Note'] max-md:empty:hidden" title="{{ $report->note }}">{{ $report->note }}</x-ui.table-cell>
                             <x-ui.table-cell class="max-md:col-start-2 max-md:row-start-1 max-md:p-0" data-status-cell>
-                                <x-ui.badge :variant="$badge[0]">
-                                    {{ $badge[1] }}
-                                </x-ui.badge>
+                                <span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset whitespace-nowrap {{ $badge[0] }}">{{ $badge[1] }}</span>
                             </x-ui.table-cell>
                             <x-ui.table-cell class="hidden md:table-cell max-md:col-span-full max-md:flex max-md:items-start max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:shrink-0 max-md:before:text-muted-foreground max-md:items-center max-md:before:content-['Reports']">
                                 @if ($report->report_count >= 5)
-                                    <span title="5+ reports — high priority" class="inline-flex items-center gap-1 rounded-full bg-destructive px-2 py-1 text-xs font-semibold text-white">
+                                    <span title="5+ reports — high priority" class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-rose-50 text-rose-700 ring-rose-300">
                                         {{ $report->report_count }}
                                     </span>
                                 @elseif ($report->report_count >= 2)
-                                    <span title="2-4 reports — moderate" class="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-1 text-xs font-semibold text-yellow-800">
+                                    <span title="2-4 reports — moderate" class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-amber-100 text-amber-700 ring-amber-300">
                                         {{ $report->report_count }}
                                     </span>
                                 @else
-                                    <span title="1 report" class="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1 text-xs font-medium text-foreground">
+                                    <span title="1 report" class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset bg-slate-100 text-slate-700 ring-slate-300">
                                         {{ $report->report_count }}
                                     </span>
                                 @endif
                             </x-ui.table-cell>
                             <x-ui.table-cell class="hidden md:table-cell text-muted-foreground max-md:col-span-full max-md:p-0 max-md:text-xs max-md:before:mb-0.5 max-md:before:block max-md:before:text-muted-foreground max-md:before:content-['Reported']" data-reported-at-cell>
-                                {{ $report->created_at->toDisplay() }}
+                                {{ $report->created_at->toDisplay('j M Y, H:i') }}
                                 <div data-resolved-at-line class="text-xs text-muted-foreground" @if (! ($report->status === 'resolved' && $report->resolved_at)) style="display: none;" @endif>
-                                    Resolved: <span data-resolved-at-value>{{ $report->resolved_at?->toDisplay() }}</span>
+                                    Resolved: <span data-resolved-at-value>{{ $report->resolved_at?->toDisplay('j M Y, H:i') }}</span>
                                     @if ($report->resolvedBy)
                                         by {{ $report->resolvedBy->username }}
                                     @endif
                                 </div>
                                 @if ($report->report_count > 1 && $report->last_reported_at)
-                                    <div class="text-xs text-muted-foreground">Last reported: {{ $report->last_reported_at->toDisplay() }}</div>
+                                    <div class="text-xs text-muted-foreground">Last reported: {{ $report->last_reported_at->toDisplay('j M Y, H:i') }}</div>
                                 @endif
                             </x-ui.table-cell>
                             <x-ui.table-cell align="right" class="whitespace-nowrap max-md:col-span-full max-md:p-0 max-md:text-left" data-actions-cell>
                                 @if ($report->status === 'new')
-                                    <x-ui.button size="sm" class="js-mark-resolved max-md:min-h-10 max-md:w-full" data-report-id="{{ $report->id }}" data-url="{{ route('reports.resolve', $report) }}" data-page-url="{{ $report->page_url }}">
+                                    <x-ui.button variant="outline" size="sm" class="js-mark-resolved max-md:min-h-10 max-md:w-full" data-report-id="{{ $report->id }}" data-url="{{ route('reports.resolve', $report) }}" data-page-url="{{ $report->page_url }}">
                                         Mark resolved
                                     </x-ui.button>
                                 @endif
@@ -235,7 +239,7 @@
                             const row = button.closest('tr');
 
                             const statusCell = row.querySelector('[data-status-cell]');
-                            statusCell.innerHTML = '<span class="inline-flex w-fit items-center gap-1 rounded-md border border-transparent px-2 py-0.5 text-xs font-medium whitespace-nowrap bg-green-100 text-green-800">Resolved</span>';
+                            statusCell.innerHTML = '<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset whitespace-nowrap bg-emerald-100 text-emerald-700 ring-emerald-300">Resolved</span>';
 
                             const resolvedAtLine = row.querySelector('[data-resolved-at-line]');
                             resolvedAtLine.querySelector('[data-resolved-at-value]').textContent = data.resolved_at;

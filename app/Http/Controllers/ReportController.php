@@ -66,7 +66,7 @@ class ReportController extends Controller
         if ($request->wantsJson()) {
             return response()->json([
                 'success' => true,
-                'resolved_at' => $report->resolved_at->toDisplay(),
+                'resolved_at' => $report->resolved_at->toDisplay('j M Y, H:i'),
                 'resolved_by' => auth()->user()->username,
             ]);
         }
