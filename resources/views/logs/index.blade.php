@@ -49,24 +49,36 @@
         @php
                 $stageLabels = [
                     'queued' => 'Queued',
-                    'merging' => 'Merging chunks',
-                    'transcoding' => 'Transcoding',
-                    'generating_thumbnail' => 'Generating thumbnail',
-                    'generating_storyboard' => 'Generating storyboard',
-                    'uploading_r2' => 'Uploading to R2',
+                    'merging' => 'Merging chunks...',
+                    'transcoding' => 'Transcoding...',
+                    'generating_thumbnail' => 'Generating thumbnail...',
+                    'generating_storyboard' => 'Generating storyboard...',
+                    'uploading_r2' => 'Uploading to R2...',
                 ];
             @endphp
             @php
                 $rowProgress = fn ($video) => max(0, min(100, (int) $video->progress));
                 $overallPercent = (int) round($processingVideos->avg($rowProgress) ?? 0);
-                $firstVideo = $processingVideos->first();
                 $stageText = fn ($video) => $stageLabels[$video->stage] ?? ($video->stage ? str_replace('_', ' ', $video->stage) : 'Queued');
+                // Stage -> [bar fill, Processing badge] classes (full literals for Tailwind). Keep in sync with STAGE_BAR_CLASSES in videos/create.blade.php.
+                $stageColors = [
+                    'merging' => ['bg-gradient-to-r from-blue-400 to-indigo-500', 'bg-indigo-100 text-indigo-700 ring-indigo-300'],
+                    'transcoding' => ['bg-gradient-to-r from-violet-400 to-purple-500', 'bg-violet-100 text-violet-700 ring-violet-300'],
+                    'generating_thumbnail' => ['bg-gradient-to-r from-fuchsia-400 to-pink-500', 'bg-fuchsia-100 text-fuchsia-700 ring-fuchsia-300'],
+                    'generating_storyboard' => ['bg-gradient-to-r from-amber-400 to-orange-500', 'bg-orange-100 text-orange-700 ring-orange-300'],
+                    'uploading_r2' => ['bg-gradient-to-r from-lime-400 to-green-500', 'bg-green-100 text-green-700 ring-green-300'],
+                ];
+                $defaultStageColors = ['bg-gradient-to-r from-sky-400 to-blue-500', 'bg-blue-100 text-blue-700 ring-blue-300'];
+                $badgeText = fn ($video) => $video->status === 'pending' && $video->stage !== 'merging' ? 'Queued' : 'Processing';
                 $plural = $processingCount === 1 ? '' : 's';
-                $segmentFill = fn ($i) => $processingVideos->has($i) ? $rowProgress($processingVideos->values()[$i]) : 0;
+                $stageCounts = $processingVideos->map(fn ($video) => rtrim($stageText($video), '.'))->countBy();
+                $hiddenCount = $processingCount - $processingVideos->count();
+                $summaryText = $processingCount === 1
+                    ? ($processingVideos->isEmpty() ? '' : rtrim($stageText($processingVideos->first()), '.'))
+                    : $stageCounts->map(fn ($count, $label) => $count.' '.lcfirst($label))->values()->when($hiddenCount > 0, fn ($parts) => $parts->push('+'.$hiddenCount.' more'))->implode(' · ');
             @endphp
-            <div class="relative overflow-hidden rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 text-white shadow-lg ring-1 ring-white/10 mb-3.5" role="group" aria-label="Videos in progress" data-in-progress-card @if ($processingVideos->isEmpty()) hidden @endif>
+            <div class="relative overflow-hidden rounded-lg border border-border bg-card text-slate-900 shadow-sm mb-3.5" role="group" aria-label="Videos in progress" data-in-progress-card @if ($processingVideos->isEmpty()) hidden @endif>
                 <div class="live-shimmer h-0.5" aria-hidden="true"></div>
-                <div class="live-glow pointer-events-none absolute -top-16 -right-16 h-56 w-56 rounded-full bg-amber-500/30 blur-3xl" aria-hidden="true"></div>
                 <div class="relative flex flex-col items-center gap-5 p-5 sm:flex-row sm:items-center sm:gap-6">
                     <div class="relative h-24 w-24 shrink-0" role="progressbar" aria-label="Overall batch progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ $overallPercent }}" data-live-ring>
                         <svg viewBox="0 0 100 100" class="h-24 w-24 -rotate-90" aria-hidden="true">
@@ -76,73 +88,75 @@
                                     <stop offset="100%" stop-color="#f97316" />
                                 </linearGradient>
                             </defs>
-                            <circle cx="50" cy="50" r="42" fill="none" stroke="rgb(255 255 255 / 0.12)" stroke-width="8" />
+                            <circle cx="50" cy="50" r="42" fill="none" stroke="#e2e8f0" stroke-width="8" />
                             <circle cx="50" cy="50" r="42" fill="none" stroke="url(#live-ring-gradient)" stroke-width="8" stroke-linecap="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="{{ 100 - $overallPercent }}" class="motion-safe:transition-[stroke-dashoffset] motion-safe:duration-500" data-live-ring-arc />
                         </svg>
                         <div class="absolute inset-0 flex flex-col items-center justify-center">
-                            <div class="text-2xl font-semibold leading-none tabular-nums"><span data-overall-percent>{{ $overallPercent }}</span><span class="text-base">%</span></div>
-                            <div class="mt-1 text-[11px] font-medium leading-none text-slate-300 tabular-nums"><span data-overall-current>{{ $processingVideos->isEmpty() ? 0 : 1 }}</span>/<span data-overall-total>{{ $processingCount }}</span></div>
+                            <div class="text-lg font-extrabold leading-none tabular-nums whitespace-nowrap"><span data-overall-current>{{ $processingVideos->isEmpty() ? 0 : 1 }}</span> of <span data-overall-total>{{ $processingCount }}</span></div>
                         </div>
                     </div>
 
                     <div class="min-w-0 w-full flex-1 text-center sm:text-left">
                         <div class="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-                            <span class="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-200 ring-1 ring-red-400/30">
+                            <span class="inline-flex items-center gap-1.5 rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-red-600 ring-1 ring-red-200">
                                 <span class="relative inline-flex h-2 w-2">
                                     <span class="absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75 motion-safe:animate-ping"></span>
                                     <span class="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
                                 </span>
                                 Live
                                 <span class="flex h-3 items-end gap-px" aria-hidden="true">
-                                    <span class="live-eq w-0.5 rounded-sm bg-red-300" style="animation-delay: 0s"></span>
-                                    <span class="live-eq w-0.5 rounded-sm bg-red-300" style="animation-delay: -0.4s"></span>
-                                    <span class="live-eq w-0.5 rounded-sm bg-red-300" style="animation-delay: -0.8s"></span>
+                                    <span class="live-eq w-0.5 rounded-sm bg-red-400" style="animation-delay: 0s"></span>
+                                    <span class="live-eq w-0.5 rounded-sm bg-red-400" style="animation-delay: -0.4s"></span>
+                                    <span class="live-eq w-0.5 rounded-sm bg-red-400" style="animation-delay: -0.8s"></span>
                                 </span>
                             </span>
-                            <h3 class="text-base font-semibold" data-live-title>Processing {{ $processingCount }} video{{ $plural }}</h3>
+                            <h3 class="text-base font-semibold text-slate-900" data-live-title>Processing {{ $processingCount }} video{{ $plural }}</h3>
                         </div>
-                        <div class="mt-1.5 flex min-w-0 items-center justify-center gap-1.5 text-sm text-slate-300 sm:justify-start">
-                            <span class="truncate font-medium text-white" data-live-current-title>{{ $firstVideo?->title }}</span>
-                            <span aria-hidden="true">&middot;</span>
-                            <span class="shrink-0" data-live-current-stage>{{ $firstVideo ? $stageText($firstVideo) : '' }}</span>
-                        </div>
-                        <div class="mt-3 flex gap-1" data-live-segments>
-                            @for ($i = 0; $i < $processingCount; $i++)
-                                @php($fill = $segmentFill($i))
-                                <div class="relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/15" data-live-segment>
-                                    <div class="progress-stripes h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 motion-safe:transition-[width] motion-safe:duration-300" style="width: {{ $fill }}%"></div>
-                                </div>
-                            @endfor
-                        </div>
+                        <div class="mt-1.5 truncate text-sm text-slate-600" data-live-summary>{{ $summaryText }}</div>
                     </div>
                 </div>
                 <span class="sr-only" aria-live="polite" data-live-announce>Processing video 1 of {{ $processingCount }}, {{ $overallPercent }} percent</span>
 
-                <div class="relative divide-y divide-white/10 border-t border-white/10" data-log-list="processing">
+                <div class="relative divide-y divide-slate-200 border-t border-slate-200" data-log-list="processing">
                     @foreach ($processingVideos as $video)
-                        @php($percent = $rowProgress($video))
-                        <div class="px-5 py-3" data-video-id="{{ $video->id }}">
-                            <div class="flex items-center justify-between gap-2">
-                                <div class="min-w-0 font-medium text-white text-sm truncate" data-video-title>{{ $video->title }}</div>
-                                <div class="text-xs text-slate-400 whitespace-nowrap shrink-0">{{ $video->created_at->toDisplay() }}</div>
-                            </div>
-                            <div class="text-xs text-slate-400 truncate">{{ $video->original_filename }}</div>
-                            <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span class="inline-flex items-center rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-200">{{ $video->status === 'pending' && $video->stage !== 'merging' ? 'Queued' : 'Processing' }}</span>
-                                <span class="text-xs text-slate-300" data-video-stage>{{ $stageText($video) }}</span>
-                                <a href="{{ route('videos.create') }}" class="text-xs font-medium text-amber-300 hover:underline">View live progress</a>
-                            </div>
-                            <div class="mt-2 flex items-center gap-2">
-                                <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/15">
-                                    <div class="h-full rounded-full bg-amber-400 motion-safe:transition-[width] motion-safe:duration-300" style="width: {{ $percent }}%" data-video-bar></div>
+                        @php
+                            $badge = $badgeText($video);
+                            $stage = $stageText($video);
+                            $isQueued = $badge === 'Queued';
+                            $percent = $isQueued ? 0 : $rowProgress($video);
+                            $dim = $isQueued ? 'opacity-60' : '';
+                            [$barColor, $badgeColor] = $stageColors[$video->stage] ?? $defaultStageColors;
+                        @endphp
+                        <div class="flex items-center gap-3 px-5 py-3" data-video-id="{{ $video->id }}" data-stage-label="{{ $stage }}" @if ($isQueued) data-queued @endif>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center justify-between gap-2 {{ $dim }}">
+                                    <div class="min-w-0 font-medium text-slate-900 text-sm truncate" data-video-title>{{ $video->title }}</div>
+                                    <div class="text-xs text-slate-500 whitespace-nowrap shrink-0">{{ $video->created_at->toDisplay('j M Y, H:i') }}</div>
                                 </div>
-                                <span class="w-9 text-right text-xs font-medium text-white tabular-nums" data-video-percent>{{ $percent }}%</span>
+                                @if ($video->original_filename !== $video->title)
+                                    <div class="text-xs text-slate-500 truncate {{ $dim }}">{{ $video->original_filename }}</div>
+                                @endif
+                                <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ring-1 {{ $isQueued ? 'bg-sky-100 text-sky-700 ring-sky-300' : $badgeColor }}">{{ $badge }}</span>
+                                    @if ($stage !== $badge)
+                                        <span class="text-xs text-slate-600 {{ $dim }}" data-video-stage>{{ $stage }}</span>
+                                    @endif
+                                </div>
+                                <div class="mt-2 flex items-center gap-2 {{ $dim }}">
+                                    <div class="h-1 flex-1 overflow-hidden rounded-full bg-slate-200">
+                                        <div class="h-full rounded-full {{ $barColor }} motion-safe:transition-[width] motion-safe:duration-300" style="width: {{ $percent }}%" data-video-bar></div>
+                                    </div>
+                                    <span class="w-9 text-right text-xs font-medium text-slate-600 tabular-nums" data-video-percent>{{ $percent }}%</span>
+                                </div>
                             </div>
+                            <a href="{{ route('videos.create') }}" aria-label="View live progress" title="View live progress" class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-600 transition-colors hover:bg-orange-50 hover:text-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400">
+                                <x-lucide-arrow-right class="h-4 w-4" />
+                            </a>
                         </div>
                     @endforeach
                 </div>
                 @if ($processingCount > $inProgressLimit)
-                    <div class="relative border-t border-white/10 px-5 py-2 text-xs text-slate-400">Showing {{ $inProgressLimit }} of {{ $processingCount }}</div>
+                    <div class="relative border-t border-slate-200 px-5 py-2 text-xs text-slate-500">Showing {{ $inProgressLimit }} of {{ $processingCount }}</div>
                 @endif
             </div>
 
@@ -336,41 +350,50 @@
             let progressTimer = null;
             let lastProgressAt = 0;
 
-            const SEGMENT_TRACK = 'relative h-2.5 flex-1 overflow-hidden rounded-full bg-white/15';
-            const SEGMENT_DONE = 'h-full rounded-full bg-emerald-400 motion-safe:transition-[width] motion-safe:duration-300';
-            const SEGMENT_RUNNING = 'progress-stripes h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500 motion-safe:transition-[width] motion-safe:duration-300';
             let lastAnnounceKey = null;
 
             function setBar(bar, percent) {
                 bar.style.width = percent + '%';
             }
 
-            function buildSegments(container, state) {
-                const fragment = document.createDocumentFragment();
-                const completed = Math.max(0, Math.min(state.total, state.completed));
+            // "2 transcoding · 1 queued" for several videos; the single video's own stage for one. Rows beyond the server limit have no stage text.
+            function stageSummary(card, active, total) {
+                const counts = new Map();
+                let counted = 0;
 
-                for (let i = 0; i < state.total; i++) {
-                    const track = document.createElement('div');
-                    const fill = document.createElement('div');
-                    let width = 0;
-                    let cls = SEGMENT_RUNNING;
+                active.forEach(function (item) {
+                    let label = null;
 
-                    if (i < completed) {
-                        width = 100;
-                        cls = SEGMENT_DONE;
-                    } else if (state.active[i - completed]) {
-                        width = Math.max(0, Math.min(100, Math.round(state.active[i - completed].progress)));
+                    if (item.kind === 'upload') {
+                        label = total === 1 ? uploadLabel(item) : 'Uploading';
+                    } else {
+                        const row = card.querySelector('[data-video-id="' + item.id + '"]');
+                        label = row ? row.getAttribute('data-stage-label').replace(/\.{3}$/, '') : null;
                     }
 
-                    track.className = SEGMENT_TRACK;
-                    track.setAttribute('data-live-segment', '');
-                    fill.className = cls;
-                    fill.style.width = width + '%';
-                    track.appendChild(fill);
-                    fragment.appendChild(track);
+                    if (!label) {
+                        return;
+                    }
+
+                    counted++;
+                    counts.set(label, (counts.get(label) || 0) + 1);
+                });
+
+                if (total === 1) {
+                    return counts.size ? counts.keys().next().value : '';
                 }
 
-                container.replaceChildren(fragment);
+                const parts = [];
+
+                counts.forEach(function (count, label) {
+                    parts.push(count + ' ' + label.charAt(0).toLowerCase() + label.slice(1));
+                });
+
+                if (total > counted) {
+                    parts.push('+' + (total - counted) + ' more');
+                }
+
+                return parts.join(' \u00b7 ');
             }
 
             function uploadLabel(item) {
@@ -383,29 +406,29 @@
                 row.setAttribute('data-upload-queue-id', String(item.id));
 
                 const title = document.createElement('div');
-                title.className = 'min-w-0 font-medium text-white text-sm truncate';
+                title.className = 'min-w-0 font-medium text-slate-900 text-sm truncate';
                 title.setAttribute('data-upload-title', '');
 
                 const meta = document.createElement('div');
                 meta.className = 'mt-1 flex flex-wrap items-center gap-x-2 gap-y-1';
                 const badge = document.createElement('span');
-                badge.className = 'inline-flex items-center rounded-full bg-amber-400/15 px-2 py-0.5 text-xs font-medium text-amber-200';
+                badge.className = 'inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-700 ring-1 ring-blue-300';
                 badge.textContent = 'Uploading';
                 const label = document.createElement('span');
-                label.className = 'text-xs text-slate-300';
+                label.className = 'text-xs text-slate-600';
                 label.setAttribute('data-upload-label', '');
                 meta.append(badge, label);
 
                 const barWrap = document.createElement('div');
                 barWrap.className = 'mt-2 flex items-center gap-2';
                 const track = document.createElement('div');
-                track.className = 'h-1 flex-1 overflow-hidden rounded-full bg-white/15';
+                track.className = 'h-1 flex-1 overflow-hidden rounded-full bg-slate-200';
                 const bar = document.createElement('div');
-                bar.className = 'h-full rounded-full bg-amber-400 motion-safe:transition-[width] motion-safe:duration-300';
+                bar.className = 'h-full rounded-full bg-gradient-to-r from-sky-400 to-blue-500 motion-safe:transition-[width] motion-safe:duration-300';
                 bar.setAttribute('data-upload-bar', '');
                 track.appendChild(bar);
                 const percent = document.createElement('span');
-                percent.className = 'w-9 text-right text-xs font-medium text-white tabular-nums';
+                percent.className = 'w-9 text-right text-xs font-medium text-slate-600 tabular-nums';
                 percent.setAttribute('data-upload-percent', '');
                 barWrap.append(track, percent);
 
@@ -456,7 +479,7 @@
                 });
             }
 
-            // Mirrors the floating ring: ring, segments, current line and rows are updated in place from window.__inProgressState.
+            // Mirrors the floating ring: ring, overall bar, summary line and rows are updated in place from window.__inProgressState.
             function applyProgress() {
                 progressTimer = null;
                 lastProgressAt = Date.now();
@@ -483,24 +506,12 @@
                 const current = Math.min(state.total, Math.max(1, state.current));
                 const active = state.active || [];
 
-                card.querySelector('[data-overall-percent]').textContent = percent;
                 card.querySelector('[data-overall-current]').textContent = current;
                 card.querySelector('[data-overall-total]').textContent = state.total;
                 card.querySelector('[data-live-ring-arc]').setAttribute('stroke-dashoffset', 100 - percent);
                 card.querySelector('[data-live-ring]').setAttribute('aria-valuenow', percent);
                 card.querySelector('[data-live-title]').textContent = 'Processing ' + state.total + ' video' + (state.total === 1 ? '' : 's');
-                buildSegments(card.querySelector('[data-live-segments]'), state);
-
-                const first = active.length ? active[0] : null;
-                const firstRow = first && first.kind !== 'upload' ? card.querySelector('[data-video-id="' + first.id + '"]') : null;
-
-                if (firstRow) {
-                    card.querySelector('[data-live-current-title]').textContent = firstRow.querySelector('[data-video-title]').textContent;
-                    card.querySelector('[data-live-current-stage]').textContent = firstRow.querySelector('[data-video-stage]').textContent;
-                } else if (first && first.kind === 'upload') {
-                    card.querySelector('[data-live-current-title]').textContent = first.title || '';
-                    card.querySelector('[data-live-current-stage]').textContent = uploadLabel(first);
-                }
+                card.querySelector('[data-live-summary]').textContent = stageSummary(card, active, state.total);
 
                 syncUploadRows(card, active.filter(function (item) {
                     return item.kind === 'upload';
@@ -525,7 +536,8 @@
                         return;
                     }
 
-                    const rowPercent = Math.round(item.progress);
+                    // A queued row has not started: keep it empty even though the overall share of its finished upload is counted.
+                    const rowPercent = row.hasAttribute('data-queued') ? 0 : Math.round(item.progress);
                     row.querySelector('[data-video-percent]').textContent = rowPercent + '%';
                     setBar(row.querySelector('[data-video-bar]'), rowPercent);
                 });

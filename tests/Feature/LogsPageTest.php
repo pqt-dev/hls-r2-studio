@@ -109,12 +109,11 @@ class LogsPageTest extends TestCase
         $this->assertSame(2, substr_count($html, 'data-video-percent>'));
         $this->assertMatchesRegularExpression('/data-video-percent>60%</', $html);
         $this->assertMatchesRegularExpression('/data-video-percent>0%</', $html);
-        $this->assertMatchesRegularExpression('/data-overall-percent>30</', $html);
         $this->assertMatchesRegularExpression('/aria-valuenow="30"[^>]*data-live-ring>/', $html);
         $this->assertStringContainsString('stroke-dashoffset="70"', $html);
     }
 
-    public function test_live_panel_renders_label_ring_and_one_segment_per_video(): void
+    public function test_live_panel_renders_label_ring_and_summary(): void
     {
         $this->seedInProgress('pending', null, 'wait-video');
         $busy = Video::create([
@@ -133,20 +132,21 @@ class LogsPageTest extends TestCase
             ->assertSee('aria-live="polite"', false)
             ->getContent();
 
-        $this->assertSame(2, substr_count($html, 'data-live-segment>'));
+        $this->assertStringNotContainsString('data-live-segment', $html);
+        $this->assertStringContainsString('data-live-summary>1 queued · 1 transcoding<', $html);
         $this->assertMatchesRegularExpression('/data-overall-total>2</', $html);
         $this->assertMatchesRegularExpression('/data-video-percent>60%</', $html);
         $this->assertMatchesRegularExpression('/data-video-percent>0%</', $html);
     }
 
-    public function test_segment_count_equals_processing_count_even_when_rows_are_limited(): void
+    public function test_rows_are_limited_but_total_count_is_kept(): void
     {
         $this->seedVideos('processing', 30, 'busy');
 
         $response = $this->get('/logs')->assertOk()->assertViewHas('processingCount', 30);
         $html = $response->getContent();
 
-        $this->assertSame(30, substr_count($html, 'data-live-segment>'));
+        $this->assertStringContainsString('+5 more', $html);
         $this->assertSame(25, substr_count($html, 'data-video-percent>'));
         $this->assertStringContainsString('Processing 30 videos', $html);
     }
@@ -172,7 +172,6 @@ class LogsPageTest extends TestCase
 
         $html = $this->get('/logs')->assertOk()
             ->assertSee('aria-label="Videos in progress"', false)
-            ->assertDontSee('data-live-segment>', false)
             ->assertDontSee('data-video-percent>', false)
             ->getContent();
 

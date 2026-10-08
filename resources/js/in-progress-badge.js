@@ -236,7 +236,7 @@ export default function initInProgressBadge() {
 
         const percent = Math.round(sum / total);
         const current = Math.min(completed + 1, total);
-        const text = current + '/' + total;
+        const text = current + ' of ' + total;
         const description = !working
             ? 'Processing finished, ' + total + (total === 1 ? ' video' : ' videos') + ' done'
             : 'Processing video ' + current + ' of ' + total + ', ' + percent + '% complete';

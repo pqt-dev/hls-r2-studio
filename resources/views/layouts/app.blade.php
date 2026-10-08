@@ -170,7 +170,7 @@
             <circle cx="36" cy="36" r="30" stroke="rgb(255 255 255 / 0.15)" stroke-width="5" />
             <circle cx="36" cy="36" r="30" class="ip-ring-progress" stroke-width="5" stroke-linecap="round" stroke-dasharray="188.5" stroke-dashoffset="188.5" data-ring-progress />
         </svg>
-        <span class="ip-ring-label relative text-[15px] font-extrabold leading-none tabular-nums sm:text-[18px]" aria-hidden="true" data-ring-label></span>
+        <span class="ip-ring-label relative text-[11px] font-extrabold leading-none tracking-tight tabular-nums whitespace-nowrap sm:text-[13px]" aria-hidden="true" data-ring-label></span>
         <svg class="ip-ring-check relative h-7 w-7 sm:h-8 sm:w-8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M5 12.5l4.5 4.5L19 7.5" />
         </svg>
