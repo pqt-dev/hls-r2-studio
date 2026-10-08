@@ -394,6 +394,61 @@
                     uploading_r2: 'Uploading to R2',
                 };
 
+                // Stage -> bar fill classes (full literals for Tailwind). Keep in sync with $stageBarClasses in logs/index.blade.php.
+                const BAR_BASE = 'h-1 rounded-full transition-[width] duration-300 ease-linear';
+                const STAGE_BAR_CLASSES = {
+                    upload: 'bg-gradient-to-r from-sky-400 to-blue-500',
+                    merging: 'bg-gradient-to-r from-blue-400 to-indigo-500',
+                    transcoding: 'bg-gradient-to-r from-violet-400 to-purple-500',
+                    generating_thumbnail: 'bg-gradient-to-r from-fuchsia-400 to-pink-500',
+                    generating_storyboard: 'bg-gradient-to-r from-amber-400 to-orange-500',
+                    uploading_r2: 'bg-gradient-to-r from-lime-400 to-green-500',
+                };
+
+                // Bar of a handed-off video: a queued video shows the upload colour, a merging one its own.
+                function setTranscodeBarStage(bar, status, stage) {
+                    if (!bar) {
+                        return;
+                    }
+                    const key = isMergingPending(status, stage) ? 'merging' : (status === 'pending' ? 'upload' : (stage || 'transcoding'));
+                    bar.className = (STAGE_BAR_CLASSES[key] || STAGE_BAR_CLASSES.transcoding) + ' ' + BAR_BASE;
+                }
+
+                // The single bar per video shows OVERALL progress (like the server's video.progress): the client upload fills
+                // only the upload share of it. Mirror of uploadWeight() in resources/js/video-progress.js; stages come from the
+                // global ring's data-progress-stages (config('videos.progress.stages')).
+                function uploadShare(sizeBytes) {
+                    const names = ['upload', 'merging', 'transcoding', 'generating_thumbnail', 'generating_storyboard', 'uploading_r2'];
+                    let stages = {};
+
+                    try {
+                        const ring = document.querySelector('[data-in-progress-ring]');
+                        stages = ring ? JSON.parse(ring.dataset.progressStages || '{}') || {} : {};
+                    } catch (err) {
+                        stages = {};
+                    }
+
+                    const sizeMb = Math.max(0, Number(sizeBytes) || 0) / 1048576;
+                    const costs = names.map(function (name) {
+                        const cost = stages[name] || {};
+
+                        return Math.max(0, (Number(cost.fixed) || 0) + (Number(cost.per_mb) || 0) * sizeMb);
+                    });
+                    const total = costs.reduce(function (sum, cost) {
+                        return sum + cost;
+                    }, 0);
+
+                    return total > 0 ? costs[0] / total * 100 : 100 / names.length;
+                }
+
+                // Floored like VideoProgress::overall(), so a finished upload equals the server's first (queued) value.
+                function setUploadBarPercent(bar, uploadPercent) {
+                    if (bar) {
+                        const share = Number(bar.dataset.share) || 100;
+                        bar.style.width = Math.min(99, Math.floor(share * Math.max(0, Math.min(100, uploadPercent || 0)) / 100)) + '%';
+                    }
+                }
+
                 function formatStageStatus(stage, progress) {
                     const stageLabel = transcodeStageLabels[stage] || stage;
                     return stageLabel + ' — ' + progress + '%';
@@ -1296,25 +1351,15 @@
                     transcodeLabel.className = 'text-xs font-medium text-muted-foreground mb-1';
                     transcodeLabel.textContent = 'Processing';
 
-                    const transcodeBarWrapper = document.createElement('div');
-                    transcodeBarWrapper.className = 'w-full bg-border rounded-full h-2.5';
-
-                    const transcodeBar = document.createElement('div');
-                    transcodeBar.className = 'bg-orange-500 h-2.5 rounded-full';
-                    transcodeBar.style.width = '0%';
-                    transcodeBar.dataset.role = 'transcode-bar';
-                    transcodeBarWrapper.appendChild(transcodeBar);
-
                     const transcodeStatusEl = document.createElement('p');
                     transcodeStatusEl.className = 'mt-1 text-xs text-muted-foreground break-words';
                     transcodeStatusEl.dataset.role = 'transcode-status';
 
                     transcodeWrapper.dataset.role = 'transcode-wrapper';
                     transcodeWrapper.appendChild(transcodeLabel);
-                    transcodeWrapper.appendChild(transcodeBarWrapper);
                     transcodeWrapper.appendChild(transcodeStatusEl);
 
-                    return { wrapper: transcodeWrapper, bar: transcodeBar, statusEl: transcodeStatusEl };
+                    return { wrapper: transcodeWrapper, statusEl: transcodeStatusEl };
                 }
 
                 function createQueueRow(name, size, queueId) {
@@ -1343,12 +1388,13 @@
                     uploadLabel.textContent = 'Uploading';
 
                     const barWrapper = document.createElement('div');
-                    barWrapper.className = 'w-full bg-border rounded-full h-2.5 mt-2';
+                    barWrapper.className = 'w-full bg-slate-200 rounded-full h-1 mt-2 overflow-hidden';
 
                     const bar = document.createElement('div');
-                    bar.className = 'bg-primary h-2.5 rounded-full transition-[width] duration-300 ease-linear';
+                    bar.className = STAGE_BAR_CLASSES.upload + ' ' + BAR_BASE;
                     bar.style.width = '0%';
                     bar.dataset.role = 'upload-bar';
+                    bar.dataset.share = uploadShare(size);
                     barWrapper.appendChild(bar);
 
                     const statusEl = document.createElement('p');
@@ -1370,7 +1416,6 @@
                         statusEl: statusEl,
                         cleared: false,
                         transcodeWrapper: transcodeSection.wrapper,
-                        transcodeBar: transcodeSection.bar,
                         transcodeStatusEl: transcodeSection.statusEl,
                         queueId: queueId || null,
                     };
@@ -1414,9 +1459,7 @@
                     const statusEl = liveRow ? liveRow.querySelector('[data-role="upload-status"]') : item.statusEl;
                     const text = 'Uploading — ' + percent + '%';
 
-                    if (bar) {
-                        bar.style.width = percent + '%';
-                    }
+                    setUploadBarPercent(bar, percent);
                     if (statusEl) {
                         statusEl.textContent = text;
                     }
@@ -1880,14 +1923,15 @@
                         }
 
                         const item = createQueueRow(video.title || video.original_filename, video.original_size_bytes || 0);
-                        item.bar.style.width = '100%';
+                        setUploadBarPercent(item.bar, 100);
                         item.statusEl.textContent = 'Done';
                         queueList.appendChild(item.row);
                         currentQueueItems.push(item);
 
                         item.transcodeWrapper.classList.remove('hidden');
+                        setTranscodeBarStage(item.bar, video.status, video.stage);
                         if (video.progress > 0) {
-                            item.transcodeBar.style.width = video.progress + '%';
+                            item.bar.style.width = video.progress + '%';
                         }
                         item.transcodeStatusEl.textContent = transcodeStatusText(video.status, video.stage, video.progress);
 
@@ -1920,7 +1964,6 @@
                             bar: liveRow.querySelector('[data-role="upload-bar"]'),
                             statusEl: liveRow.querySelector('[data-role="upload-status"]'),
                             transcodeWrapper: liveRow.querySelector('[data-role="transcode-wrapper"]'),
-                            transcodeBar: liveRow.querySelector('[data-role="transcode-bar"]'),
                             transcodeStatusEl: liveRow.querySelector('[data-role="transcode-status"]'),
                             cleared: false,
                             queueId: registryEntry.queueId,
@@ -1931,12 +1974,13 @@
                         currentQueueItems.push(item);
                     }
 
-                    item.bar.style.width = '100%';
+                    setUploadBarPercent(item.bar, 100);
                     item.statusEl.textContent = 'Done';
                     item.transcodeWrapper.classList.remove('hidden');
 
+                    setTranscodeBarStage(item.bar, registryEntry.status, registryEntry.stage);
                     if (registryEntry.progress > 0) {
-                        item.transcodeBar.style.width = registryEntry.progress + '%';
+                        item.bar.style.width = registryEntry.progress + '%';
                     }
                     item.transcodeStatusEl.textContent = transcodeStatusText(registryEntry.status, registryEntry.stage, registryEntry.progress);
 
@@ -1966,7 +2010,7 @@
                             const errorItem = createQueueRow(entry.title, entry.size, queueId);
                             queueList.appendChild(errorItem.row);
                             currentQueueItems.push(errorItem);
-                            errorItem.bar.style.width = (entry.uploadPercent || 0) + '%';
+                            setUploadBarPercent(errorItem.bar, entry.uploadPercent);
                             renderErrorRow(errorItem.row, entry.statusText || 'Error: Upload failed.');
                             return;
                         }
@@ -1986,7 +2030,7 @@
                         queueList.appendChild(item.row);
                         currentQueueItems.push(item);
 
-                        item.bar.style.width = (entry.uploadPercent || 0) + '%';
+                        setUploadBarPercent(item.bar, entry.uploadPercent);
                         item.statusEl.textContent = (entry.statusText === LEGACY_WAITING_LABEL ? WAITING_LABEL : entry.statusText) || WAITING_LABEL;
                     });
 
@@ -2207,7 +2251,7 @@
                         return {
                             row: liveRow || item.row,
                             wrapper: liveRow ? liveRow.querySelector('[data-role="transcode-wrapper"]') : item.transcodeWrapper,
-                            bar: liveRow ? liveRow.querySelector('[data-role="transcode-bar"]') : item.transcodeBar,
+                            bar: liveRow ? liveRow.querySelector('[data-role="upload-bar"]') : item.bar,
                             statusEl: liveRow ? liveRow.querySelector('[data-role="transcode-status"]') : item.transcodeStatusEl,
                         };
                     }
@@ -2226,6 +2270,7 @@
                             if (els.wrapper) {
                                 els.wrapper.classList.remove('hidden');
                             }
+                            setTranscodeBarStage(els.bar, video.status, video.stage);
                             if (els.bar && video.progress > 0) {
                                 els.bar.style.width = video.progress + '%';
                             }
@@ -2242,6 +2287,7 @@
                                 if (els.wrapper) {
                                     els.wrapper.classList.remove('hidden');
                                 }
+                                setTranscodeBarStage(els.bar, video.status, video.stage);
                                 if (els.bar) {
                                     els.bar.style.width = video.progress + '%';
                                 }
