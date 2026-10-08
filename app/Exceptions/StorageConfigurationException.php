@@ -2,6 +2,4 @@
 
 namespace App\Exceptions;
 
-class StorageConfigurationException extends \RuntimeException
-{
-}
+class StorageConfigurationException extends \RuntimeException {}
