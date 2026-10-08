@@ -405,6 +405,16 @@
                     uploading_r2: 'bg-gradient-to-r from-lime-400 to-green-500',
                 };
 
+                // Activity Log "stage complete" line colours: same hue per stage as STAGE_BAR_CLASSES above (full literals for Tailwind).
+                const STAGE_LOG_CLASSES = {
+                    upload: 'text-sky-600 font-medium',
+                    merging: 'text-indigo-600 font-medium',
+                    transcoding: 'text-violet-600 font-medium',
+                    generating_thumbnail: 'text-fuchsia-600 font-medium',
+                    generating_storyboard: 'text-orange-600 font-medium',
+                    uploading_r2: 'text-green-600 font-medium',
+                };
+
                 // Bar of a handed-off video: a queued video shows the upload colour, a merging one its own.
                 function setTranscodeBarStage(bar, status, stage) {
                     if (!bar) {
@@ -486,25 +496,59 @@
                     appendLog(message, className, time, timestamp);
                 }
 
+                // Server-side stages in the order they run, and the wording of the line printed when each one is done.
+                const LOG_STAGE_ORDER = ['merging', 'transcoding', 'generating_thumbnail', 'generating_storyboard', 'uploading_r2'];
+                const STAGE_DONE_TEXT = {
+                    merging: 'Merging chunks complete.',
+                    transcoding: 'Transcoding complete.',
+                    generating_thumbnail: 'Thumbnail complete.',
+                    generating_storyboard: 'Storyboard complete.',
+                    uploading_r2: 'Upload to R2 complete.',
+                };
+
+                // Furthest stage reached per video id. A "<stage> complete." line is printed once, when the video moves past
+                // that stage; a rank that is not higher than the stored one (late or replayed row) prints nothing, so realtime
+                // events, history catch-up and DB replay can overlap without duplicates. Replay resets it before a forced run.
+                const lastStageByVideo = {};
+
                 // Single source of truth for server-origin log lines (already stored by the server, so the
                 // client never posts them back). Used by realtime events, history catch-up and DB replay.
-                function buildStatusMessage(title, status, stage, progress) {
+                // Returns a list of { message, className }: in-progress ticks are not logged, only finished stages.
+                function buildStatusMessages(videoId, title, status, stage, progress) {
+                    const key = String(videoId);
+                    const prev = lastStageByVideo[key] || null;
+                    const lines = [];
+                    let current = null;
+
                     if (isMergingPending(status, stage)) {
-                        return { message: title + ': ' + transcodeStatusText(status, stage, progress), className: null };
+                        current = 'merging';
+                    } else if (status === 'processing') {
+                        current = stage || 'transcoding';
                     }
-                    if (status === 'pending') {
-                        return { message: title + ' is queued for processing.', className: null };
+
+                    if (current && LOG_STAGE_ORDER.indexOf(current) > LOG_STAGE_ORDER.indexOf(prev)) {
+                        if (prev) {
+                            lines.push({ message: title + ': ' + STAGE_DONE_TEXT[prev], className: STAGE_LOG_CLASSES[prev] });
+                        }
+                        lastStageByVideo[key] = current;
                     }
-                    if (status === 'processing') {
-                        return { message: title + ': ' + formatStageStatus(stage, progress), className: null };
+                    if (status === 'pending' && !current) {
+                        lines.push({ message: title + ' is queued for processing.', className: null });
                     }
                     if (status === 'ready') {
-                        return { message: title + ' finished transcoding.', className: 'text-orange-600 font-medium' };
+                        // The final line doubles as the end of the last stage; an earlier unclosed stage is closed first.
+                        if (prev && prev !== 'uploading_r2') {
+                            lines.push({ message: title + ': ' + STAGE_DONE_TEXT[prev], className: STAGE_LOG_CLASSES[prev] });
+                        }
+                        lines.push({ message: title + ': Transcoded, uploaded to R2 and ready to use.', className: STAGE_LOG_CLASSES.uploading_r2 });
+                        delete lastStageByVideo[key];
                     }
                     if (status === 'failed') {
-                        return { message: title + ' failed to process.', className: null };
+                        lines.push({ message: title + ' failed to process.', className: null });
+                        delete lastStageByVideo[key];
                     }
-                    return null;
+
+                    return lines;
                 }
 
                 // Derived only from message + level so a replayed client line looks exactly like the realtime one.
@@ -512,7 +556,10 @@
                     if (level === 'error') {
                         return 'text-destructive font-medium';
                     }
-                    if (/ uploaded successfully\. \(\d+\/\d+\)$/.test(message) || /^Upload finished: \d+\/\d+ file\(s\) uploaded\./.test(message)) {
+                    if (/ uploaded successfully\. \(\d+\/\d+\)$/.test(message)) {
+                        return STAGE_LOG_CLASSES.upload;
+                    }
+                    if (/^Upload finished: \d+\/\d+ file\(s\) uploaded\./.test(message)) {
                         return 'text-foreground font-medium';
                     }
                     return null;
@@ -899,13 +946,14 @@
 
                     logs.forEach(function (log) {
                         const createdAt = new Date(log.created_at);
+                        // Built even for cleared rows so the stage tracking stays correct.
+                        const built = buildStatusMessages(videoId, entry.title, log.status, log.stage, log.progress);
                         if (createdAt.getTime() <= clearedAt) {
                             return;
                         }
-                        const built = buildStatusMessage(entry.title, log.status, log.stage, log.progress);
-                        if (built) {
-                            appendStatusLine(videoId, built.message, built.className, createdAt.toLocaleTimeString(), createdAt.getTime());
-                        }
+                        built.forEach(function (line) {
+                            appendStatusLine(videoId, line.message, line.className, createdAt.toLocaleTimeString(), createdAt.getTime());
+                        });
                     });
 
                     const lastLog = logs[logs.length - 1];
@@ -955,6 +1003,9 @@
                     const videosMap = data.videos || {};
                     const lastServerRow = {};
 
+                    // Forced replay prints every stored end line once: start the stage tracking from scratch.
+                    Object.keys(lastStageByVideo).forEach(function (k) { delete lastStageByVideo[k]; });
+
                     data.entries.forEach(function (row) {
                         const parsed = Date.parse(row.created_at);
                         const ts = Number.isFinite(parsed) ? parsed : Date.now();
@@ -965,22 +1016,26 @@
                             lastServerRow[videoId] = row;
                             historyLoadedForVideoIds.add(videoId);
                         }
+                        // Server rows are built even when cleared so the stage tracking stays correct.
+                        let built = [];
+                        if (isServerRow) {
+                            const info = videoId ? videosMap[videoId] : null;
+                            const title = (info && info.title) || (videoId ? 'Video #' + videoId : 'Video');
+                            built = buildStatusMessages(videoId || 0, title, row.status, row.stage, row.progress);
+                        }
                         if (ts <= clearedAt) {
                             return;
                         }
 
                         const time = new Date(ts).toLocaleTimeString();
                         if (isServerRow) {
-                            const info = videoId ? videosMap[videoId] : null;
-                            const title = (info && info.title) || (videoId ? 'Video #' + videoId : 'Video');
-                            const built = buildStatusMessage(title, row.status, row.stage, row.progress);
-                            if (built) {
+                            built.forEach(function (line) {
                                 if (videoId) {
-                                    appendStatusLine(videoId, built.message, built.className, time, ts, true);
+                                    appendStatusLine(videoId, line.message, line.className, time, ts, true);
                                 } else {
-                                    appendLog(built.message, built.className, time, ts);
+                                    appendLog(line.message, line.className, time, ts);
                                 }
-                            }
+                            });
                         } else {
                             appendLog(row.message, clientLineClass(row.message, row.level), time, ts);
                         }
@@ -2256,14 +2311,13 @@
                         };
                     }
 
-                    let message = null;
-                    let logClass = null;
-                    const built = buildStatusMessage(entry.title, video.status, video.stage, video.progress);
+                    let lines = [];
+                    const built = buildStatusMessages(video.id, entry.title, video.status, video.stage, video.progress);
 
                     if (video.status === 'pending' && !isMergingPending(video.status, video.stage)) {
                         // Queued progress is the upload share and may be re-sent: log only when status/stage changed.
                         if (statusChanged || stageChanged) {
-                            message = built.message;
+                            lines = built;
                         }
                         if (item) {
                             const els = liveTranscodeEls();
@@ -2279,9 +2333,9 @@
                             }
                         }
                     } else if (video.status === 'processing' || isMergingPending(video.status, video.stage)) {
+                        lines = built;
                         if (progressChanged || stageChanged) {
                             const statusText = transcodeStatusText(video.status, video.stage, video.progress);
-                            message = built.message;
                             if (item) {
                                 const els = liveTranscodeEls();
                                 if (els.wrapper) {
@@ -2297,17 +2351,16 @@
                             }
                         }
                     } else if (video.status === 'ready') {
-                        message = built.message;
-                        logClass = built.className;
+                        lines = built;
                         removeFinishedQueueRow(entry);
                     } else if (video.status === 'failed') {
-                        message = built.message;
+                        lines = built;
                         removeFinishedQueueRow(entry);
                     }
 
-                    if (message) {
-                        appendStatusLine(video.id, message, logClass);
-                    }
+                    lines.forEach(function (line) {
+                        appendStatusLine(video.id, line.message, line.className);
+                    });
                     if (video.status === 'ready' || video.status === 'failed') {
                         delete lastStatusLineByVideo[String(video.id)];
                     }
