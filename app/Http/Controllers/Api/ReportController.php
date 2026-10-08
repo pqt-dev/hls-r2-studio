@@ -38,7 +38,7 @@ class ReportController extends Controller
 
         $videoId = $this->resolveVideoIdFromPageUrl($validated['page_url']);
 
-        DB::transaction(function () use ($validated, $request, $videoId) {
+        DB::transaction(function () use ($validated, $videoId) {
             // A unique violation means another request created the active
             // report first; retry once, which then finds it. If it was
             // resolved in between, the retry creates a fresh report.
@@ -52,7 +52,6 @@ class ReportController extends Controller
                     $existing->increment('report_count');
                     $existing->update([
                         'last_reported_at' => now(),
-                        'reporter_ip' => $request->ip(),
                         'reason' => $validated['reason'] ?? null,
                     ]);
 
@@ -63,7 +62,6 @@ class ReportController extends Controller
                     Report::create([
                         ...$validated,
                         'video_id' => $videoId,
-                        'reporter_ip' => $request->ip(),
                         'report_count' => 1,
                         'last_reported_at' => now(),
                     ]);

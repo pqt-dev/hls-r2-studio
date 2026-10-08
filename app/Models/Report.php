@@ -20,7 +20,6 @@ class Report extends Model
         'reason',
         'video_id',
         'note',
-        'reporter_ip',
         'status',
         'report_count',
         'resolved_at',
