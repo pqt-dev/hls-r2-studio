@@ -19,7 +19,7 @@
                     <x-ui.label for="video" class="block mb-2">Video File</x-ui.label>
                     <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
                     <div id="dropzone"
-                         class="rounded-lg border-2 border-dashed border-input px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-foreground/40 hover:bg-muted/40 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:border-input aria-disabled:hover:bg-transparent aria-disabled:[&_*]:cursor-not-allowed">
+                         class="rounded-lg border-2 border-dashed border-input px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-foreground/40 hover:bg-muted/40">
                         <div class="mx-auto mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                             <x-lucide-cloud-upload class="w-8 h-8 text-foreground" />
                         </div>
@@ -33,7 +33,7 @@
 
                 <div id="title-field-wrapper">
                     <x-ui.label for="title" class="block mb-2">Title (optional)</x-ui.label>
-                    <x-ui.input type="text" name="title" id="title" value="{{ old('title') }}" class="disabled:pointer-events-auto! disabled:cursor-not-allowed" />
+                    <x-ui.input type="text" name="title" id="title" value="{{ old('title') }}" />
                     <p id="title-multi-note" class="mt-1 text-xs text-muted-foreground hidden">Title is automatically taken from the filename when uploading multiple videos.</p>
                 </div>
 
@@ -47,7 +47,7 @@
 
             <div class="flex flex-col gap-3 border-t border-border bg-muted/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
                 <p id="selection-summary" class="text-sm text-muted-foreground">No files selected</p>
-                <x-ui.button type="submit" id="upload-submit" class="w-full sm:w-auto disabled:pointer-events-auto! disabled:cursor-not-allowed disabled:hover:bg-primary">
+                <x-ui.button type="submit" id="upload-submit" class="w-full sm:w-auto">
                     <x-lucide-upload class="w-4 h-4" /> Start upload
                 </x-ui.button>
             </div>
@@ -121,7 +121,6 @@
                 const errorBox = document.getElementById('upload-error');
                 const summaryBox = document.getElementById('upload-summary');
                 const logBox = document.getElementById('upload-log');
-                const uploadWarning = document.getElementById('upload-warning');
                 const selectionSummary = document.getElementById('selection-summary');
                 const queueCountBadge = document.getElementById('upload-queue-count');
 
@@ -133,15 +132,74 @@
                 const TRASH_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>';
 
                 let currentQueueItems = [];
-                let isUploading = false;
                 const uploadedVideos = {};
                 const historyLoadedForVideoIds = new Set();
                 let replayPromise = Promise.resolve();
                 let replayDone = false;
                 let replayRetried = false;
+                const WAITING_LABEL = 'Waiting';
+                const LEGACY_WAITING_LABEL = 'Pending';
+                function isWaitingLabel(text) {
+                    return text === WAITING_LABEL || text === LEGACY_WAITING_LABEL;
+                }
                 let batchPending = [];
 
                 window.__uploadQueueRegistry = window.__uploadQueueRegistry || {};
+
+                // Shared FIFO of files waiting to be uploaded ({queueId, file, title}) and the single runner that drains it
+                // ({active, lastBeat, stats}). Both live on window so they survive soft navigation.
+                const RUNNER_STALE_MS = 5 * 60 * 1000;
+                const RUNNER_HEARTBEAT_MS = 30 * 1000;
+                window.__uploadQueue = window.__uploadQueue || [];
+                window.__uploadRunner = window.__uploadRunner || null;
+
+                // A runner that has not beaten for RUNNER_STALE_MS is treated as dead and may be replaced.
+                function isUploadRunnerActive() {
+                    const runner = window.__uploadRunner;
+                    return !!runner && runner.active === true && (Date.now() - runner.lastBeat) <= RUNNER_STALE_MS;
+                }
+
+                function beatUploadRunner() {
+                    const runner = window.__uploadRunner;
+                    if (runner) {
+                        runner.lastBeat = Date.now();
+                    }
+                }
+
+                // Looked up live: the runner may belong to an older script instance whose DOM references are gone.
+                function syncUploadWarning() {
+                    const warning = document.getElementById('upload-warning');
+                    if (warning) {
+                        warning.classList.toggle('hidden', window.__uploadInProgress !== true);
+                    }
+                }
+
+                function showUploadSummaryBox() {
+                    const box = document.getElementById('upload-summary');
+                    if (box) {
+                        box.classList.remove('hidden');
+                    }
+                }
+
+                // Drops waiting files (Clear queue) so they are never uploaded.
+                function removeFromUploadQueue(queueIds) {
+                    if (queueIds.length === 0) {
+                        return;
+                    }
+                    const queue = window.__uploadQueue;
+                    let removed = 0;
+                    for (let i = queue.length - 1; i >= 0; i--) {
+                        if (queueIds.indexOf(queue[i].queueId) !== -1) {
+                            queue.splice(i, 1);
+                            removed++;
+                        }
+                    }
+                    const runner = window.__uploadRunner;
+                    if (removed > 0 && runner) {
+                        runner.stats.total = Math.max(0, runner.stats.total - removed);
+                        touchActiveUpload(window.__uploadActive, {});
+                    }
+                }
 
                 // Tells the global progress ring that the registry changed (it re-reads the registry on each render).
                 // Frequent progress ticks pass `throttle` so they fire at most ~4 times per second.
@@ -1017,30 +1075,6 @@
                     selectionSummary.textContent = files.length + (files.length === 1 ? ' file' : ' files') + ' \u00b7 ' + formatSize(total);
                 }
 
-                // Locks/unlocks the form for an instance that does not run the upload loop itself.
-                let formLocked = false;
-
-                // Shared visual lock for the dropzone (dimmed, not-allowed cursor via aria-disabled variants).
-                function setDropzoneDisabled(disabled) {
-                    dropzone.setAttribute('aria-disabled', disabled ? 'true' : 'false');
-                }
-
-                function setUploadLocked(locked) {
-                    formLocked = locked;
-                    submitButton.disabled = locked;
-                    fileInput.disabled = locked;
-                    setDropzoneDisabled(locked);
-                    if (locked) {
-                        titleInput.disabled = true;
-                        uploadWarning.classList.remove('hidden');
-                        selectionSummary.textContent = 'Upload in progress…';
-                    } else {
-                        updateTitleVisibility();
-                        uploadWarning.classList.add('hidden');
-                        updateSelectionSummary(Array.from(fileInput.files));
-                    }
-                }
-
                 function removeSelectedFile(index) {
                     const dataTransfer = new DataTransfer();
                     Array.from(fileInput.files).forEach(function (file, i) {
@@ -1065,9 +1099,6 @@
                 });
 
                 dropzone.addEventListener('click', function () {
-                    if (formLocked || isUploading) {
-                        return;
-                    }
                     fileInput.click();
                 });
 
@@ -1107,10 +1138,6 @@
                     // Still cancel the default action so the browser does not navigate to the dropped file.
                     e.preventDefault();
 
-                    if (isUploading || window.__uploadInProgress) {
-                        return;
-                    }
-
                     setDropzoneDragging(false);
 
                     if (!isPointerOverDropzone(e)) {
@@ -1137,14 +1164,16 @@
 
                 clearQueueBtn.addEventListener('click', function () {
                     let clearedCount = 0;
+                    const clearedQueueIds = [];
                     currentQueueItems.slice().forEach(function (item) {
                         const row = findLiveQueueRow(item.queueId) || item.row;
                         const isError = !!row && row.dataset.state === 'error';
-                        if (!item.cleared && (isError || item.statusEl.textContent === 'Pending')) {
+                        if (!item.cleared && (isError || isWaitingLabel(item.statusEl.textContent))) {
                             item.cleared = true;
                             row.remove();
                             currentQueueItems = currentQueueItems.filter(function (qi) { return qi !== item; });
                             if (item.queueId) {
+                                clearedQueueIds.push(item.queueId);
                                 delete window.__uploadQueueRegistry[item.queueId];
                                 notifyUploadRegistry();
                             }
@@ -1153,6 +1182,7 @@
                             }
                         }
                     });
+                    removeFromUploadQueue(clearedQueueIds);
                     updateQueueEmptyState();
                     if (clearedCount > 0) {
                         logClient('Cleared pending file(s) from queue.');
@@ -1324,7 +1354,7 @@
                     const statusEl = document.createElement('p');
                     statusEl.className = 'mt-1 text-xs text-muted-foreground break-words';
                     statusEl.dataset.role = 'upload-status';
-                    statusEl.textContent = 'Pending';
+                    statusEl.textContent = WAITING_LABEL;
 
                     row.appendChild(header);
                     row.appendChild(uploadLabel);
@@ -1359,7 +1389,7 @@
                             size: file.size,
                             status: 'pending',
                             uploadPercent: 0,
-                            statusText: 'Pending',
+                            statusText: WAITING_LABEL,
                             videoId: null,
                             stage: null,
                             progress: 0,
@@ -1551,6 +1581,7 @@
                         }, 3, onRateLimitWait);
 
                         bytesSent += (end - start);
+                        beatUploadRunner();
                         touchActiveUpload(active, {});
                         setItemProgress(item, Math.round((bytesSent / file.size) * 100));
                     }
@@ -1614,12 +1645,114 @@
                     return completeData && completeData.video_id ? completeData.video_id : null;
                 }
 
-                form.addEventListener('submit', async function (e) {
-                    e.preventDefault();
-                    if (window.__uploadInProgress && !isUploading) {
-                        showError('An upload is already running. Please wait until it finishes.');
-                        return;
+                // The upload runner uploads the shared waiting queue one file at a time. Only one runner exists at a time
+                // (window.__uploadRunner); a submit while it is active just appends to window.__uploadQueue.
+                async function runUploads() {
+                    const runner = {
+                        active: true,
+                        lastBeat: Date.now(),
+                        stats: { total: window.__uploadQueue.length, ok: 0, failed: 0, networkFailed: 0 },
+                    };
+                    const stats = runner.stats;
+                    let heartbeat = null;
+
+                    try {
+                        window.__uploadRunner = runner;
+                        window.__uploadInProgress = true;
+                        syncUploadWarning();
+                        heartbeat = setInterval(beatUploadRunner, RUNNER_HEARTBEAT_MS);
+
+                        let lastIds = { uploadId: null, videoId: null };
+
+                        // A replaced (stale) runner stops after its current file; the new owner reports the run.
+                        while (window.__uploadRunner === runner) {
+                            const next = window.__uploadQueue.shift();
+                            if (!next) {
+                                break;
+                            }
+                            runner.lastBeat = Date.now();
+
+                            const item = currentQueueItems.find(function (qi) {
+                                return qi.queueId === next.queueId;
+                            }) || { queueId: next.queueId, row: null, cleared: false };
+
+                            // Removed by Clear queue / Dismiss while waiting: never upload it.
+                            if (item.cleared || !window.__uploadQueueRegistry[next.queueId]) {
+                                stats.total = Math.max(0, stats.total - 1);
+                                continue;
+                            }
+                            item.file = next.file;
+
+                            const active = beginActiveUpload(item, function () {
+                                return window.__uploadQueue.length;
+                            });
+                            // Lines still held back for an upload id; flushed by the pagehide handler if the page unloads first.
+                            active.getDeferred = function () {
+                                return [batchPending, item.preInit];
+                            };
+                            let uploaded = false;
+                            try {
+                                await uploadFile(item, next.title, active);
+                                uploaded = true;
+                            } catch (err) {
+                                stats.failed++;
+                                if (err && err.isNetworkError) {
+                                    stats.networkFailed++;
+                                }
+                                const failMessage = (err && err.message) || 'An error occurred during upload.';
+                                markItemError(item, failMessage);
+                                logItem(item, item.file.name + ' failed: ' + failMessage, 'error');
+                            } finally {
+                                endActiveUpload(active);
+                                const ids = resolveItemIds(item);
+                                if (ids.uploadId) {
+                                    lastIds = ids;
+                                }
+                            }
+                            if (uploaded) {
+                                stats.ok++;
+                                logItem(item, item.file.name + ' uploaded successfully. (' + stats.ok + '/' + stats.total + ')');
+                            }
+                        }
+
+                        if (window.__uploadRunner !== runner) {
+                            return;
+                        }
+
+                        // Everything below is synchronous (no await after the last queue check), so a submit can never
+                        // slip between "queue empty" and "runner cleared" (see the finally block).
+                        showUploadSummaryBox();
+                        releaseDeferred(batchPending, null, null); // no file ever got an upload id -> misc rows
+                        if (stats.total > 0) {
+                            const failedCount = stats.failed;
+                            let summaryMessage;
+                            let summaryLevel = 'error';
+                            if (failedCount === 0) {
+                                summaryMessage = 'Upload finished: ' + stats.ok + '/' + stats.total + ' file(s) uploaded. Processing continues in the background.';
+                                summaryLevel = 'info';
+                            } else if (stats.networkFailed === failedCount && stats.ok === 0) {
+                                summaryMessage = 'Upload failed: 0/' + stats.total + ' file(s) uploaded because the network connection was lost. The upload was stopped and no video will be processed.';
+                            } else if (stats.networkFailed === failedCount) {
+                                summaryMessage = 'Upload finished with errors: ' + stats.ok + '/' + stats.total + ' file(s) uploaded. ' + failedCount + ' file(s) failed because the network connection was lost and will not be processed.';
+                            } else if (stats.ok === 0) {
+                                summaryMessage = 'Upload failed: 0/' + stats.total + ' file(s) uploaded. The upload was stopped and no video will be processed.';
+                            } else {
+                                summaryMessage = 'Upload finished with errors: ' + stats.ok + '/' + stats.total + ' file(s) uploaded. ' + failedCount + ' file(s) failed and will not be processed.';
+                            }
+                            logClient(summaryMessage, { level: summaryLevel, uploadId: lastIds.uploadId, videoId: lastIds.videoId });
+                        }
+                    } finally {
+                        clearInterval(heartbeat);
+                        if (window.__uploadRunner === runner) {
+                            window.__uploadRunner = null;
+                            window.__uploadInProgress = false;
+                            syncUploadWarning();
+                        }
                     }
+                }
+
+                form.addEventListener('submit', function (e) {
+                    e.preventDefault();
                     hideError();
                     hideSummary();
 
@@ -1656,102 +1789,45 @@
                         return;
                     }
 
-                    submitButton.disabled = true;
-                    fileInput.disabled = true;
-                    isUploading = true;
-                    setDropzoneDisabled(true);
-                    window.__uploadInProgress = true;
-                    uploadWarning.classList.remove('hidden');
-
-                    // Held until the first file's upload id is known, then attached to it.
-                    batchPending = [];
-                    logClient('Starting upload of ' + files.length + ' file(s)' + (files.length > 1 ? ', smallest first.' : '.'), { deferTo: batchPending });
-
-                    hideSelectedFilesList();
-
-                    const items = buildQueueUI(files);
-                    currentQueueItems = currentQueueItems.concat(items);
-
-                    const consideredCount = items.filter(function (item) {
-                        return !item.cleared;
-                    }).length;
-
+                    const runnerActive = isUploadRunnerActive();
                     const batchTitle = files.length > 1 ? '' : titleInput.value;
-                    let successCount = 0;
-                    let networkFailedCount = 0;
 
-                    for (const item of items) {
-                        if (item.cleared) {
-                            continue;
-                        }
-                        const active = beginActiveUpload(item, function () {
-                            return items.slice(items.indexOf(item) + 1).filter(function (other) {
-                                return !other.cleared;
-                            }).length;
+                    if (runnerActive) {
+                        const runningUpload = window.__uploadActive;
+                        logClient('Added ' + files.length + ' file(s) to the upload queue' + (files.length > 1 ? ', smallest first.' : '.'), {
+                            uploadId: runningUpload ? runningUpload.uploadId : null,
                         });
-                        // Lines still held back for an upload id; flushed by the pagehide handler if the page unloads first.
-                        active.getDeferred = function () {
-                            return [batchPending, item.preInit];
-                        };
-                        try {
-                            await uploadFile(item, batchTitle, active);
-                            successCount++;
-                            logItem(item, item.file.name + ' uploaded successfully. (' + successCount + '/' + consideredCount + ')');
-                        } catch (err) {
-                            if (err && err.isNetworkError) {
-                                networkFailedCount++;
-                            }
-                            const failMessage = err.message || 'An error occurred during upload.';
-                            markItemError(item, failMessage);
-                            logItem(item, item.file.name + ' failed: ' + failMessage, 'error');
-                        } finally {
-                            endActiveUpload(active);
-                        }
+                    } else {
+                        // Held until the first file's upload id is known, then attached to it.
+                        batchPending = [];
+                        logClient('Starting upload of ' + files.length + ' file(s)' + (files.length > 1 ? ', smallest first.' : '.'), { deferTo: batchPending });
                     }
 
-                    submitButton.disabled = false;
-                    fileInput.disabled = false;
-                    isUploading = false;
-                    setDropzoneDisabled(false);
-                    window.__uploadInProgress = false;
-                    window.dispatchEvent(new CustomEvent('upload:finished'));
-                    uploadWarning.classList.add('hidden');
-
-                    // Reset the form so a re-submit does not re-upload this batch; failed files must be re-selected.
+                    // Reset the form right away so more files can be picked while this batch waits or uploads.
                     fileInput.value = '';
                     titleInput.value = '';
                     updateTitleVisibility();
                     hideSelectedFilesList();
 
-                    summaryBox.classList.remove('hidden');
+                    const items = buildQueueUI(files);
+                    currentQueueItems = currentQueueItems.concat(items);
+                    items.forEach(function (item) {
+                        window.__uploadQueue.push({ queueId: item.queueId, file: item.file, title: batchTitle });
+                    });
 
-                    let lastIds = { uploadId: null, videoId: null };
-                    for (let i = items.length - 1; i >= 0; i--) {
-                        const ids = resolveItemIds(items[i]);
-                        if (ids.uploadId) {
-                            lastIds = ids;
-                            break;
-                        }
+                    if (runnerActive) {
+                        window.__uploadRunner.stats.total += items.length;
+                        touchActiveUpload(window.__uploadActive, {});
+                        return;
                     }
-                    releaseDeferred(batchPending, null, null); // no file ever got an upload id -> misc rows
-                    if (consideredCount > 0) {
-                        const failedCount = consideredCount - successCount;
-                        let summaryMessage;
-                        let summaryLevel = 'error';
-                        if (failedCount === 0) {
-                            summaryMessage = 'Upload finished: ' + successCount + '/' + consideredCount + ' file(s) uploaded. Processing continues in the background.';
-                            summaryLevel = 'info';
-                        } else if (networkFailedCount === failedCount && successCount === 0) {
-                            summaryMessage = 'Upload failed: 0/' + consideredCount + ' file(s) uploaded because the network connection was lost. The upload was stopped and no video will be processed.';
-                        } else if (networkFailedCount === failedCount) {
-                            summaryMessage = 'Upload finished with errors: ' + successCount + '/' + consideredCount + ' file(s) uploaded. ' + failedCount + ' file(s) failed because the network connection was lost and will not be processed.';
-                        } else if (successCount === 0) {
-                            summaryMessage = 'Upload failed: 0/' + consideredCount + ' file(s) uploaded. The upload was stopped and no video will be processed.';
-                        } else {
-                            summaryMessage = 'Upload finished with errors: ' + successCount + '/' + consideredCount + ' file(s) uploaded. ' + failedCount + ' file(s) failed and will not be processed.';
+
+                    runUploads().catch(function (err) {
+                        try {
+                            showError('Upload stopped unexpectedly: ' + ((err && err.message) || 'unknown error') + ' Add files again to resume the waiting uploads.');
+                        } catch (displayError) {
+                            // the page may be gone
                         }
-                        logClient(summaryMessage, { level: summaryLevel, uploadId: lastIds.uploadId, videoId: lastIds.videoId });
-                    }
+                    });
                 });
 
                 // Registry entry that represents the same file as a DB video: (a) already linked to it, or (b) not yet
@@ -1911,7 +1987,7 @@
                         currentQueueItems.push(item);
 
                         item.bar.style.width = (entry.uploadPercent || 0) + '%';
-                        item.statusEl.textContent = entry.statusText || 'Pending';
+                        item.statusEl.textContent = (entry.statusText === LEGACY_WAITING_LABEL ? WAITING_LABEL : entry.statusText) || WAITING_LABEL;
                     });
 
                     updateQueueEmptyState();
@@ -1925,11 +2001,8 @@
                 hydrateActiveVideos();
                 rebuildQueueFromRegistry();
 
-                // Soft-navigated back while another (older) instance still runs the upload loop: this instance
-                // must not start a second upload in parallel.
-                if (window.__uploadInProgress === true && !isUploading) {
-                    setUploadLocked(true);
-                }
+                // Soft-navigated back while an older instance still runs the shared upload runner: show its warning.
+                syncUploadWarning();
 
                 function activeVideoIds() {
                     const ids = Object.keys(uploadedVideos).filter(function (id) {
@@ -2045,17 +2118,6 @@
                 document.addEventListener('visibilitychange', handleOutboxVisibility);
                 window.addEventListener('pagehide', handlePageHide);
 
-                // The instance that runs the upload loop announces the end of the batch; every other instance
-                // that locked its form at init unlocks here (the running instance never locked itself this way).
-                function handleUploadFinished() {
-                    if (!formLocked) {
-                        return;
-                    }
-                    setUploadLocked(false);
-                }
-
-                window.addEventListener('upload:finished', handleUploadFinished);
-
                 function initializeLiveUpdates() {
                     subscribeToVideoChannel();
 
@@ -2091,7 +2153,6 @@
                     window.removeEventListener('online', handleOnline);
                     document.removeEventListener('visibilitychange', handleOutboxVisibility);
                     window.removeEventListener('pagehide', handlePageHide);
-                    window.removeEventListener('upload:finished', handleUploadFinished);
                     copyLogBtn.removeEventListener('click', handleCopyLogClick);
                     clearTimeout(copyFeedbackTimerId);
                 };

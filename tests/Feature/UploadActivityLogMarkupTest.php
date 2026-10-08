@@ -25,8 +25,7 @@ class UploadActivityLogMarkupTest extends TestCase
             ->assertSee('hls_upload_active', false)
             ->assertSee('Upload interrupted: the page was reloaded or closed while uploading', false)
             ->assertSee('/activity-log', false)
-            ->assertSee('aria-disabled:cursor-not-allowed', false)
-            ->assertSee('disabled:cursor-not-allowed', false)
+            ->assertDontSee('aria-disabled:cursor-not-allowed', false)
             ->assertSee('stored_cids', false)
             ->assertSee(', smallest first.', false)
             ->assertDontSee('hls_upload_log_dismissed', false);
@@ -51,14 +50,19 @@ class UploadActivityLogMarkupTest extends TestCase
         $this->assertGreaterThan($logEnd, $notePos, 'Footer note must come after and outside #upload-log.');
     }
 
-    public function test_upload_page_locks_the_form_while_another_script_instance_uploads(): void
+    public function test_upload_page_appends_files_to_a_shared_queue_without_locking_the_form(): void
     {
         $this->actingAs(User::factory()->create(['username' => 'tester']));
 
         $this->get('/upload')
             ->assertOk()
-            ->assertSee('Upload in progress…', false)
-            ->assertSee('An upload is already running. Please wait until it finishes.', false)
-            ->assertSee('upload:finished', false);
+            ->assertSee('window.__uploadQueue', false)
+            ->assertSee('window.__uploadRunner', false)
+            ->assertSee('Added ', false)
+            ->assertSee('to the upload queue', false)
+            ->assertDontSee('Upload in progress…', false)
+            ->assertDontSee('An upload is already running', false)
+            ->assertDontSee('upload:finished', false)
+            ->assertDontSee('setUploadLocked', false);
     }
 }
