@@ -41,18 +41,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Upload Merge Queue
+    | Upload Rate Limits (Requests Per Minute)
     |--------------------------------------------------------------------------
     |
-    | Queue name the chunk-merge job (MergeUploadChunksJob) is pushed to. The
-    | default 'default' keeps merging on the same queue as transcoding. Set it
-    | to e.g. 'uploads' so a new upload's merge does not wait behind long
-    | transcodes. WARNING: a queue that no running worker reads (queue:work
-    | --queue=uploads,default) stalls every upload at the merge step.
+    | Per-user limits for the upload endpoints. Each limiter has its own
+    | counter (see AppServiceProvider), so chunk requests never consume the
+    | init budget. 900 chunk requests/min is about 3.5 files of 256 chunks
+    | (a 2048 MB file with 8 MB chunks).
     |
     */
 
-    'merge_queue' => env('UPLOAD_MERGE_QUEUE') ?: 'default',
+    'upload_rate_limits' => [
+        'init' => 30,
+        'chunk' => 900,
+        'activity_log' => 120,
+    ],
 
     /*
     |--------------------------------------------------------------------------

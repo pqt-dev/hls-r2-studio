@@ -54,5 +54,14 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinutes(10, 20)->by(sha1($pageUrl));
         });
+
+        // Each upload limiter has its own key, so chunk requests never consume the init or activity-log budget.
+        foreach (['upload-init' => 'init', 'upload-chunk' => 'chunk', 'activity-log' => 'activity_log'] as $name => $configKey) {
+            RateLimiter::for($name, function (Request $request) use ($name, $configKey) {
+                $maxAttempts = (int) config('videos.upload_rate_limits.'.$configKey);
+
+                return Limit::perMinute($maxAttempts)->by($name.':'.($request->user()?->getAuthIdentifier() ?? $request->ip()));
+            });
+        }
     }
 }

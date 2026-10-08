@@ -33,10 +33,10 @@ Route::middleware('auth')->group(function () {
     Route::get('/logs', [VideoController::class, 'logs'])->name('logs.index');
 
     Route::get('/activity-log', [ActivityLogController::class, 'index'])->name('activity-log.index');
-    Route::post('/activity-log', [ActivityLogController::class, 'store'])->name('activity-log.store')->middleware('throttle:120,1');
+    Route::post('/activity-log', [ActivityLogController::class, 'store'])->name('activity-log.store')->middleware('throttle:activity-log');
 
-    Route::post('/uploads/init', [VideoController::class, 'initUpload'])->name('uploads.init')->middleware('throttle:30,1');
-    Route::post('/uploads/{uploadId}/chunk', [VideoController::class, 'uploadChunk'])->name('uploads.chunk')->where('uploadId', '[0-9a-f-]{36}')->middleware('throttle:120,1');
+    Route::post('/uploads/init', [VideoController::class, 'initUpload'])->name('uploads.init')->middleware('throttle:upload-init');
+    Route::post('/uploads/{uploadId}/chunk', [VideoController::class, 'uploadChunk'])->name('uploads.chunk')->where('uploadId', '[0-9a-f-]{36}')->middleware('throttle:upload-chunk');
     Route::post('/uploads/{uploadId}/complete', [VideoController::class, 'completeUpload'])->name('uploads.complete')->where('uploadId', '[0-9a-f-]{36}');
 
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings.edit');
