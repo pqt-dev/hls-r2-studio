@@ -31,4 +31,19 @@ class SettingsR2ValidationTest extends TestCase
         $this->assertNull(session('_old_input.r2_secret_access_key'));
         $this->assertSame('some-key', session('_old_input.r2_access_key_id'));
     }
+
+    public function test_r2_endpoint_must_use_https(): void
+    {
+        $this->from('/settings')->put('/settings/r2', [
+            'r2_endpoint' => 'http://account.r2.cloudflarestorage.com',
+        ])->assertSessionHasErrors('r2_endpoint');
+
+        $this->from('/settings')->put('/settings/r2', [
+            'r2_access_key_id' => 'some-key',
+            'r2_secret_access_key' => 'some-secret',
+            'r2_bucket' => 'my-bucket',
+            'r2_endpoint' => 'https://account.r2.cloudflarestorage.com',
+            'r2_url' => 'https://cdn.example.com',
+        ])->assertSessionHasNoErrors();
+    }
 }

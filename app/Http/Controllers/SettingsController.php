@@ -26,7 +26,7 @@ class SettingsController extends Controller
             'r2_access_key_id' => ['nullable', 'string'],
             'r2_secret_access_key' => ['nullable', 'string'],
             'r2_bucket' => ['nullable', 'string'],
-            'r2_endpoint' => ['nullable', 'string', 'url'],
+            'r2_endpoint' => ['nullable', 'string', 'url:https'],
             'r2_url' => ['nullable', 'string', 'url'],
         ]);
 
