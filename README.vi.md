@@ -111,20 +111,21 @@ php artisan admin:create admin --email=admin@example.com
 ```
 > Lệnh `admin:create` sẽ hỏi password (ẩn ký tự khi gõ, tối thiểu 8 ký tự) — không nên truyền password trực tiếp trên dòng lệnh. Lệnh này upsert theo `username`: chạy lại cùng username sẽ đổi mật khẩu tài khoản đó thay vì tạo trùng.
 
-**4. Chạy thử (dev)** — cần **4 tiến trình song song**:
+**4. Chạy thử (dev)** — cần **5 tiến trình song song** (2 queue worker):
 
 ```bash
 PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload   # web server (terminal 1)
-php artisan queue:work     # bắt buộc — thiếu thì chunk upload không được ghép và video không bao giờ được transcode (terminal 2)
-php artisan schedule:work  # dọn rác tự động hàng ngày, thiếu vẫn chạy được, chỉ là rác không tự dọn (terminal 3)
-php artisan reverb:start   # hiển thị tiến độ transcode live, thiếu vẫn chạy được, chỉ là phải tự reload để xem tiến độ (terminal 4)
+php artisan queue:work --name=worker-1   # bắt buộc — thiếu thì chunk upload không được ghép và video không bao giờ được transcode (terminal 2)
+php artisan queue:work --name=worker-2   # worker thứ hai để việc ghép/transcode của upload mới chạy được khi video khác đang transcode (terminal 3)
+php artisan schedule:work  # dọn rác tự động hàng ngày, thiếu vẫn chạy được, chỉ là rác không tự dọn (terminal 4)
+php artisan reverb:start   # hiển thị tiến độ transcode live, thiếu vẫn chạy được, chỉ là phải tự reload để xem tiến độ (terminal 5)
 ```
 
 Truy cập `http://localhost:8000/login`.
 
-> Việc ghép các chunk đã upload thành file gốc do queue worker làm (không còn nằm trong request web) và hiển thị ở stage "Merging chunks" trước "Transcoding". Nên chạy ít nhất 2 queue worker (ví dụ `php artisan queue:work --queue=default` ở hai terminal) để việc ghép của upload mới không bị kẹt sau một video đang transcode lâu.
+> Việc ghép các chunk đã upload thành file gốc do queue worker làm (không còn nằm trong request web) và hiển thị ở stage "Merging chunks" trước "Transcoding". Cả hai worker cùng đọc queue `default` và mỗi worker nhận job kế tiếp ngay khi rảnh (mô hình pipeline): với 2 worker, tối đa 2 video được ghép/transcode song song, và việc ghép của upload mới không bị kẹt sau một video đang transcode lâu.
 
-> **Queue ghép riêng (tuỳ chọn, `UPLOAD_MERGE_QUEUE`).** Mặc định (không đặt = `default`) việc ghép chạy cùng queue với transcode, y như trước. Đặt `UPLOAD_MERGE_QUEUE=uploads` trong `.env` để đẩy job ghép chunk sang queue riêng, giúp việc ghép của upload mới bắt đầu ngay thay vì chờ sau các video transcode lâu. Khi đó bạn phải chạy worker đọc queue đó, ví dụ worker 1: `php artisan queue:work --queue=uploads,default` và worker 2: `php artisan queue:work --queue=default` (restart worker và chạy `php artisan config:clear` sau khi đổi). **Cảnh báo: nếu không có worker nào đang chạy đọc queue ghi trong `UPLOAD_MERGE_QUEUE`, mọi upload sẽ bị kẹt ở bước ghép.** Trong lúc ghép, video hiển thị stage "Merging chunks" và vẫn được tính là pending; job ghép mà worker bị kill sẽ được `videos:cleanup-orphaned-tmp` đánh dấu failed sau `TRANSCODE_ORPHANED_TTL_HOURS`.
+> Trong lúc ghép, video hiển thị stage "Merging chunks" và vẫn được tính là pending; job ghép mà worker bị kill sẽ được `videos:cleanup-orphaned-tmp` đánh dấu failed sau `TRANSCODE_ORPHANED_TTL_HOURS`.
 
 > `php artisan serve` chạy server tích hợp của PHP, mặc định chỉ xử lý từng request một. `PHP_CLI_SERVER_WORKERS=4` mở 4 worker, nhưng Laravel chỉ nhận biến này khi đi kèm `--no-reload` (nên cần chạy lại lệnh sau khi đổi `.env`).
 
@@ -617,4 +618,4 @@ Set `FORCE_HTTPS=true` trong `.env` (nếu không khai báo `FORCE_HTTPS` thì `
 Đặt `TRUSTED_PROXIES` trong `.env` là IP reverse proxy của bạn (phân tách bằng dấu phẩy; mặc định `*` tin mọi proxy). Nên giới hạn lại ở production để không thể giả mạo `X-Forwarded-For`, vì throttle login/report tính theo IP.
 
 **Q: Rate limit mặc định của các API là bao nhiêu?**
-Đăng nhập: 5 lần/phút. `/uploads/init`: 30 lần/phút. `/uploads/{id}/chunk`: 120 lần/phút. `/api/reports`: 5 lần/10 phút mỗi IP (cộng thêm 20 lần/10 phút mỗi `page_url`). Gặp lỗi "Too Many Requests" khi thao tác quá nhanh là do các giới hạn này.
+Đăng nhập: 5 lần/phút. `/uploads/init`: 30 lần/phút. `/uploads/{id}/chunk`: 900 lần/phút. Ghi activity log (POST): 120 lần/phút. Các request upload có giới hạn riêng (mỗi loại một bộ đếm riêng), chỉnh được trong `config/videos.php` (`upload_rate_limits`). `/api/reports`: 5 lần/10 phút mỗi IP (cộng thêm 20 lần/10 phút mỗi `page_url`). Gặp lỗi "Too Many Requests" khi thao tác quá nhanh là do các giới hạn này.

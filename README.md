@@ -111,20 +111,21 @@ php artisan admin:create admin --email=admin@example.com
 ```
 > The `admin:create` command will prompt for a password (input is hidden, minimum 8 characters) — do not pass the password directly on the command line. This command upserts by `username`: running it again with the same username changes that account's password instead of creating a duplicate.
 
-**4. Trial run (dev)** — requires **4 parallel processes**:
+**4. Trial run (dev)** — requires **5 parallel processes** (2 queue workers):
 
 ```bash
 PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload   # web server (terminal 1)
-php artisan queue:work     # required — without it uploaded chunks are never merged and videos are never transcoded (terminal 2)
-php artisan schedule:work  # automatic daily cleanup; it still works without it, but junk is not cleaned automatically (terminal 3)
-php artisan reverb:start   # live transcode progress display; it still works without it, but you have to reload manually to see progress (terminal 4)
+php artisan queue:work --name=worker-1   # required — without it uploaded chunks are never merged and videos are never transcoded (terminal 2)
+php artisan queue:work --name=worker-2   # second worker so a new upload's merge/transcode starts while another video is transcoding (terminal 3)
+php artisan schedule:work  # automatic daily cleanup; it still works without it, but junk is not cleaned automatically (terminal 4)
+php artisan reverb:start   # live transcode progress display; it still works without it, but you have to reload manually to see progress (terminal 5)
 ```
 
 Open `http://localhost:8000/login`.
 
-> Merging the uploaded chunks into the original file is done by the queue worker (not by the web request) and shows as stage "Merging chunks" before "Transcoding". Run at least 2 queue workers (e.g. `php artisan queue:work --queue=default` in two terminals) so a new upload's merge is not stuck behind a long transcode.
+> Merging the uploaded chunks into the original file is done by the queue worker (not by the web request) and shows as stage "Merging chunks" before "Transcoding". Both workers read the `default` queue and each picks up the next job as soon as it is free (pipeline model): with 2 workers up to 2 videos are merged/transcoded in parallel, and a new upload's merge is not stuck behind a single long transcode.
 
-> **Separate merge queue (optional, `UPLOAD_MERGE_QUEUE`).** By default (unset = `default`) merging runs on the same queue as transcoding, exactly as before. Set `UPLOAD_MERGE_QUEUE=uploads` in `.env` to push the chunk-merge job to its own queue so a new upload's merge starts immediately instead of waiting behind long transcodes. You must then run workers that read that queue, for example worker 1: `php artisan queue:work --queue=uploads,default` and worker 2: `php artisan queue:work --queue=default` (restart the workers and run `php artisan config:clear` after changing it). **Warning: if no running worker reads the queue named in `UPLOAD_MERGE_QUEUE`, every upload stalls at the merge step.** While merging, the video shows stage "Merging chunks" and still counts as pending; a merge whose worker was killed is marked failed by `videos:cleanup-orphaned-tmp` after `TRANSCODE_ORPHANED_TTL_HOURS`.
+> While merging, the video shows stage "Merging chunks" and still counts as pending; a merge whose worker was killed is marked failed by `videos:cleanup-orphaned-tmp` after `TRANSCODE_ORPHANED_TTL_HOURS`.
 
 > `php artisan serve` runs PHP's built-in server, which handles one request at a time by default. `PHP_CLI_SERVER_WORKERS=4` starts 4 workers, but Laravel only honours it together with `--no-reload` (so restart the command after changing `.env`).
 
@@ -617,4 +618,4 @@ Set `FORCE_HTTPS=true` in `.env` (if `FORCE_HTTPS` is not set at all, `APP_ENV=p
 Set `TRUSTED_PROXIES` in `.env` to your reverse proxy IP (comma-separated; default `*` trusts every proxy). Restrict it in production so `X-Forwarded-For` cannot be spoofed, since login/report throttling is per-IP.
 
 **Q: What are the default rate limits of the APIs?**
-Login: 5 requests/minute. `/uploads/init`: 30 requests/minute. `/uploads/{id}/chunk`: 120 requests/minute. `/api/reports`: 5 requests/10 minutes per IP (plus 20 requests/10 minutes per `page_url`). Getting a "Too Many Requests" error when acting too quickly is caused by these limits.
+Login: 5 requests/minute. `/uploads/init`: 30 requests/minute. `/uploads/{id}/chunk`: 900 requests/minute. Activity log POST: 120 requests/minute. Upload requests have separate rate limits (each with its own counter), configurable in `config/videos.php` (`upload_rate_limits`). `/api/reports`: 5 requests/10 minutes per IP (plus 20 requests/10 minutes per `page_url`). Getting a "Too Many Requests" error when acting too quickly is caused by these limits.
