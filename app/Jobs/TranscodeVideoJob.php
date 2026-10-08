@@ -137,9 +137,15 @@ class TranscodeVideoJob implements ShouldQueue
             $this->runTranscode($this->localUploadPath, $tmpDir, $duration, $video);
 
             $video->fill($this->probeOutputInfo($tmpDir));
+            $previousProgress = (int) $video->progress;
             $video->progress = $this->overallProgress($video, 'transcoding', 1.0);
             $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+
+            // The last ffmpeg tick may already have recorded this exact value;
+            // skip the record (and its broadcast) to avoid a duplicate row.
+            if ($video->progress !== $previousProgress) {
+                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            }
 
             $video->stage = 'generating_thumbnail';
             $video->progress = $this->overallProgress($video, 'generating_thumbnail');
