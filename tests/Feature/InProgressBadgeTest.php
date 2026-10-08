@@ -72,6 +72,22 @@ class InProgressBadgeTest extends TestCase
         $this->assertStringContainsString('data-videos="[]"', $html);
     }
 
+    public function test_ring_exposes_progress_stages_from_config(): void
+    {
+        $this->login();
+
+        $html = $this->get(route('logs.index'))->assertOk()->getContent();
+        $tag = $this->ringTag($html);
+
+        $this->assertStringContainsString('data-progress-stages=', $tag);
+        preg_match('/data-progress-stages="([^"]*)"/', $tag, $m);
+        $stages = json_decode(html_entity_decode($m[1], ENT_QUOTES), true);
+
+        $this->assertEquals(config('videos.progress.stages'), $stages);
+        $this->assertArrayHasKey('upload', $stages);
+        $this->assertArrayHasKey('uploading_r2', $stages);
+    }
+
     public function test_old_sidebar_and_header_badge_markup_is_gone(): void
     {
         $this->login();

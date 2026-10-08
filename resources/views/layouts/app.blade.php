@@ -151,6 +151,7 @@
     <a href="{{ route('logs.index') }}" id="in-progress-ring" data-in-progress-ring data-state="active"
        data-count-url="{{ route('videos.in-progress-count') }}"
        data-videos="{{ json_encode($inProgressVideos) }}"
+       data-progress-stages="{{ json_encode(config('videos.progress.stages')) }}"
        @if (count($inProgressVideos) < 1) hidden @endif
        title="Processing videos"
        class="ip-ring fixed z-20 flex h-16 w-16 items-center justify-center rounded-full sm:h-[72px] sm:w-[72px]"
