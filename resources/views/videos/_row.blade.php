@@ -1,8 +1,10 @@
 @php
     $badge = match ($video->status) {
-        'ready' => ['success', 'Ready'],
-        'failed' => ['destructive', 'Failed'],
-        default => ['secondary', $video->status],
+        'ready' => ['bg-emerald-100 text-emerald-700 ring-emerald-300', 'Ready'],
+        'failed' => ['bg-rose-50 text-rose-700 ring-rose-300', 'Failed'],
+        'processing' => ['bg-orange-100 text-orange-700 ring-orange-300', 'Processing'],
+        'pending' => ['bg-sky-100 text-sky-700 ring-sky-300', 'Queued'],
+        default => ['bg-slate-100 text-slate-700 ring-slate-300', $video->status],
     };
 
     $minutes = $video->duration ? floor($video->duration / 60) : 0;
@@ -55,7 +57,7 @@
     @endif
 
     <x-ui.table-cell class="max-md:row-span-2 max-md:p-0">
-        <div class="w-12 h-12 bg-border rounded overflow-hidden flex items-center justify-center">
+        <div class="w-12 h-12 bg-muted rounded-lg ring-1 ring-inset ring-border overflow-hidden flex items-center justify-center">
             @if ($thumbnailUrl)
                 <img src="{{ $thumbnailUrl }}" alt="{{ $video->title }}" class="w-full h-full object-cover">
             @else
@@ -70,11 +72,9 @@
     </x-ui.table-cell>
 
     <x-ui.table-cell class="max-md:col-start-3 max-md:p-0">
-        <x-ui.badge :variant="$badge[0]"
-            :title="$video->status === 'failed' && $video->error_message ? $video->error_message : null"
-        >
-            {{ $badge[1] }}
-        </x-ui.badge>
+        <span class="inline-flex w-fit items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset whitespace-nowrap {{ $badge[0] }}"
+            @if ($video->status === 'failed' && $video->error_message) title="{{ $video->error_message }}" @endif
+        >{{ $badge[1] }}</span>
     </x-ui.table-cell>
 
     <x-ui.table-cell class="hidden md:table-cell text-muted-foreground max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:mt-1 max-md:border-t max-md:border-border max-md:pt-2 max-md:before:content-['Duration']">{{ $durationLabel }}</x-ui.table-cell>
@@ -98,7 +98,7 @@
         @endif
     </x-ui.table-cell>
 
-    <x-ui.table-cell class="hidden md:table-cell text-muted-foreground max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:before:content-['Uploaded']">{{ $video->created_at->toDisplay() }}</x-ui.table-cell>
+    <x-ui.table-cell class="hidden md:table-cell text-muted-foreground max-md:col-span-full max-md:flex max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0 max-md:text-xs max-md:before:text-muted-foreground max-md:before:content-['Uploaded']">{{ $video->created_at->toDisplay('j M Y, H:i') }}</x-ui.table-cell>
 
     <x-ui.table-cell align="right" class="whitespace-nowrap max-md:col-span-full max-md:mt-1 max-md:border-t max-md:border-border max-md:p-0 max-md:pt-3 max-md:text-left">
         <div class="flex w-full flex-wrap gap-2 md:inline-flex md:w-auto md:flex-nowrap md:items-center">

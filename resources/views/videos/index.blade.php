@@ -68,6 +68,7 @@
         </form>
         @if ($completedVideos->isEmpty())
             <div class="rounded-lg border border-dashed border-input bg-background p-10 text-center text-muted-foreground">
+                <div class="mx-auto mb-3 w-11 h-11 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center"><x-lucide-film class="w-5 h-5 text-slate-700 stroke-[1.75]" /></div>
                 No completed videos yet. <a href="{{ route('videos.create') }}" class="text-foreground underline underline-offset-2">Upload your first video</a>.
             </div>
         @else
@@ -87,6 +88,10 @@
                 </div>
             </form>
             <x-ui.card class="overflow-x-auto">
+                <div class="px-4 py-2.5 flex items-center justify-between border-b border-border bg-muted/40">
+                    <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-film class="w-4 h-4 stroke-[1.75] text-slate-600" /> Videos</h3>
+                    <span class="rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset bg-white text-slate-700 ring-slate-200">{{ $completedVideos->total() }}</span>
+                </div>
                 {{-- mobile-card:start (below md the table is restyled as stacked cards via max-md:* classes; thead keeps only the select-all control) --}}
                 <x-ui.table class="max-md:block">
                     <x-ui.table-header class="max-md:block">
@@ -120,12 +125,15 @@
 
     {{-- tabs:start (below md the dialog is a full-screen sheet; header and tab bar stay fixed, body scrolls) --}}
     <x-ui.dialog id="embed-modal" class="z-50 md:p-4" initialFocus="panel" aria-labelledby="embed-modal-heading"
-                 panelClass="max-w-2xl flex flex-col overflow-hidden max-md:h-[100dvh] max-md:max-h-none max-md:max-w-none max-md:rounded-none max-md:border-0">
+                 panelClass="max-w-2xl flex flex-col overflow-hidden rounded-xl! [&>[data-dialog-close]]:rounded-full! [&>[data-dialog-close]]:bg-transparent! [&>[data-dialog-close]]:text-muted-foreground! [&>[data-dialog-close]]:hover:bg-muted! [&>[data-dialog-close]]:hover:text-foreground! max-md:h-[100dvh] max-md:max-h-none max-md:max-w-none max-md:rounded-none max-md:border-0">
     {{-- tabs:end --}}
             <x-ui.dialog-header class="px-4 sm:px-5 py-4 border-b border-border shrink-0">
-                <div class="min-w-0 pr-8">
-                    <x-ui.dialog-title id="embed-modal-heading" class="text-base">Player / Embed &amp; Images</x-ui.dialog-title>
-                    <x-ui.dialog-description id="embed-modal-title" class="mt-1.5 break-words"></x-ui.dialog-description>
+                <div class="flex items-center gap-3 min-w-0 pr-10">
+                    <div class="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center"><x-lucide-monitor-play class="w-4 h-4 text-slate-700 stroke-[1.75]" /></div>
+                    <div class="min-w-0">
+                        <x-ui.dialog-title id="embed-modal-heading" class="text-base font-semibold">Player / Embed &amp; Images</x-ui.dialog-title>
+                        <x-ui.dialog-description id="embed-modal-title" class="mt-0.5 w-fit max-w-full break-words rounded-md bg-muted px-2 py-0.5 text-xs text-muted-foreground empty:hidden"></x-ui.dialog-description>
+                    </div>
                 </div>
             </x-ui.dialog-header>
 
@@ -150,40 +158,40 @@
                 <div id="embed-panel-links" role="tabpanel" aria-labelledby="embed-tab-links" class="space-y-4 max-md:hidden">
                 {{-- tabs:end --}}
                 <div>
-                    <x-ui.label for="embed-modal-url" class="block mb-2">Embed URL</x-ui.label>
+                    <x-ui.label for="embed-modal-url" class="flex items-center gap-1.5 text-xs! font-semibold mb-2"><x-lucide-link class="w-3.5 h-3.5 stroke-[1.75] text-muted-foreground" /> Embed URL</x-ui.label>
                     <div class="flex gap-2">
-                        <x-ui.input id="embed-modal-url" type="text" readonly class="flex-1" />
+                        <x-ui.input id="embed-modal-url" type="text" readonly class="flex-1 rounded-lg! bg-muted/40! border-border font-mono text-xs!" />
                         <x-ui.button variant="outline" size="sm" class="shrink-0" data-copy-btn aria-live="polite" onclick="copyModalField('embed-modal-url', this)">
                             <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy</span>
                         </x-ui.button>
                     </div>
                 </div>
 
-                <div>
-                    <x-ui.label for="embed-modal-m3u8" class="block mb-2">Link m3u8 / play</x-ui.label>
+                <div class="border-t border-border pt-4">
+                    <x-ui.label for="embed-modal-m3u8" class="flex items-center gap-1.5 text-xs! font-semibold mb-2"><x-lucide-link class="w-3.5 h-3.5 stroke-[1.75] text-muted-foreground" /> Link m3u8 / play</x-ui.label>
                     <div class="flex gap-2">
-                        <x-ui.input id="embed-modal-m3u8" type="text" readonly class="flex-1" />
+                        <x-ui.input id="embed-modal-m3u8" type="text" readonly class="flex-1 rounded-lg! bg-muted/40! border-border font-mono text-xs!" />
                         <x-ui.button variant="outline" size="sm" class="shrink-0" data-copy-btn aria-live="polite" onclick="copyModalField('embed-modal-m3u8', this)">
                             <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy</span>
                         </x-ui.button>
                     </div>
                 </div>
 
-                <div>
+                <div class="border-t border-border pt-4">
                     <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-2">
-                        <x-ui.label for="embed-modal-code" class="block">Iframe code</x-ui.label>
+                        <x-ui.label for="embed-modal-code" class="flex items-center gap-1.5 text-xs! font-semibold"><x-lucide-code class="w-3.5 h-3.5 stroke-[1.75] text-muted-foreground" /> Iframe code</x-ui.label>
                         <div class="flex items-center gap-3 text-muted-foreground">
-                            <x-ui.label for="embed-modal-mute" class="inline-flex items-center gap-1.5 font-normal text-muted-foreground">
+                            <x-ui.label for="embed-modal-mute" class="inline-flex items-center gap-1.5 cursor-pointer rounded-md border border-border px-2.5 py-1 text-xs! font-normal text-muted-foreground has-[:checked]:border-primary/30 has-[:checked]:bg-primary/10 has-[:checked]:text-foreground">
                                 <x-ui.checkbox id="embed-modal-mute" />
                                 Mute
                             </x-ui.label>
-                            <x-ui.label for="embed-modal-autoplay" class="inline-flex items-center gap-1.5 font-normal text-muted-foreground">
+                            <x-ui.label for="embed-modal-autoplay" class="inline-flex items-center gap-1.5 cursor-pointer rounded-md border border-border px-2.5 py-1 text-xs! font-normal text-muted-foreground has-[:checked]:border-primary/30 has-[:checked]:bg-primary/10 has-[:checked]:text-foreground">
                                 <x-ui.checkbox id="embed-modal-autoplay" />
                                 Autoplay
                             </x-ui.label>
                         </div>
                     </div>
-                    <x-ui.textarea id="embed-modal-code" readonly rows="3" class="font-mono resize-none" />
+                    <x-ui.textarea id="embed-modal-code" readonly rows="3" class="rounded-lg! bg-muted/40! border-border font-mono text-xs! resize-none" />
                     <p class="mt-1 text-xs text-muted-foreground">Browsers may block autoplay with sound unless Mute is also enabled.</p>
                     <x-ui.button variant="outline" size="sm" class="mt-2" data-copy-btn aria-live="polite" onclick="copyModalField('embed-modal-code', this)">
                         <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy</span>
@@ -193,8 +201,8 @@
                 </div>
                 {{-- tabs:end --}}
 
-                <div id="embed-modal-images-section" role="tabpanel" aria-labelledby="embed-tab-images" class="hidden max-md:hidden">
-                    <x-ui.label class="block mb-2">Images</x-ui.label>
+                <div id="embed-modal-images-section" role="tabpanel" aria-labelledby="embed-tab-images" class="hidden max-md:hidden border-t border-border pt-4">
+                    <x-ui.label class="flex items-center gap-1.5 text-xs! font-semibold mb-2"><x-lucide-image class="w-3.5 h-3.5 stroke-[1.75] text-muted-foreground" /> Images</x-ui.label>
                     <div id="embed-modal-images" class="grid grid-cols-2 gap-3"></div>
                     <p id="embed-modal-images-error" class="hidden mt-2 text-xs text-destructive"></p>
                 </div>
@@ -341,7 +349,7 @@
                 card.className = 'flex flex-col min-w-0 rounded-lg border border-border overflow-hidden';
 
                 const label = document.createElement('div');
-                label.className = 'px-3 py-2 bg-muted text-xs font-medium text-muted-foreground truncate';
+                label.className = 'px-3 py-2 bg-muted/40 border-b border-border text-xs font-medium text-muted-foreground truncate';
                 label.textContent = image.label;
 
                 const link = document.createElement('a');
@@ -451,7 +459,7 @@
                 card.className = 'flex flex-col min-w-0 rounded-lg border border-border overflow-hidden';
 
                 const label = document.createElement('div');
-                label.className = 'px-3 py-2 bg-muted text-xs font-medium text-muted-foreground truncate';
+                label.className = 'px-3 py-2 bg-muted/40 border-b border-border text-xs font-medium text-muted-foreground truncate';
                 label.textContent = 'Custom image';
 
                 const input = document.createElement('input');
