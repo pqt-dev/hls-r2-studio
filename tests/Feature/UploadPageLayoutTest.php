@@ -22,4 +22,15 @@ class UploadPageLayoutTest extends TestCase
             ->assertSee('id="upload-submit"', false)
             ->assertDontSee('Upload Progress');
     }
+
+    public function test_upload_page_script_has_stage_aware_status_text_and_rate_limit_wait(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        $this->get('/upload')
+            ->assertOk()
+            ->assertSee('function transcodeStatusText(status, stage, progress)', false)
+            ->assertSee('function isMergingPending(status, stage)', false)
+            ->assertSee('Server busy, retrying in ', false);
+    }
 }

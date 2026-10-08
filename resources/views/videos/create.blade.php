@@ -73,9 +73,17 @@
             <x-ui.card class="overflow-hidden">
                 <div class="bg-muted border-b border-border px-4 py-2 flex items-center justify-between gap-2">
                     <h3 class="min-w-0 text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Activity Log</h3>
-                    <x-ui.button variant="outline" size="sm" id="clear-log-btn" class="shrink-0" title="Hides these lines in this browser only. Stored logs are not deleted.">
-                        <x-lucide-trash-2 class="w-3.5 h-3.5" /> Clear log
-                    </x-ui.button>
+                    <div class="flex items-center gap-2 shrink-0">
+                        <x-ui.button variant="outline" size="sm" id="copy-log-btn" type="button" class="shrink-0" title="Copy the visible log lines to the clipboard">
+                            <x-lucide-copy class="w-3.5 h-3.5" data-copy-icon="copy" />
+                            <x-lucide-check class="w-3.5 h-3.5 hidden" data-copy-icon="check" />
+                            <span data-copy-label>Copy log</span>
+                        </x-ui.button>
+                        <span id="copy-log-status" class="sr-only" role="status" aria-live="polite"></span>
+                        <x-ui.button variant="outline" size="sm" id="clear-log-btn" class="shrink-0" title="Hides these lines in this browser only. Stored logs are not deleted.">
+                            <x-lucide-trash-2 class="w-3.5 h-3.5" /> Clear log
+                        </x-ui.button>
+                    </div>
                 </div>
                 <div class="p-4">
                     <div id="upload-log" class="font-mono text-xs text-muted-foreground space-y-1 max-h-72 overflow-y-auto break-words">
@@ -333,9 +341,44 @@
                     return stageLabel + ' — ' + progress + '%';
                 }
 
+                // A merging video is still status 'pending' on the server (it has not reached the transcode job yet),
+                // so the stage decides whether it is really waiting in the queue or merging chunks right now.
+                function isMergingPending(status, stage) {
+                    return status === 'pending' && stage === 'merging';
+                }
+
+                // Single source of truth for the queue-row text of a video that has been handed off to the server.
+                function transcodeStatusText(status, stage, progress) {
+                    if (isMergingPending(status, stage)) {
+                        return formatStageStatus('merging', progress || 0);
+                    }
+                    if (status === 'pending') {
+                        return 'Queued for processing...';
+                    }
+                    return formatStageStatus(stage || 'transcoding', progress || 0);
+                }
+
+                // Last server-origin status line printed per video id. The same status can reach the log through
+                // the realtime event and through the stored history (/status-log); an identical line directly after
+                // the previous one for the same video is dropped. Keyed by video id, compared by message text only.
+                const lastStatusLineByVideo = {};
+
+                // force=true (DB replay) always prints and only records the line, so stored rows are never dropped.
+                function appendStatusLine(videoId, message, className, time, timestamp, force) {
+                    const key = String(videoId);
+                    if (!force && lastStatusLineByVideo[key] === message) {
+                        return;
+                    }
+                    lastStatusLineByVideo[key] = message;
+                    appendLog(message, className, time, timestamp);
+                }
+
                 // Single source of truth for server-origin log lines (already stored by the server, so the
                 // client never posts them back). Used by realtime events, history catch-up and DB replay.
                 function buildStatusMessage(title, status, stage, progress) {
+                    if (isMergingPending(status, stage)) {
+                        return { message: title + ': ' + transcodeStatusText(status, stage, progress), className: null };
+                    }
                     if (status === 'pending') {
                         return { message: title + ' is queued for processing.', className: null };
                     }
@@ -644,12 +687,15 @@
                     return err instanceof TypeError && /failed to fetch|networkerror|load failed|network request failed/i.test(err.message || '');
                 }
 
-                async function fetchWithRetry(url, options, maxRetries = 3) {
+                // onRateLimitWait(secondsLeft) is called once a second while waiting out a long HTTP 429, then with 0.
+                async function fetchWithRetry(url, options, maxRetries = 3, onRateLimitWait = null) {
                     let lastError;
                     let lastIsHttpError = false;
+                    let lastWasRateLimited = false;
                     for (let attempt = 1; attempt <= maxRetries; attempt++) {
                         let retryDelayMs = 1000;
                         let retryable = true;
+                        lastWasRateLimited = false;
                         try {
                             const response = await fetch(url, options);
                             if (!response.ok) {
@@ -669,9 +715,10 @@
                                 // Only 5xx and 429 are transient; any other 4xx is final.
                                 retryable = response.status >= 500 || response.status === 429;
                                 if (response.status === 429) {
+                                    lastWasRateLimited = true;
                                     const retryAfter = parseInt(response.headers.get('Retry-After'), 10);
                                     if (retryAfter > 0) {
-                                        retryDelayMs = Math.min(retryAfter, 30) * 1000;
+                                        retryDelayMs = Math.min(retryAfter, 65) * 1000;
                                     }
                                 }
                                 lastError = new Error(message);
@@ -690,7 +737,15 @@
                             lastIsHttpError = false;
                         }
                         if (attempt < maxRetries) {
-                            await sleep(retryDelayMs);
+                            if (lastWasRateLimited && retryDelayMs > 3000 && typeof onRateLimitWait === 'function') {
+                                for (let left = Math.ceil(retryDelayMs / 1000); left > 0; left--) {
+                                    onRateLimitWait(left);
+                                    await sleep(1000);
+                                }
+                                onRateLimitWait(0);
+                            } else {
+                                await sleep(retryDelayMs);
+                            }
                         }
                     }
                     if (!lastIsHttpError && isNetworkFailure(lastError)) {
@@ -736,7 +791,7 @@
                         }
                         const built = buildStatusMessage(entry.title, log.status, log.stage, log.progress);
                         if (built) {
-                            appendLog(built.message, built.className, createdAt.toLocaleTimeString(), createdAt.getTime());
+                            appendStatusLine(videoId, built.message, built.className, createdAt.toLocaleTimeString(), createdAt.getTime());
                         }
                     });
 
@@ -746,6 +801,7 @@
                     entry.progress = lastLog.progress;
 
                     if (lastLog.status === 'ready' || lastLog.status === 'failed') {
+                        delete lastStatusLineByVideo[String(videoId)];
                         removeFinishedQueueRow(entry);
                     }
                 }
@@ -806,7 +862,11 @@
                             const title = (info && info.title) || (videoId ? 'Video #' + videoId : 'Video');
                             const built = buildStatusMessage(title, row.status, row.stage, row.progress);
                             if (built) {
-                                appendLog(built.message, built.className, time, ts);
+                                if (videoId) {
+                                    appendStatusLine(videoId, built.message, built.className, time, ts, true);
+                                } else {
+                                    appendLog(built.message, built.className, time, ts);
+                                }
                             }
                         } else {
                             appendLog(row.message, clientLineClass(row.message, row.level), time, ts);
@@ -1103,8 +1163,91 @@
 
                 clearLogBtn.addEventListener('click', function () {
                     setClearedAt(Date.now());
+                    Object.keys(lastStatusLineByVideo).forEach(function (k) { delete lastStatusLineByVideo[k]; });
                     logBox.innerHTML = '<p class="text-muted-foreground" data-log-placeholder>Ready.</p>';
                 });
+
+                const copyLogBtn = document.getElementById('copy-log-btn');
+                const copyLogStatus = document.getElementById('copy-log-status');
+                let copyFeedbackTimerId = null;
+
+                function getVisibleLogLines() {
+                    return Array.from(logBox.querySelectorAll('p'))
+                        .filter(function (p) { return !p.hasAttribute('data-log-placeholder'); })
+                        .map(function (p) { return p.textContent; });
+                }
+
+                function copyViaTextarea(text) {
+                    const ta = document.createElement('textarea');
+                    ta.value = text;
+                    ta.setAttribute('readonly', '');
+                    ta.style.position = 'fixed';
+                    ta.style.top = '-1000px';
+                    ta.style.left = '-1000px';
+                    document.body.appendChild(ta);
+                    try {
+                        ta.select();
+                        return document.execCommand('copy') === true;
+                    } catch (e) {
+                        return false;
+                    } finally {
+                        ta.remove();
+                    }
+                }
+
+                function showCopyFeedback(message, ok, duration) {
+                    const label = copyLogBtn.querySelector('[data-copy-label]');
+                    const copyIcon = copyLogBtn.querySelector('[data-copy-icon="copy"]');
+                    const checkIcon = copyLogBtn.querySelector('[data-copy-icon="check"]');
+                    clearTimeout(copyFeedbackTimerId);
+                    if (!copyLogBtn.style.minWidth) {
+                        copyLogBtn.style.minWidth = copyLogBtn.offsetWidth + 'px';
+                    }
+                    label.textContent = message;
+                    copyIcon.classList.toggle('hidden', ok);
+                    checkIcon.classList.toggle('hidden', !ok);
+                    copyLogStatus.textContent = message;
+                    copyFeedbackTimerId = setTimeout(function () {
+                        copyFeedbackTimerId = null;
+                        label.textContent = 'Copy log';
+                        copyIcon.classList.remove('hidden');
+                        checkIcon.classList.add('hidden');
+                        copyLogBtn.style.minWidth = '';
+                        copyLogStatus.textContent = '';
+                    }, duration);
+                }
+
+                async function handleCopyLogClick() {
+                    try {
+                        const lines = getVisibleLogLines();
+                        if (lines.length === 0) {
+                            showCopyFeedback('Nothing to copy', false, 1500);
+                            return;
+                        }
+                        const text = lines.join('\n');
+                        let copied = false;
+                        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+                            try {
+                                await navigator.clipboard.writeText(text);
+                                copied = true;
+                            } catch (e) {
+                                copied = false;
+                            }
+                        }
+                        if (!copied) {
+                            copied = copyViaTextarea(text);
+                        }
+                        if (copied) {
+                            showCopyFeedback('Copied', true, 1500);
+                        } else {
+                            showCopyFeedback('Copy failed', false, 2000);
+                        }
+                    } catch (e) {
+                        showCopyFeedback('Copy failed', false, 2000);
+                    }
+                }
+
+                copyLogBtn.addEventListener('click', handleCopyLogClick);
 
                 function updateQueueEmptyState() {
                     queueCountBadge.textContent = String(queueList.children.length);
@@ -1271,6 +1414,26 @@
                     }
                 }
 
+                // Shows 'Server busy, retrying in Ns...' on the queue row while a long HTTP 429 wait runs and puts
+                // the previous status text back afterwards.
+                function rateLimitNotifier(item) {
+                    let previousText = null;
+
+                    return function (secondsLeft) {
+                        if (secondsLeft > 0) {
+                            if (previousText === null) {
+                                const liveRow = findLiveQueueRow(item.queueId);
+                                const statusEl = liveRow ? liveRow.querySelector('[data-role="upload-status"]') : item.statusEl;
+                                previousText = statusEl ? statusEl.textContent : '';
+                            }
+                            setItemStatus(item, 'Server busy, retrying in ' + secondsLeft + 's...');
+                        } else if (previousText !== null) {
+                            setItemStatus(item, previousText);
+                            previousText = null;
+                        }
+                    };
+                }
+
                 function dismissQueueRow(queueId) {
                     const row = findLiveQueueRow(queueId);
                     if (row) {
@@ -1338,6 +1501,7 @@
                     item.preInit = [];
                     logClient('Uploading ' + file.name + '...', { deferTo: item.preInit });
 
+                    const onRateLimitWait = rateLimitNotifier(item);
                     let initData;
                     try {
                         initData = await fetchWithRetry('/uploads/init', {
@@ -1352,7 +1516,7 @@
                                 total_size: file.size,
                                 title: title,
                             }),
-                        }, 1);
+                        }, 4, onRateLimitWait);
                     } catch (err) {
                         releaseDeferred(item.preInit, null, null); // no association possible -> misc rows
                         throw err;
@@ -1384,7 +1548,7 @@
                                 'Accept': 'application/json',
                             },
                             body: chunk,
-                        });
+                        }, 3, onRateLimitWait);
 
                         bytesSent += (end - start);
                         touchActiveUpload(active, {});
@@ -1406,7 +1570,7 @@
                             total_size: file.size,
                             title: title,
                         }),
-                    }, 1);
+                    }, 4, onRateLimitWait);
 
                     // The video exists now, so a reload from here on does not interrupt this file.
                     endActiveUpload(active);
@@ -1430,7 +1594,7 @@
                             transcodeWrapper.classList.remove('hidden');
                         }
                         if (transcodeStatusEl) {
-                            transcodeStatusEl.textContent = 'Queued for processing...';
+                            transcodeStatusEl.textContent = transcodeStatusText('pending', null, 0);
                         }
 
                         if (item.queueId && window.__uploadQueueRegistry[item.queueId]) {
@@ -1459,7 +1623,17 @@
                     hideError();
                     hideSummary();
 
-                    const files = Array.from(fileInput.files);
+                    // Smallest first (stable: ties keep the selection order) so small files are ready sooner.
+                    const files = Array.from(fileInput.files)
+                        .map(function (file, index) {
+                            return { file: file, index: index };
+                        })
+                        .sort(function (a, b) {
+                            return (a.file.size - b.file.size) || (a.index - b.index);
+                        })
+                        .map(function (entry) {
+                            return entry.file;
+                        });
                     if (files.length === 0) {
                         showError('Please select a video file.');
                         return;
@@ -1491,7 +1665,7 @@
 
                     // Held until the first file's upload id is known, then attached to it.
                     batchPending = [];
-                    logClient('Starting upload of ' + files.length + ' file(s).', { deferTo: batchPending });
+                    logClient('Starting upload of ' + files.length + ' file(s)' + (files.length > 1 ? ', smallest first.' : '.'), { deferTo: batchPending });
 
                     hideSelectedFilesList();
 
@@ -1636,12 +1810,10 @@
                         currentQueueItems.push(item);
 
                         item.transcodeWrapper.classList.remove('hidden');
-                        if (video.status === 'pending') {
-                            item.transcodeStatusEl.textContent = 'Queued for processing...';
-                        } else {
-                            item.transcodeBar.style.width = (video.progress || 0) + '%';
-                            item.transcodeStatusEl.textContent = formatStageStatus(video.stage || 'transcoding', video.progress || 0);
+                        if (video.progress > 0) {
+                            item.transcodeBar.style.width = video.progress + '%';
                         }
+                        item.transcodeStatusEl.textContent = transcodeStatusText(video.status, video.stage, video.progress);
 
                         uploadedVideos[video.id] = {
                             title: video.title || video.original_filename,
@@ -1687,12 +1859,10 @@
                     item.statusEl.textContent = 'Done';
                     item.transcodeWrapper.classList.remove('hidden');
 
-                    if (registryEntry.status === 'pending') {
-                        item.transcodeStatusEl.textContent = 'Queued for processing...';
-                    } else {
-                        item.transcodeBar.style.width = (registryEntry.progress || 0) + '%';
-                        item.transcodeStatusEl.textContent = formatStageStatus(registryEntry.stage || 'transcoding', registryEntry.progress || 0);
+                    if (registryEntry.progress > 0) {
+                        item.transcodeBar.style.width = registryEntry.progress + '%';
                     }
+                    item.transcodeStatusEl.textContent = transcodeStatusText(registryEntry.status, registryEntry.stage, registryEntry.progress);
 
                     const entry = {
                         title: registryEntry.title,
@@ -1922,6 +2092,8 @@
                     document.removeEventListener('visibilitychange', handleOutboxVisibility);
                     window.removeEventListener('pagehide', handlePageHide);
                     window.removeEventListener('upload:finished', handleUploadFinished);
+                    copyLogBtn.removeEventListener('click', handleCopyLogClick);
+                    clearTimeout(copyFeedbackTimerId);
                 };
 
                 async function applyStatusSnapshot(video) {
@@ -1983,20 +2155,26 @@
                     let logClass = null;
                     const built = buildStatusMessage(entry.title, video.status, video.stage, video.progress);
 
-                    if (video.status === 'pending') {
-                        message = built.message;
+                    if (video.status === 'pending' && !isMergingPending(video.status, video.stage)) {
+                        // Queued progress is the upload share and may be re-sent: log only when status/stage changed.
+                        if (statusChanged || stageChanged) {
+                            message = built.message;
+                        }
                         if (item) {
                             const els = liveTranscodeEls();
                             if (els.wrapper) {
                                 els.wrapper.classList.remove('hidden');
                             }
+                            if (els.bar && video.progress > 0) {
+                                els.bar.style.width = video.progress + '%';
+                            }
                             if (els.statusEl) {
-                                els.statusEl.textContent = 'Queued for processing...';
+                                els.statusEl.textContent = transcodeStatusText(video.status, video.stage, video.progress);
                             }
                         }
-                    } else if (video.status === 'processing') {
+                    } else if (video.status === 'processing' || isMergingPending(video.status, video.stage)) {
                         if (progressChanged || stageChanged) {
-                            const statusText = formatStageStatus(video.stage, video.progress);
+                            const statusText = transcodeStatusText(video.status, video.stage, video.progress);
                             message = built.message;
                             if (item) {
                                 const els = liveTranscodeEls();
@@ -2021,7 +2199,10 @@
                     }
 
                     if (message) {
-                        appendLog(message, logClass);
+                        appendStatusLine(video.id, message, logClass);
+                    }
+                    if (video.status === 'ready' || video.status === 'failed') {
+                        delete lastStatusLineByVideo[String(video.id)];
                     }
                 }
             })();

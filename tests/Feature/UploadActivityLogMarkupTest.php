@@ -17,6 +17,9 @@ class UploadActivityLogMarkupTest extends TestCase
         $this->get('/upload')
             ->assertOk()
             ->assertSee('id="upload-log"', false)
+            ->assertSee('id="copy-log-btn"', false)
+            ->assertSee('title="Copy the visible log lines to the clipboard"', false)
+            ->assertSee('Copy log', false)
             ->assertSee('hls_activity_outbox', false)
             ->assertSee('hls_activity_cleared_at', false)
             ->assertSee('hls_upload_active', false)
@@ -25,6 +28,7 @@ class UploadActivityLogMarkupTest extends TestCase
             ->assertSee('aria-disabled:cursor-not-allowed', false)
             ->assertSee('disabled:cursor-not-allowed', false)
             ->assertSee('stored_cids', false)
+            ->assertSee(', smallest first.', false)
             ->assertDontSee('hls_upload_log_dismissed', false);
     }
 
