@@ -398,7 +398,7 @@ class ChunkedUploadTest extends TestCase
         $this->assertGreaterThan(0, $video->progress);
         $this->assertSame(1, VideoStatusLog::where('video_id', $video->id)->count());
 
-        Event::assertDispatched(VideoStatusUpdated::class, fn ($event) => $event->videoId === $video->id && $event->status === 'pending');
+        Event::assertDispatched(VideoStatusUpdated::class, fn ($event) => $event->videoId === $video->id && $event->status === 'pending' && $event->uploadId === $uploadId);
     }
 
     public function test_completing_an_upload_links_the_lines_logged_before_the_video_existed(): void

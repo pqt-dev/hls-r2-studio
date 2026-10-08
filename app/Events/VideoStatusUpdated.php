@@ -15,6 +15,7 @@ class VideoStatusUpdated implements ShouldBroadcastNow
         public string $status,
         public ?string $stage,
         public int $progress,
+        public ?string $uploadId = null,
     ) {}
 
     public function broadcastOn(): Channel
@@ -34,6 +35,7 @@ class VideoStatusUpdated implements ShouldBroadcastNow
             'status' => $this->status,
             'stage' => $this->stage,
             'progress' => $this->progress,
+            'uploadId' => $this->uploadId,
         ];
     }
 }

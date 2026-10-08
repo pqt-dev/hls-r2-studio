@@ -490,7 +490,9 @@ export default function initInProgressBadge() {
 
             const progress = e.progress == null ? (active.get(e.videoId) || 0) : clampProgress(e.progress);
 
-            setActive(e.videoId, progress, null, true);
+            const hasUploadId = typeof e.uploadId === 'string' && e.uploadId !== '';
+
+            setActive(e.videoId, progress, hasUploadId ? e.uploadId : null, !hasUploadId);
         } else if (e.status === 'ready' || e.status === 'failed') {
             finish(e.videoId);
             needsReconcile = true;

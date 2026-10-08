@@ -69,7 +69,7 @@ class MergeUploadChunksJob implements ShouldQueue
                 VideoProgress::overall('transcoding', 0.0, (int) $video->original_size_bytes, true)
             );
             $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
             TranscodeVideoJob::dispatch($video->id, $this->localUploadPath, null, true);
         } catch (Throwable $e) {
@@ -117,7 +117,7 @@ class MergeUploadChunksJob implements ShouldQueue
         }
 
         try {
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
         } catch (Throwable $logError) {
             Log::warning('Failed to record the failed status log for video '.$this->videoId.': '.$logError->getMessage());
         }

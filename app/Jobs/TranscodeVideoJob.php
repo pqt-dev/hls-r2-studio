@@ -130,7 +130,7 @@ class TranscodeVideoJob implements ShouldQueue
             $video->stage = 'transcoding';
             $video->progress = $this->overallProgress($video, 'transcoding');
             $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
             File::ensureDirectoryExists($tmpDir);
 
@@ -144,20 +144,20 @@ class TranscodeVideoJob implements ShouldQueue
             // The last ffmpeg tick may already have recorded this exact value;
             // skip the record (and its broadcast) to avoid a duplicate row.
             if ($video->progress !== $previousProgress) {
-                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
             }
 
             $video->stage = 'generating_thumbnail';
             $video->progress = $this->overallProgress($video, 'generating_thumbnail');
             $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
             (new ThumbnailGenerator)->generate($this->localUploadPath, $tmpDir, $duration, $video->output_width, $video->output_height, $this->videoId);
 
             $video->stage = 'generating_storyboard';
             $video->progress = $this->overallProgress($video, 'generating_storyboard');
             $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
             try {
                 (new StoryboardGenerator)->generate($this->localUploadPath, $tmpDir, $duration, $this->videoId);
@@ -171,7 +171,7 @@ class TranscodeVideoJob implements ShouldQueue
             $video->stage = 'uploading_r2';
             $video->progress = $this->overallProgress($video, 'uploading_r2');
             $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
             $year = $video->created_at->format('Y');
             $month = $video->created_at->format('m');
@@ -196,7 +196,7 @@ class TranscodeVideoJob implements ShouldQueue
             $video->progress = 100;
             $video->error_message = null;
             $video->save();
-            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
             $this->cleanup($tmpDir);
         } catch (Throwable $e) {
@@ -214,7 +214,7 @@ class TranscodeVideoJob implements ShouldQueue
             }
 
             try {
-                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
             } catch (Throwable $logError) {
                 Log::warning('Failed to record the failed status log for video '.$this->videoId.': '.$logError->getMessage());
             }
@@ -256,7 +256,7 @@ class TranscodeVideoJob implements ShouldQueue
 
         $this->markFailed($video, $e);
         $video->save();
-        VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+        VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
         try {
             $this->cleanupRemoteFiles($video);
@@ -473,7 +473,7 @@ class TranscodeVideoJob implements ShouldQueue
                             try {
                                 $video->progress = $percent;
                                 $video->save();
-                                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+                                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
                             } catch (Throwable $e) {
                                 Log::warning('Failed to persist transcode progress.', [
                                     'video_id' => $this->videoId,
@@ -623,7 +623,7 @@ class TranscodeVideoJob implements ShouldQueue
                             try {
                                 $video->progress = $percent;
                                 $video->save();
-                                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+                                VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
                             } catch (Throwable $e) {
                                 Log::warning('Failed to persist upload progress.', [
                                     'video_id' => $this->videoId,
@@ -665,7 +665,7 @@ class TranscodeVideoJob implements ShouldQueue
                     try {
                         $video->progress = $percent;
                         $video->save();
-                        VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+                        VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
                     } catch (Throwable $e) {
                         Log::warning('Failed to persist upload progress.', [
                             'video_id' => $this->videoId,

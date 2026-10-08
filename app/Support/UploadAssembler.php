@@ -36,7 +36,7 @@ final class UploadAssembler
         $video->stage = 'merging';
         $video->progress = self::overallProgress($video);
         $video->save();
-        VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+        VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
 
         $indexes = [];
 
@@ -102,7 +102,7 @@ final class UploadAssembler
                         try {
                             $video->progress = $percent;
                             $video->save();
-                            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress);
+                            VideoStatusLogger::record($video->id, $video->status, $video->stage, $video->progress, $video->upload_id);
                         } catch (Throwable $e) {
                             Log::warning('Failed to persist merge progress.', [
                                 'video_id' => $video->id,

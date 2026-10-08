@@ -725,7 +725,7 @@ class VideoController extends Controller
         }
 
         // Announce the queued video so every client counts it in the batch before its job starts.
-        VideoStatusLogger::record($video->id, 'pending', null, (int) $video->progress);
+        VideoStatusLogger::record($video->id, 'pending', null, (int) $video->progress, $video->upload_id);
 
         return response()->json([
             'redirect' => route('videos.index'),

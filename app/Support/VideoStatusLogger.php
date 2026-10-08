@@ -9,7 +9,7 @@ use Throwable;
 
 class VideoStatusLogger
 {
-    public static function record(int $videoId, string $status, ?string $stage, int $progress): void
+    public static function record(int $videoId, string $status, ?string $stage, int $progress, ?string $uploadId = null): void
     {
         try {
             self::persist($videoId, $status, $stage, $progress);
@@ -18,7 +18,7 @@ class VideoStatusLogger
         }
 
         try {
-            event(new VideoStatusUpdated($videoId, $status, $stage, $progress));
+            event(new VideoStatusUpdated($videoId, $status, $stage, $progress, $uploadId));
         } catch (Throwable $e) {
             Log::warning("Failed to broadcast status for video {$videoId}: {$e->getMessage()}");
         }

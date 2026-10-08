@@ -133,7 +133,15 @@ class ActivityLogTest extends TestCase
         VideoStatusLogger::record($video->id, 'processing', 'merging', 7);
 
         $this->assertDatabaseHas('video_status_logs', ['video_id' => $video->id, 'status' => 'processing', 'stage' => 'merging', 'progress' => 7]);
-        Event::assertDispatched(VideoStatusUpdated::class, fn ($e) => $e->videoId === $video->id && $e->progress === 7);
+        Event::assertDispatched(VideoStatusUpdated::class, fn ($e) => $e->videoId === $video->id && $e->progress === 7 && $e->uploadId === null);
+    }
+
+    public function test_broadcast_payload_carries_the_upload_id(): void
+    {
+        $uploadId = $this->uuid(1);
+
+        $this->assertSame($uploadId, (new VideoStatusUpdated(1, 'pending', null, 0, $uploadId))->broadcastWith()['uploadId']);
+        $this->assertNull((new VideoStatusUpdated(1, 'pending', null, 0))->broadcastWith()['uploadId']);
     }
 
     public function test_store_requires_authentication(): void
