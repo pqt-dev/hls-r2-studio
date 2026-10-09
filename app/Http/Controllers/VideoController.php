@@ -876,10 +876,16 @@ class VideoController extends Controller
     /**
      * Remove the video record and its files on R2.
      */
-    public function destroy(Video $video)
+    public function destroy(Request $request, Video $video)
     {
         if ($this->isBeingProcessed($video)) {
-            return redirect()->route('videos.index')->with('error', 'This video is still being processed and cannot be deleted yet.');
+            $message = 'This video is still being processed and cannot be deleted yet.';
+
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'skipped', 'message' => $message]);
+            }
+
+            return redirect()->route('videos.index')->with('error', $message);
         }
 
         $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
@@ -887,14 +893,22 @@ class VideoController extends Controller
         try {
             $this->deleteVideo($video, $deleteFromR2);
         } catch (\Throwable $e) {
-            return redirect()->route('videos.index')->with('error', 'Could not delete the files on R2; the video was kept so you can retry.');
+            $message = 'Could not delete the files on R2; the video was kept so you can retry.';
+
+            if ($request->expectsJson()) {
+                return response()->json(['status' => 'failed', 'message' => $message]);
+            }
+
+            return redirect()->route('videos.index')->with('error', $message);
         }
 
-        if ($deleteFromR2) {
-            return redirect()->route('videos.index')->with('success', 'Video has been deleted.');
+        $message = $deleteFromR2 ? 'Video has been deleted.' : 'Record deleted, file on R2 was KEPT.';
+
+        if ($request->expectsJson()) {
+            return response()->json(['status' => 'deleted', 'message' => $message]);
         }
 
-        return redirect()->route('videos.index')->with('success', 'Record deleted, file on R2 was KEPT.');
+        return redirect()->route('videos.index')->with('success', $message);
     }
 
     /**

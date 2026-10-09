@@ -246,6 +246,17 @@
             </div>
         </div>
     </div>
+
+    <template id="bulk-result-success">
+        <x-ui.alert variant="success" class="mb-6">
+            <x-lucide-circle-check class="w-4 h-4 shrink-0" /> <span class="min-w-0 break-words" data-bulk-result-text></span>
+        </x-ui.alert>
+    </template>
+    <template id="bulk-result-error">
+        <x-ui.alert variant="destructive" class="mb-6">
+            <x-lucide-circle-x class="w-4 h-4 shrink-0" /> <span class="min-w-0 break-words" data-bulk-result-text></span>
+        </x-ui.alert>
+    </template>
 @endsection
 
 @push('scripts')
@@ -730,11 +741,70 @@
                 const message = @json($deleteFromR2 ? 'Delete {COUNT} videos? The files on Cloudflare R2 will also be PERMANENTLY deleted and cannot be recovered!' : 'Delete {COUNT} videos?');
                 window.confirmDialog({ title: 'Delete videos', message: message.replace('{COUNT}', count), confirmText: 'Delete', danger: true }).then(function (ok) {
                     if (!ok) return;
-                    showDeleteOverlay('Deleting ' + count + ' videos...');
-                    document.getElementById('bulk-delete-form').submit();
+                    runBulkDelete();
                 });
                 return false;
             }
+
+            // Deletes the selected videos one by one so the overlay can show live progress.
+            async function runBulkDelete() {
+                const ids = Array.from(document.querySelectorAll('.bulk-select-checkbox:checked')).map(function (cb) { return cb.value; });
+                const total = ids.length;
+                const urlTemplate = @json(route('videos.destroy', ['video' => '__ID__']));
+                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                let deleted = 0;
+                let failed = 0;
+                let skipped = 0;
+
+                for (let i = 0; i < total; i++) {
+                    showDeleteOverlay('Deleting ' + (i + 1) + '/' + total + ' videos...');
+
+                    try {
+                        const response = await fetch(urlTemplate.replace('__ID__', encodeURIComponent(ids[i])), {
+                            method: 'DELETE',
+                            headers: { 'X-CSRF-TOKEN': csrfToken, 'Accept': 'application/json' }
+                        });
+                        const data = await response.json();
+
+                        if (data.status === 'deleted') deleted++;
+                        else if (data.status === 'skipped') skipped++;
+                        else failed++;
+                    } catch (e) {
+                        failed++;
+                    }
+                }
+
+                const details = [];
+                if (failed > 0) details.push(failed + ' failed — check logs');
+                if (skipped > 0) details.push(skipped + ' skipped: still processing');
+
+                const summary = {
+                    type: deleted === 0 && failed > 0 ? 'error' : 'success',
+                    text: 'Deleted ' + deleted + ' videos' + (details.length ? ' (' + details.join(', ') + ')' : '') + '.'
+                };
+
+                try {
+                    sessionStorage.setItem('bulkDeleteResult', JSON.stringify(summary));
+                } catch (e) {}
+
+                window.location.reload();
+            }
+
+            // Show the summary of a finished bulk delete using the same banner as flash messages.
+            (function showBulkDeleteResult() {
+                let summary = null;
+
+                try {
+                    summary = JSON.parse(sessionStorage.getItem('bulkDeleteResult'));
+                    sessionStorage.removeItem('bulkDeleteResult');
+                } catch (e) {}
+
+                if (!summary) return;
+
+                const banner = document.getElementById(summary.type === 'error' ? 'bulk-result-error' : 'bulk-result-success').content.cloneNode(true);
+                banner.querySelector('[data-bulk-result-text]').textContent = summary.text;
+                document.querySelector('main').firstElementChild.after(banner);
+            })();
 
             // Escape, overlay click and the X button are handled by ui-dialog.js and
             // arrive as 'dialog:dismiss'; route them through the existing close functions.
