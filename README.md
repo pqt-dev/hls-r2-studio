@@ -11,7 +11,7 @@ Internal video management app: upload a video → transcode it to HLS with FFmpe
 - FFmpeg HLS transcoding with adjustable resolution (480p/720p/1080p), segment length (2–15 s) and FPS (15–60 or original)
 - Storage on Cloudflare R2, playback with HLS.js
 - Live transcode progress via Reverb (WebSocket) and an upload log page
-- Settings page (password, R2 config, processing options, timezone, embed domains)
+- Settings page (password, processing options, timezone, embed domains)
 - Playback error reports from public pages via `POST /api/reports`
 
 ## Tech Stack
@@ -85,7 +85,7 @@ php artisan reverb:start                 # optional: live transcode progress (ot
 
 **Important notes**
 
-- R2 public URL: the code does not make the bucket public. Set a public bucket (custom domain or `r2.dev`) in Cloudflare, then enter it in `R2_URL` (or the Settings page).
+- R2 public URL: the code does not make the bucket public. Set a public bucket (custom domain or `r2.dev`) in Cloudflare, then enter it in `R2_URL`.
 - Reports from another domain: add that domain to `CORS_ALLOWED_ORIGINS` in `.env`.
 - `DB_QUEUE_RETRY_AFTER` (`176400`) must stay greater than the queue worker `--timeout` (`172800`).
 

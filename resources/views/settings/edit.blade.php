@@ -51,58 +51,12 @@
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 ring-1 ring-inset ring-orange-200/70 flex items-center justify-center shrink-0">
                     <x-lucide-cloud class="w-4 h-4 text-orange-600 stroke-[1.75]" />
                 </div>
-                <h3 class="text-sm font-semibold text-foreground">Cloudflare R2 configuration</h3>
+                <h3 class="text-sm font-semibold text-foreground">Storage</h3>
             </div>
             <x-ui.card-content class="not-first:pt-5!">
-                <form method="POST" action="{{ route('settings.r2') }}" class="space-y-5">
+                <form method="POST" action="{{ route('settings.storage') }}" class="space-y-5">
                     @csrf
                     @method('PUT')
-
-                    <div>
-                        <x-ui.label for="r2_access_key_id" class="block mb-2">R2 access key ID</x-ui.label>
-                        <x-ui.input type="text" name="r2_access_key_id" id="r2_access_key_id" value="{{ old('r2_access_key_id') }}" placeholder="{{ $effectiveR2Config['r2_access_key_id']['value'] ? substr($effectiveR2Config['r2_access_key_id']['value'], 0, 4).'**** (current, leave blank to keep)' : 'Not configured' }}" />
-                        @error('r2_access_key_id')
-                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
-                        @enderror
-                        <p class="mt-1 text-xs text-muted-foreground">{{ $effectiveR2Config['r2_access_key_id']['from_db'] ? '(from Settings)' : '(default from server .env)' }}</p>
-                    </div>
-
-                    <div>
-                        <x-ui.label for="r2_secret_access_key" class="block mb-2">R2 secret access key</x-ui.label>
-                        <x-ui.input type="password" name="r2_secret_access_key" id="r2_secret_access_key" placeholder="Leave blank to keep the current Secret Key" />
-                        @error('r2_secret_access_key')
-                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
-                        <x-ui.label for="r2_bucket" class="block mb-2">R2 bucket</x-ui.label>
-                        <x-ui.input type="text" name="r2_bucket" id="r2_bucket" value="{{ old('r2_bucket', $effectiveR2Config['r2_bucket']['value']) }}" />
-                        @error('r2_bucket')
-                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
-                        @enderror
-                        <p class="mt-1 text-xs text-muted-foreground">{{ $effectiveR2Config['r2_bucket']['from_db'] ? '(from Settings)' : '(default from server .env)' }}</p>
-                    </div>
-
-                    <div>
-                        <x-ui.label for="r2_endpoint" class="block mb-2">R2 endpoint</x-ui.label>
-                        <x-ui.input type="text" name="r2_endpoint" id="r2_endpoint" value="{{ old('r2_endpoint', $effectiveR2Config['r2_endpoint']['value']) }}" />
-                        @error('r2_endpoint')
-                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
-                        @enderror
-                        <p class="mt-1 text-xs text-muted-foreground">{{ $effectiveR2Config['r2_endpoint']['from_db'] ? '(from Settings)' : '(default from server .env)' }}</p>
-                    </div>
-
-                    <div>
-                        <x-ui.label for="r2_url" class="block mb-2">R2 URL</x-ui.label>
-                        <x-ui.input type="text" name="r2_url" id="r2_url" value="{{ old('r2_url', $effectiveR2Config['r2_url']['value']) }}" />
-                        @error('r2_url')
-                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
-                        @enderror
-                        <p class="mt-1 text-xs text-muted-foreground">{{ $effectiveR2Config['r2_url']['from_db'] ? '(from Settings)' : '(default from server .env)' }}</p>
-                    </div>
-
-                    <p class="text-xs text-muted-foreground">Leaving any field blank (except Secret Key) will fall back to the default value from the server's .env.</p>
 
                     <div class="flex items-start gap-2">
                         <x-ui.checkbox name="delete_from_r2_on_destroy" id="delete_from_r2_on_destroy" value="1"
@@ -115,7 +69,7 @@
                     </div>
 
                     <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end">
-                        <x-ui.button type="submit" class="max-md:w-full">Save R2 configuration</x-ui.button>
+                        <x-ui.button type="submit" class="max-md:w-full">Save storage options</x-ui.button>
                     </div>
                 </form>
             </x-ui.card-content>

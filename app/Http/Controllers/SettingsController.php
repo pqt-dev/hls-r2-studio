@@ -6,7 +6,6 @@ use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Validator;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -15,45 +14,17 @@ class SettingsController extends Controller
     {
         $settings = Setting::current();
         $user = auth()->user();
-        $effectiveR2Config = $settings->effectiveR2Config();
 
-        return view('settings.edit', compact('settings', 'user', 'effectiveR2Config'));
+        return view('settings.edit', compact('settings', 'user'));
     }
 
-    public function updateR2(Request $request): RedirectResponse
+    public function updateStorage(Request $request): RedirectResponse
     {
-        $validator = Validator::make($request->all(), [
-            'r2_access_key_id' => ['nullable', 'string'],
-            'r2_secret_access_key' => ['nullable', 'string'],
-            'r2_bucket' => ['nullable', 'string'],
-            'r2_endpoint' => ['nullable', 'string', 'url:https'],
-            'r2_url' => ['nullable', 'string', 'url'],
+        Setting::current()->update([
+            'delete_from_r2_on_destroy' => $request->boolean('delete_from_r2_on_destroy'),
         ]);
 
-        if ($validator->fails()) {
-            return back()->withErrors($validator)->withInput($request->except(['r2_secret_access_key']));
-        }
-
-        $validated = $validator->validated();
-
-        $settings = Setting::current();
-
-        $settings->r2_bucket = $validated['r2_bucket'] ?? null;
-        $settings->r2_endpoint = $validated['r2_endpoint'] ?? null;
-        $settings->r2_url = $validated['r2_url'] ?? null;
-        $settings->delete_from_r2_on_destroy = $request->boolean('delete_from_r2_on_destroy');
-
-        if (filled($validated['r2_access_key_id'])) {
-            $settings->r2_access_key_id = $validated['r2_access_key_id'];
-        }
-
-        if (filled($validated['r2_secret_access_key'])) {
-            $settings->r2_secret_access_key = $validated['r2_secret_access_key'];
-        }
-
-        $settings->save();
-
-        return back()->with('success', 'R2 configuration saved.');
+        return back()->with('success', 'Storage options saved.');
     }
 
     public function updateTranscode(Request $request): RedirectResponse

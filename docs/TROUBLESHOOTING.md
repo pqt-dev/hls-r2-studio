@@ -6,7 +6,7 @@
 
 **`videos`** — each row is one video: title, original file name/size, processing status (`status`: pending/processing/ready/failed, `stage`: queued/merging/transcoding/generating_thumbnail/generating_storyboard/uploading_r2/ready/failed, `progress` %), paths to the HLS/thumbnail/storyboard files on R2, the actual technical details of the output video (resolution, fps, bitrate, codec, duration), and the error if processing failed.
 
-**`settings`** — the configuration table, which always has exactly 1 row (`id = 1`, retrieved via `Setting::current()`): R2 information (can override `.env` variables), whether to delete files on R2 when a video is deleted, default transcode configuration (resolution/segment/fps), number of videos shown per page, display timezone.
+**`settings`** — the configuration table, which always has exactly 1 row (`id = 1`, retrieved via `Setting::current()`): whether to delete files on R2 when a video is deleted, default transcode configuration (resolution/segment/fps), number of videos shown per page, display timezone.
 
 **`users`** — admin login accounts (username + password), using Laravel's standard Auth mechanism.
 
@@ -70,4 +70,4 @@ Login: 5 requests/minute. `/uploads/init`: 30 requests/minute. `/uploads/{id}/ch
 
 **Activity Log**: the Upload page Activity Log is stored in the database for the last 100 uploads/videos (`config/videos.php`, `activity_log`) and the page shows the last 10, so a reload shows what it showed in realtime. Lines logged by the browser are stored only when the browser can reach the server.
 
-**Other features**: settings page (change password, dynamic R2 configuration, processing options, videos per page, display timezone, embed domain allowlist); video list as a table with pagination, bulk delete, and technical details (resolution, fps, codec, bitrate, size); multiple workers can run in parallel to transcode several videos at once; admins can view playback error reports and mark them as resolved.
+**Other features**: settings page (change password, processing options, videos per page, display timezone, embed domain allowlist); video list as a table with pagination, bulk delete, and technical details (resolution, fps, codec, bitrate, size); multiple workers can run in parallel to transcode several videos at once; admins can view playback error reports and mark them as resolved.

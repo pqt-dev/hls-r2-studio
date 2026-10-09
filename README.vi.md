@@ -11,7 +11,7 @@
 - Băm HLS bằng FFmpeg, tuỳ chỉnh độ phân giải (480p/720p/1080p), độ dài segment (2–15 giây), FPS (15–60 hoặc giữ gốc)
 - Lưu lên Cloudflare R2, phát bằng HLS.js
 - Tiến độ transcode theo thời gian thực qua Reverb (WebSocket) và trang nhật ký upload
-- Trang Cài đặt (mật khẩu, cấu hình R2, tuỳ chọn xử lý, múi giờ, domain được embed)
+- Trang Cài đặt (mật khẩu, tuỳ chọn xử lý, múi giờ, domain được embed)
 - Nhận báo lỗi phát video từ trang public qua `POST /api/reports`
 
 ## Công nghệ
@@ -85,7 +85,7 @@ php artisan reverb:start                 # không bắt buộc: tiến độ tra
 
 **Lưu ý quan trọng**
 
-- URL public R2: code không tự public hoá bucket. Hãy cấu hình bucket public (custom domain hoặc `r2.dev`) trên Cloudflare rồi điền vào `R2_URL` (hoặc trang Cài đặt).
+- URL public R2: code không tự public hoá bucket. Hãy cấu hình bucket public (custom domain hoặc `r2.dev`) trên Cloudflare rồi điền vào `R2_URL`.
 - Report từ domain khác: thêm domain đó vào `CORS_ALLOWED_ORIGINS` trong `.env`.
 - `DB_QUEUE_RETRY_AFTER` (`176400`) phải luôn lớn hơn `--timeout` của queue worker (`172800`).
 

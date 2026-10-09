@@ -32,7 +32,7 @@ class AuthProtectedRoutesTest extends TestCase
             'uploads.chunk' => ['post', '/uploads/11111111-1111-1111-1111-111111111111/chunk', []],
             'uploads.complete' => ['post', '/uploads/11111111-1111-1111-1111-111111111111/complete', []],
             'settings.edit' => ['get', '/settings', []],
-            'settings.r2' => ['put', '/settings/r2', []],
+            'settings.storage' => ['put', '/settings/storage', []],
             'settings.transcode' => ['put', '/settings/transcode', []],
             'settings.display' => ['put', '/settings/display', []],
             'settings.password' => ['put', '/settings/password', []],
