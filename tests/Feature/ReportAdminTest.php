@@ -402,4 +402,37 @@ class ReportAdminTest extends TestCase
         $ids = $response->viewData('reports')->pluck('id')->all();
         $this->assertSame([$resolvedLongAgoButCreatedRecently->id, $resolvedRecentlyButCreatedLongAgo->id], $ids);
     }
+
+    public function test_index_paginates_by_per_page_query_and_falls_back_to_10_when_invalid(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        for ($i = 1; $i <= 25; $i++) {
+            Report::create([
+                'page_url' => "https://toicovl.com/per-page-{$i}",
+                'reason' => 'other',
+                'status' => 'new',
+            ]);
+        }
+
+        $this->assertCount(10, $this->get('/reports')->viewData('reports')->items());
+        $this->assertCount(20, $this->get('/reports?per_page=20')->viewData('reports')->items());
+        $this->assertCount(10, $this->get('/reports?per_page=7')->viewData('reports')->items());
+    }
+
+    public function test_index_filter_and_sort_links_keep_per_page(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        Report::create([
+            'page_url' => 'https://toicovl.com/keep-per-page',
+            'reason' => 'other',
+            'status' => 'new',
+        ]);
+
+        $response = $this->get('/reports?per_page=20');
+
+        $response->assertSee('status=new&amp;sort=newest&amp;per_page=20', false);
+        $response->assertSee('sort=oldest&amp;per_page=20', false);
+    }
 }

@@ -9,6 +9,7 @@
         <x-ui.input type="text" name="search" value="{{ $search }}" placeholder="Search by page URL or note..." class="max-w-sm" />
         <input type="hidden" name="status" value="{{ $status }}">
         <input type="hidden" name="sort" value="{{ $sort }}">
+        <input type="hidden" name="per_page" value="{{ $perPage }}">
         <x-ui.button type="submit">
             Search
         </x-ui.button>
@@ -41,7 +42,7 @@
             </x-slot:trigger>
 
             @foreach ($statusOptions as $option)
-                <x-ui.dropdown-menu-item :href="route('reports.index', array_filter(['status' => $option['value'], 'sort' => $sort, 'search' => $search]))" :active="$status === $option['value']">
+                <x-ui.dropdown-menu-item :href="route('reports.index', array_filter(['status' => $option['value'], 'sort' => $sort, 'search' => $search, 'per_page' => $perPage]))" :active="$status === $option['value']">
                     {{ $option['label'] }}
                 </x-ui.dropdown-menu-item>
             @endforeach
@@ -57,7 +58,7 @@
             </x-slot:trigger>
 
             @foreach ($sortOptions as $option)
-                <x-ui.dropdown-menu-item :href="route('reports.index', array_filter(['status' => $status, 'sort' => $option['value'], 'search' => $search]))" :active="$sort === $option['value']">
+                <x-ui.dropdown-menu-item :href="route('reports.index', array_filter(['status' => $status, 'sort' => $option['value'], 'search' => $search, 'per_page' => $perPage]))" :active="$sort === $option['value']">
                     {{ $option['label'] }}
                 </x-ui.dropdown-menu-item>
             @endforeach
@@ -80,6 +81,20 @@
             No reports found.
         </div>
     @else
+        <form method="GET" action="{{ route('reports.index') }}" class="mb-3 flex flex-wrap items-center justify-between max-md:justify-start gap-2 md:text-xs text-sm text-muted-foreground">
+            <span>{{ $reports->total() }} {{ Str::plural('report', $reports->total()) }}</span>
+            <div class="flex items-center gap-2">
+                <input type="hidden" name="search" value="{{ $search }}">
+                <input type="hidden" name="status" value="{{ $status }}">
+                <input type="hidden" name="sort" value="{{ $sort }}">
+                <label for="per_page" class="shrink-0">Reports per page:</label>
+                <x-ui.select name="per_page" id="per_page" onchange="this.form.submit()" class="!w-auto">
+                    @foreach ($allowedPerPage as $option)
+                        <option value="{{ $option }}" @selected($perPage == $option)>{{ $option }}</option>
+                    @endforeach
+                </x-ui.select>
+            </div>
+        </form>
         <x-ui.card class="overflow-x-auto">
             <div class="px-4 py-2.5 flex items-center justify-between border-b border-border bg-muted/40">
                 <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-flag class="w-4 h-4 stroke-[1.75] text-slate-600" /> Reports</h3>
