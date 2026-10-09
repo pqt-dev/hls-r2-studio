@@ -156,7 +156,6 @@
        title="Processing videos"
        class="ip-ring fixed z-20 flex h-16 w-16 items-center justify-center rounded-full sm:h-[72px] sm:w-[72px]"
        style="right: max(1rem, env(safe-area-inset-right)); bottom: max(1rem, env(safe-area-inset-bottom));">
-        <span class="ip-ring-glow" aria-hidden="true"></span>
         <svg class="ip-ring-spin absolute inset-0 h-full w-full" viewBox="0 0 72 72" fill="none" aria-hidden="true">
             <circle cx="36" cy="36" r="34" stroke="#94a3b8" stroke-width="2" stroke-linecap="round" stroke-dasharray="36 178" />
         </svg>

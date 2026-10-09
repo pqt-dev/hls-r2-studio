@@ -93,24 +93,6 @@
         animation: live-shimmer 1.4s ease-in-out infinite;
     }
 
-    .progress-stripes {
-        background-image: linear-gradient(
-            45deg,
-            rgb(255 255 255 / 0.25) 25%,
-            transparent 25%,
-            transparent 50%,
-            rgb(255 255 255 / 0.25) 50%,
-            rgb(255 255 255 / 0.25) 75%,
-            transparent 75%
-        );
-        background-size: 1rem 1rem;
-        animation: progress-stripes 1s linear infinite;
-    }
-
-    .live-glow {
-        animation: live-glow 4s ease-in-out infinite;
-    }
-
     .live-eq {
         height: 100%;
         transform-origin: bottom;
@@ -118,7 +100,6 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-        .live-glow,
         .live-eq {
             animation: none;
         }
@@ -131,10 +112,6 @@
             animation: none;
             width: 100%;
             opacity: 0.5;
-        }
-
-        .progress-stripes {
-            animation: none;
         }
     }
 }
@@ -192,18 +169,6 @@
     }
 }
 
-@keyframes live-glow {
-    0%,
-    100% {
-        opacity: 0.5;
-        transform: scale(1);
-    }
-    50% {
-        opacity: 1;
-        transform: scale(1.15);
-    }
-}
-
 @keyframes live-eq {
     0%,
     100% {
@@ -211,15 +176,6 @@
     }
     50% {
         transform: scaleY(1);
-    }
-}
-
-@keyframes progress-stripes {
-    from {
-        background-position: 1rem 0;
-    }
-    to {
-        background-position: 0 0;
     }
 }
 
@@ -252,10 +208,6 @@
     transition: stroke-dashoffset 0.3s ease-out;
 }
 
-.ip-ring-glow {
-    display: none;
-}
-
 .ip-ring-spin {
     transform-origin: center;
     animation: ip-ring-rotate 3.2s linear infinite;
@@ -270,11 +222,6 @@
     stroke: #34d399;
 }
 
-.ip-ring:is([data-state='done'], [data-state='leaving']) .ip-ring-glow {
-    animation: none;
-    box-shadow: 0 0 20px 2px rgb(52 211 153 / 0.5);
-}
-
 .ip-ring:is([data-state='done'], [data-state='leaving']) .ip-ring-spin,
 .ip-ring:is([data-state='done'], [data-state='leaving']) .ip-ring-label {
     display: none;
@@ -283,15 +230,6 @@
 .ip-ring:is([data-state='done'], [data-state='leaving']) .ip-ring-check {
     display: block;
     animation: ip-ring-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1);
-}
-
-@keyframes ip-ring-pulse {
-    0% {
-        box-shadow: 0 0 0 0 rgb(251 146 60 / 0.55);
-    }
-    100% {
-        box-shadow: 0 0 0 14px rgb(251 146 60 / 0);
-    }
 }
 
 @keyframes ip-ring-rotate {
@@ -321,7 +259,6 @@
         transform: none;
     }
 
-    .ip-ring-glow,
     .ip-ring-spin,
     .ip-ring-check {
         animation: none !important;

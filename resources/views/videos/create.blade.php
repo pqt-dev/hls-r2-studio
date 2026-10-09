@@ -112,7 +112,6 @@
                 const titleInput = document.getElementById('title');
                 const titleFieldWrapper = document.getElementById('title-field-wrapper');
                 const titleMultiNote = document.getElementById('title-multi-note');
-                const submitButton = document.getElementById('upload-submit');
                 const dropzone = document.getElementById('dropzone');
                 const queueList = document.getElementById('upload-queue');
                 const queueEmptyPlaceholder = document.getElementById('upload-queue-empty');
@@ -394,7 +393,7 @@
                     uploading_r2: 'Uploading to R2',
                 };
 
-                // Stage -> bar fill classes (full literals for Tailwind). Keep in sync with $stageBarClasses in logs/index.blade.php.
+                // Stage -> bar fill classes (full literals for Tailwind). Keep in sync with $stageColors in logs/index.blade.php.
                 const BAR_BASE = 'h-1 rounded-full transition-[width] duration-300 ease-linear';
                 const STAGE_BAR_CLASSES = {
                     upload: 'bg-gradient-to-r from-sky-400 to-blue-500',
