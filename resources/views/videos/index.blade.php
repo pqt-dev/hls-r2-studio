@@ -151,7 +151,7 @@
                 {{-- tabs:start --}}
                 <div id="embed-panel-preview" role="tabpanel" aria-labelledby="embed-tab-preview" class="rounded-lg overflow-hidden bg-black">
                 {{-- tabs:end --}}
-                    <iframe id="embed-modal-preview" class="block w-full mx-auto" style="max-height:45vh; border:0;" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>
+                    <iframe id="embed-modal-preview" class="block w-full mx-auto" style="max-height:75vh; border:0;" frameborder="0" allowfullscreen allow="autoplay; fullscreen"></iframe>
                 </div>
 
                 {{-- tabs:start --}}
@@ -304,7 +304,7 @@
                 if (autoplay) params.push('autoplay=1');
                 if (muted) params.push('muted=1');
                 const src = embedUrl + (params.length ? '?' + params.join('&') : '');
-                return '<iframe src="' + src + '" style="width:100%; aspect-ratio:' + aspectRatio + '; max-height:45vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
+                return '<iframe src="' + src + '" style="width:100%; aspect-ratio:' + aspectRatio + '; max-height:75vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
             }
 
             function refreshEmbedModal() {
