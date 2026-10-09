@@ -138,20 +138,6 @@
                     @method('PUT')
 
                     <div>
-                        <x-ui.label for="videos_per_page" class="block mb-2">Videos per page</x-ui.label>
-                        <x-ui.select name="videos_per_page" id="videos_per_page">
-                            @php $currentVideosPerPage = old('videos_per_page', $settings->videos_per_page); @endphp
-                            <option value="10" @selected($currentVideosPerPage == 10)>10</option>
-                            <option value="20" @selected($currentVideosPerPage == 20)>20</option>
-                            <option value="50" @selected($currentVideosPerPage == 50)>50</option>
-                            <option value="100" @selected($currentVideosPerPage == 100)>100</option>
-                        </x-ui.select>
-                        @error('videos_per_page')
-                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
-                        @enderror
-                    </div>
-
-                    <div>
                         <x-ui.label for="display_timezone" class="block mb-2">Display timezone</x-ui.label>
                         <x-ui.select name="display_timezone" id="display_timezone">
                             @php $currentDisplayTimezone = old('display_timezone', $settings->display_timezone); @endphp

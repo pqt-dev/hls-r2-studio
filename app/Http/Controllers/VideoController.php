@@ -142,7 +142,7 @@ class VideoController extends Controller
         };
 
         $allowedPerPage = [10, 20, 50, 100];
-        $perPage = Setting::current()->videos_per_page;
+        $perPage = 10;
         if (in_array((int) $request->query('per_page'), $allowedPerPage, true)) {
             $perPage = (int) $request->query('per_page');
         }

@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\Report;
-use App\Models\Setting;
 use Illuminate\Http\Request;
 
 class ReportController extends Controller
@@ -43,9 +42,15 @@ class ReportController extends Controller
             default => $query->orderByRaw("CASE WHEN status = 'resolved' THEN resolved_at ELSE last_reported_at END DESC")->orderBy('id', 'desc'), // 'newest'
         };
 
-        $reports = $query->paginate(Setting::current()->videos_per_page);
+        $allowedPerPage = [10, 20, 50, 100];
+        $perPage = 10;
+        if (in_array((int) $request->query('per_page'), $allowedPerPage, true)) {
+            $perPage = (int) $request->query('per_page');
+        }
 
-        return view('reports.index', compact('reports', 'status', 'sort', 'search'));
+        $reports = $query->paginate($perPage);
+
+        return view('reports.index', compact('reports', 'status', 'sort', 'search', 'perPage', 'allowedPerPage'));
     }
 
     /**

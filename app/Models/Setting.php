@@ -12,7 +12,6 @@ class Setting extends Model
         'transcode_resolution',
         'transcode_segment_seconds',
         'transcode_fps',
-        'videos_per_page',
         'display_timezone',
         'embed_allowed_domains',
     ];
@@ -21,7 +20,6 @@ class Setting extends Model
         'delete_from_r2_on_destroy' => 'boolean',
         'transcode_segment_seconds' => 'integer',
         'transcode_fps' => 'integer',
-        'videos_per_page' => 'integer',
     ];
 
     public static function current(): self
@@ -34,15 +32,9 @@ class Setting extends Model
                 'delete_from_r2_on_destroy' => true,
                 'transcode_resolution' => '720',
                 'transcode_segment_seconds' => 6,
-                'videos_per_page' => 10,
                 'display_timezone' => 'Asia/Ho_Chi_Minh',
             ]);
             $settings->save();
-        }
-
-        if (! in_array($settings->videos_per_page, [10, 20, 50, 100], true)) {
-            // Normalize in memory only; reads must not write to the database.
-            $settings->videos_per_page = 10;
         }
 
         return $settings;

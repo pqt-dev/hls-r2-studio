@@ -47,12 +47,10 @@ class SettingsController extends Controller
     public function updateDisplay(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'videos_per_page' => ['required', 'in:10,20,50,100'],
             'display_timezone' => ['required', 'timezone'],
         ]);
 
         Setting::current()->update([
-            'videos_per_page' => $validated['videos_per_page'],
             'display_timezone' => $validated['display_timezone'],
         ]);
 
