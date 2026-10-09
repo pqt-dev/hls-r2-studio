@@ -39,8 +39,8 @@
 
                 <x-ui.alert variant="destructive" id="upload-error" class="hidden"></x-ui.alert>
 
-                <x-ui.alert variant="warning" id="upload-warning" class="hidden">
-                    <x-lucide-triangle-alert class="w-4 h-4 shrink-0" />
+                <x-ui.alert variant="warning" id="upload-warning" class="hidden border-2 border-amber-500! bg-amber-200! text-amber-950! font-semibold">
+                    <x-lucide-triangle-alert class="w-5 h-5 shrink-0 animate-pulse motion-reduce:animate-none" />
                     Please do not reload or close this tab while the upload is in progress.
                 </x-ui.alert>
             </div>
