@@ -11,7 +11,7 @@
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-50 to-sky-100 ring-1 ring-inset ring-sky-200/70 flex items-center justify-center shrink-0">
                     <x-lucide-key-round class="w-4 h-4 text-sky-600 stroke-[1.75]" />
                 </div>
-                <h3 class="text-sm font-semibold text-foreground">Change Password</h3>
+                <h3 class="text-sm font-semibold text-foreground">Change password</h3>
             </div>
             <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.password') }}" class="space-y-5">
@@ -19,7 +19,7 @@
                     @method('PUT')
 
                     <div>
-                        <x-ui.label for="current_password" class="block mb-2">Current Password</x-ui.label>
+                        <x-ui.label for="current_password" class="block mb-2">Current password</x-ui.label>
                         <x-ui.input type="password" name="current_password" id="current_password" />
                         @error('current_password')
                             <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
@@ -27,7 +27,7 @@
                     </div>
 
                     <div>
-                        <x-ui.label for="password" class="block mb-2">New Password</x-ui.label>
+                        <x-ui.label for="password" class="block mb-2">New password</x-ui.label>
                         <x-ui.input type="password" name="password" id="password" />
                         @error('password')
                             <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
@@ -35,7 +35,7 @@
                     </div>
 
                     <div>
-                        <x-ui.label for="password_confirmation" class="block mb-2">Confirm New Password</x-ui.label>
+                        <x-ui.label for="password_confirmation" class="block mb-2">Confirm new password</x-ui.label>
                         <x-ui.input type="password" name="password_confirmation" id="password_confirmation" />
                     </div>
 
@@ -51,7 +51,7 @@
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 ring-1 ring-inset ring-orange-200/70 flex items-center justify-center shrink-0">
                     <x-lucide-cloud class="w-4 h-4 text-orange-600 stroke-[1.75]" />
                 </div>
-                <h3 class="text-sm font-semibold text-foreground">Cloudflare R2 Configuration</h3>
+                <h3 class="text-sm font-semibold text-foreground">Cloudflare R2 configuration</h3>
             </div>
             <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.r2') }}" class="space-y-5">
@@ -59,7 +59,7 @@
                     @method('PUT')
 
                     <div>
-                        <x-ui.label for="r2_access_key_id" class="block mb-2">R2 Access Key ID</x-ui.label>
+                        <x-ui.label for="r2_access_key_id" class="block mb-2">R2 access key ID</x-ui.label>
                         <x-ui.input type="text" name="r2_access_key_id" id="r2_access_key_id" value="{{ old('r2_access_key_id') }}" placeholder="{{ $effectiveR2Config['r2_access_key_id']['value'] ? substr($effectiveR2Config['r2_access_key_id']['value'], 0, 4).'**** (current, leave blank to keep)' : 'Not configured' }}" />
                         @error('r2_access_key_id')
                             <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
@@ -68,7 +68,7 @@
                     </div>
 
                     <div>
-                        <x-ui.label for="r2_secret_access_key" class="block mb-2">R2 Secret Access Key</x-ui.label>
+                        <x-ui.label for="r2_secret_access_key" class="block mb-2">R2 secret access key</x-ui.label>
                         <x-ui.input type="password" name="r2_secret_access_key" id="r2_secret_access_key" placeholder="Leave blank to keep the current Secret Key" />
                         @error('r2_secret_access_key')
                             <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
@@ -76,7 +76,7 @@
                     </div>
 
                     <div>
-                        <x-ui.label for="r2_bucket" class="block mb-2">R2 Bucket</x-ui.label>
+                        <x-ui.label for="r2_bucket" class="block mb-2">R2 bucket</x-ui.label>
                         <x-ui.input type="text" name="r2_bucket" id="r2_bucket" value="{{ old('r2_bucket', $effectiveR2Config['r2_bucket']['value']) }}" />
                         @error('r2_bucket')
                             <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
@@ -85,7 +85,7 @@
                     </div>
 
                     <div>
-                        <x-ui.label for="r2_endpoint" class="block mb-2">R2 Endpoint</x-ui.label>
+                        <x-ui.label for="r2_endpoint" class="block mb-2">R2 endpoint</x-ui.label>
                         <x-ui.input type="text" name="r2_endpoint" id="r2_endpoint" value="{{ old('r2_endpoint', $effectiveR2Config['r2_endpoint']['value']) }}" />
                         @error('r2_endpoint')
                             <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
@@ -126,7 +126,7 @@
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center shrink-0">
                     <x-lucide-film class="w-4 h-4 text-slate-700 stroke-[1.75]" />
                 </div>
-                <h3 class="text-sm font-semibold text-foreground">HLS Transcoding Options</h3>
+                <h3 class="text-sm font-semibold text-foreground">HLS transcoding options</h3>
             </div>
             <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.transcode') }}" class="space-y-5">
@@ -134,7 +134,7 @@
                     @method('PUT')
 
                     <div>
-                        <x-ui.label for="transcode_resolution" class="block mb-2">Output Resolution</x-ui.label>
+                        <x-ui.label for="transcode_resolution" class="block mb-2">Output resolution</x-ui.label>
                         <x-ui.select name="transcode_resolution" id="transcode_resolution">
                             @php $currentResolution = old('transcode_resolution', $settings->transcode_resolution); @endphp
                             <option value="480" @selected($currentResolution == '480')>480p (SD)</option>
@@ -147,7 +147,7 @@
                     </div>
 
                     <div>
-                        <x-ui.label for="transcode_segment_seconds" class="block mb-2">HLS Segment Length (seconds)</x-ui.label>
+                        <x-ui.label for="transcode_segment_seconds" class="block mb-2">HLS segment length (seconds)</x-ui.label>
                         <x-ui.input type="number" name="transcode_segment_seconds" id="transcode_segment_seconds" min="2" max="15" value="{{ old('transcode_segment_seconds', $settings->transcode_segment_seconds) }}" />
                         <p class="mt-1 text-xs text-muted-foreground">Default: 6 seconds. Shorter segments make seeking smoother but create more files.</p>
                         @error('transcode_segment_seconds')
@@ -176,7 +176,7 @@
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center shrink-0">
                     <x-lucide-sliders-horizontal class="w-4 h-4 text-slate-600 stroke-[1.75]" />
                 </div>
-                <h3 class="text-sm font-semibold text-foreground">Other Options</h3>
+                <h3 class="text-sm font-semibold text-foreground">Other options</h3>
             </div>
             <x-ui.card-content class="not-first:pt-5!">
                 <form method="POST" action="{{ route('settings.display') }}" class="space-y-5">

@@ -16,8 +16,8 @@ class UploadPageLayoutTest extends TestCase
 
         $this->get('/upload')
             ->assertOk()
-            ->assertSee('Processing Queue')
-            ->assertSee('Activity Log')
+            ->assertSee('Processing queue')
+            ->assertSee('Activity log')
             ->assertSee('Start upload')
             ->assertSee('id="upload-submit"', false)
             ->assertDontSee('Upload Progress');

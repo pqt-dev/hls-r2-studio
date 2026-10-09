@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>HLS R2 Studio — Admin Login</title>
+    <title>HLS R2 Studio — Admin login</title>
     <link rel="icon" type="image/x-icon" href="{{ asset('favicon.ico') }}">
     <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}">
     @vite(['resources/css/app.css', 'resources/js/app.js'])
@@ -18,7 +18,7 @@
                     <img src="{{ asset('img/logo.png') }}" alt="Logo" class="w-full h-full">
                 </div>
                 <h1 class="text-2xl font-semibold tracking-tight text-foreground mb-1">HLS R2 Studio</h1>
-                <p class="text-sm text-muted-foreground">Admin Login</p>
+                <p class="text-sm text-muted-foreground">Admin login</p>
             </div>
 
             @if (session('error'))

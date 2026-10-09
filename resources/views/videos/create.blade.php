@@ -1,8 +1,8 @@
 @extends('layouts.app')
 
-@section('title', 'Upload Video - HLS R2 Studio')
-@section('page-title', 'Upload Video')
-@section('breadcrumb', 'Home / Upload Video')
+@section('title', 'Upload - HLS R2 Studio')
+@section('page-title', 'Upload')
+@section('breadcrumb', 'Home / Upload')
 
 @section('content')
     <form id="upload-form" class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,5fr)_minmax(0,6fr)] items-start"
@@ -16,7 +16,7 @@
 
             <div class="p-4 sm:p-6 space-y-5">
                 <div>
-                    <x-ui.label for="video" class="block mb-2">Video File</x-ui.label>
+                    <x-ui.label for="video" class="block mb-2">Video file</x-ui.label>
                     <input type="file" name="video" id="video" accept=".mp4,.mov,.mkv,.avi,.webm" multiple required class="hidden">
                     <div id="dropzone"
                          class="rounded-lg border-2 border-dashed border-input px-4 sm:px-6 py-8 sm:py-10 text-center cursor-pointer hover:border-foreground/40 hover:bg-muted/40">
@@ -57,7 +57,7 @@
             <x-ui.card id="upload-progress-card" class="overflow-hidden">
                 <div class="bg-muted border-b border-border px-4 py-3 flex items-start justify-between gap-2">
                     <div class="min-w-0">
-                        <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Processing Queue <x-ui.badge variant="secondary" id="upload-queue-count">0</x-ui.badge></h3>
+                        <h3 class="text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-activity class="w-4 h-4" /> Processing queue <x-ui.badge variant="secondary" id="upload-queue-count">0</x-ui.badge></h3>
                         <p class="mt-1 text-xs text-muted-foreground">Upload and processing status of each file</p>
                     </div>
                     <x-ui.button variant="outline" size="sm" id="clear-queue-btn" class="shrink-0">
@@ -72,7 +72,7 @@
 
             <x-ui.card class="overflow-hidden">
                 <div class="bg-muted border-b border-border px-4 py-2 flex items-center justify-between gap-2">
-                    <h3 class="min-w-0 text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Activity Log</h3>
+                    <h3 class="min-w-0 text-sm font-semibold text-foreground inline-flex items-center gap-2"><x-lucide-scroll-text class="w-4 h-4" /> Activity log</h3>
                     <div class="flex items-center gap-2 shrink-0">
                         <x-ui.button variant="outline" size="sm" id="copy-log-btn" type="button" class="shrink-0" title="Copy the visible log lines to the clipboard">
                             <x-lucide-copy class="w-3.5 h-3.5" data-copy-icon="copy" />

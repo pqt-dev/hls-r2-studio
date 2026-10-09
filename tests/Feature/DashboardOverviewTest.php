@@ -17,6 +17,6 @@ class DashboardOverviewTest extends TestCase
         $this->actingAs($user)
             ->get(route('dashboard.overview'))
             ->assertOk()
-            ->assertSee('Server Disk');
+            ->assertSee('Server disk');
     }
 }

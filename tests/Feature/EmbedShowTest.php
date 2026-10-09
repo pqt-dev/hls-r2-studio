@@ -39,7 +39,7 @@ class EmbedShowTest extends TestCase
         $response->assertOk();
         // The URL is emitted through @json, so slashes are escaped.
         $response->assertSee('https:\/\/db-cdn.example.com\/2026\/10\/07\/embed-1\/playlist.m3u8', false);
-        $response->assertDontSee('Server Disk');
+        $response->assertDontSee('Server disk');
         $response->assertDontSee(route('logout'), false);
     }
 

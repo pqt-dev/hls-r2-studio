@@ -94,7 +94,7 @@
                         <x-ui.table-head class="hidden xl:table-cell">Note</x-ui.table-head>
                         <x-ui.table-head>Status</x-ui.table-head>
                         <x-ui.table-head class="hidden md:table-cell">Reports</x-ui.table-head>
-                        <x-ui.table-head class="hidden md:table-cell">Reported At</x-ui.table-head>
+                        <x-ui.table-head class="hidden md:table-cell">Reported at</x-ui.table-head>
                         <x-ui.table-head align="right">Actions</x-ui.table-head>
                     </x-ui.table-row>
                 </x-ui.table-header>

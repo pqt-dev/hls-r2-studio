@@ -8,7 +8,7 @@
     <div class="bg-background -m-4 p-4 md:-m-8 md:p-8">
     <div class="rounded-[22px] p-4 sm:p-6 relative overflow-hidden border border-primary/15 bg-gradient-to-br from-primary/10 via-primary/5 to-background shadow-sm mb-3.5">
         <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold mb-3 bg-primary/10 text-primary ring-1 ring-primary/15"><x-lucide-layout-dashboard class="w-3.5 h-3.5" /> DASHBOARD OVERVIEW</div>
-        <h2 class="text-2xl sm:text-[28px] leading-tight font-semibold mb-2 text-foreground">System Overview</h2>
+        <h2 class="text-2xl sm:text-[28px] leading-tight font-semibold mb-2 text-foreground">System overview</h2>
         <p class="text-sm text-muted-foreground max-w-xl">Quickly manage the entire upload, HLS transcoding, and video storage workflow on Cloudflare R2.</p>
     </div>
 
@@ -57,7 +57,7 @@
                     </div>
                 </div>
                 <div class="text-2xl font-semibold text-foreground leading-tight">{{ $diskPercent !== null ? $diskPercent.'%' : '—' }}</div>
-                <div class="text-sm text-muted-foreground mt-1">Server Disk</div>
+                <div class="text-sm text-muted-foreground mt-1">Server disk</div>
                 <div class="text-xs text-muted-foreground mt-1">Used: {{ $diskUsedGb ?? '—' }} GB / {{ $diskTotalGb ?? '—' }} GB</div>
             </x-ui.card-content>
         </x-ui.card>
@@ -69,7 +69,7 @@
                 </div>
             </div>
             <div class="text-2xl font-semibold text-foreground leading-tight">{{ $totalVideos }}</div>
-            <div class="text-sm text-muted-foreground mt-1">Total Videos</div>
+            <div class="text-sm text-muted-foreground mt-1">Total videos</div>
             <div class="border-t border-border pt-2 mt-3 text-xs font-medium text-foreground flex items-center justify-between">
                 <span>View details</span>
                 <x-lucide-arrow-right class="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />

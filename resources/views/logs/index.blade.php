@@ -14,7 +14,7 @@
                     </div>
                     <div class="min-w-0">
                         <div class="text-2xl font-semibold text-foreground leading-tight">{{ $totalCount }}</div>
-                        <div class="text-sm text-muted-foreground mt-1">Total Uploads</div>
+                        <div class="text-sm text-muted-foreground mt-1">Total</div>
                     </div>
                 </x-ui.card-content>
             </x-ui.card>
@@ -25,7 +25,7 @@
                     </div>
                     <div class="min-w-0">
                         <div class="text-2xl font-semibold text-foreground leading-tight">{{ $successCount }}</div>
-                        <div class="text-sm text-muted-foreground mt-1">Successful</div>
+                        <div class="text-sm text-muted-foreground mt-1">Success</div>
                     </div>
                 </x-ui.card-content>
             </x-ui.card>
@@ -47,7 +47,7 @@
                     </div>
                     <div class="min-w-0">
                         <div class="text-2xl font-semibold text-foreground leading-tight">{{ $errorCount }}</div>
-                        <div class="text-sm text-muted-foreground mt-1">Failed</div>
+                        <div class="text-sm text-muted-foreground mt-1">Error</div>
                     </div>
                 </x-ui.card-content>
             </x-ui.card>
@@ -171,7 +171,7 @@
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-3.5">
             <x-ui.card class="overflow-hidden border-t-2 border-t-rose-500">
                 <div class="px-4 py-2.5 flex items-center justify-between border-b bg-rose-50/60 border-rose-100">
-                    <h3 class="text-sm font-semibold inline-flex items-center gap-2 text-rose-800"><x-lucide-triangle-alert class="w-4 h-4 stroke-[1.75] text-rose-600" /> Error Logs</h3>
+                    <h3 class="text-sm font-semibold inline-flex items-center gap-2 text-rose-800"><x-lucide-triangle-alert class="w-4 h-4 stroke-[1.75] text-rose-600" /> Error</h3>
                     <span class="rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset bg-white text-rose-700 ring-rose-200">{{ $errorCount }}</span>
                 </div>
                 <div class="divide-y divide-border" data-log-list="error">
@@ -205,7 +205,7 @@
 
             <x-ui.card class="overflow-hidden border-t-2 border-t-emerald-500">
                 <div class="px-4 py-2.5 flex items-center justify-between border-b bg-emerald-50/60 border-emerald-100">
-                    <h3 class="text-sm font-semibold inline-flex items-center gap-2 text-emerald-800"><x-lucide-badge-check class="w-4 h-4 stroke-[1.75] text-emerald-600" /> Success Logs</h3>
+                    <h3 class="text-sm font-semibold inline-flex items-center gap-2 text-emerald-800"><x-lucide-badge-check class="w-4 h-4 stroke-[1.75] text-emerald-600" /> Success</h3>
                     <span class="rounded-md px-2 py-0.5 text-xs font-semibold ring-1 ring-inset bg-white text-emerald-700 ring-emerald-200">{{ $successCount }}</span>
                 </div>
                 <div class="divide-y divide-border" data-log-list="success">

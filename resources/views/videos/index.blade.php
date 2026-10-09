@@ -101,13 +101,13 @@
                                 <x-ui.label for="select-all-checkbox" class="md:hidden cursor-pointer">Select all</x-ui.label>
                             </x-ui.table-head>
                             <x-ui.table-head class="max-md:hidden">Thumbnail</x-ui.table-head>
-                            <x-ui.table-head class="max-md:hidden">Video Name</x-ui.table-head>
+                            <x-ui.table-head class="max-md:hidden">Name</x-ui.table-head>
                             <x-ui.table-head class="max-md:hidden">Status</x-ui.table-head>
                             <x-ui.table-head class="hidden md:table-cell">Duration</x-ui.table-head>
                             <x-ui.table-head class="hidden md:table-cell">Size</x-ui.table-head>
                             <x-ui.table-head class="hidden xl:table-cell">Source</x-ui.table-head>
                             <x-ui.table-head class="hidden xl:table-cell">Details</x-ui.table-head>
-                            <x-ui.table-head class="hidden md:table-cell">Upload Date</x-ui.table-head>
+                            <x-ui.table-head class="hidden md:table-cell">Upload date</x-ui.table-head>
                             <x-ui.table-head align="right" class="max-md:hidden">Actions</x-ui.table-head>
                         </x-ui.table-row>
                     </x-ui.table-header>

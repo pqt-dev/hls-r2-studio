@@ -20,7 +20,7 @@
                 </div>
                 <div class="leading-tight md:max-lg:hidden">
                     <div class="text-base font-semibold text-foreground tracking-tight">HLS R2 Studio</div>
-                    <div class="text-[11px] text-muted-foreground">Cloud Video Platform</div>
+                    <div class="text-[11px] text-muted-foreground">Cloud video platform</div>
                 </div>
             </div>
             <nav class="flex-1 px-3 md:max-lg:px-2 py-4 space-y-4">
@@ -58,12 +58,12 @@
                             <span class="md:max-lg:sr-only">Videos</span>
                         </a>
                         <a href="{{ route('videos.create') }}"
-                           title="Upload Video"
+                           title="Upload"
                            class="flex items-center md:max-lg:justify-center gap-2.5 rounded-md px-2.5 md:max-lg:px-0 py-2 text-sm font-medium focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 {{ request()->routeIs('videos.create') ? 'bg-primary text-primary-foreground shadow-sm [&>span:first-child]:bg-transparent [&_svg]:text-primary-foreground' : 'text-muted-foreground hover:bg-accent hover:text-foreground' }}">
                             <span class="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 bg-muted">
                                 <x-lucide-upload class="w-4 h-4 text-foreground" />
                             </span>
-                            <span class="md:max-lg:sr-only">Upload Video</span>
+                            <span class="md:max-lg:sr-only">Upload</span>
                         </a>
                     </div>
                 </div>
