@@ -4,14 +4,15 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Report extends Model
 {
     public const REASONS = [
-        'not_playing' => 'Not playing',
+        'not_loading' => 'Video not loading',
+        'not_playing' => 'Cannot start playback (endless spinner)',
         'lag' => 'Lag / buffering',
-        'no_audio' => 'No audio / audio out of sync',
-        'wrong_video' => 'Wrong video',
+        'wrong_video' => 'Wrong content',
         'other' => 'Other',
     ];
 
@@ -35,6 +36,11 @@ class Report extends Model
     public function video(): BelongsTo
     {
         return $this->belongsTo(Video::class);
+    }
+
+    public function submissions(): HasMany
+    {
+        return $this->hasMany(ReportSubmission::class);
     }
 
     public function resolvedBy(): BelongsTo

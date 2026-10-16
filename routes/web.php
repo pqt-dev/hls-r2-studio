@@ -47,5 +47,6 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password');
 
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
+    Route::get('/reports/{report}/submissions', [ReportController::class, 'submissions'])->name('reports.submissions');
     Route::put('/reports/{report}/resolve', [ReportController::class, 'resolve'])->name('reports.resolve');
 });

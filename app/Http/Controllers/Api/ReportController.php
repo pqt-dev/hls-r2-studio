@@ -7,6 +7,7 @@ use App\Models\Report;
 use App\Models\Video;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +23,7 @@ class ReportController extends Controller
             'page_url' => ['required', 'url', 'max:2048'],
             'reason' => ['nullable', 'string', Rule::in(array_keys(Report::REASONS))],
             'note' => ['nullable', 'string', 'max:1000'],
+            'isp' => ['nullable', 'string', 'max:100'],
         ]);
 
         $allowedHosts = config('videos.report_allowed_hosts');
@@ -38,7 +40,11 @@ class ReportController extends Controller
 
         $videoId = $this->resolveVideoIdFromPageUrl($validated['page_url']);
 
-        DB::transaction(function () use ($validated, $videoId) {
+        // The IP is always the server-side one; any client-sent value is ignored.
+        $ip = (string) $request->ip();
+        $isp = trim((string) ($validated['isp'] ?? '')) ?: 'Unknown';
+
+        DB::transaction(function () use ($validated, $videoId, $ip, $isp) {
             // A unique violation means another request created the active
             // report first; retry once, which then finds it. If it was
             // resolved in between, the retry creates a fresh report.
@@ -55,15 +61,27 @@ class ReportController extends Controller
                         'reason' => $validated['reason'] ?? null,
                     ]);
 
+                    $existing->submissions()->create([
+                        'ip' => $ip,
+                        'isp' => $isp,
+                        'reason' => $validated['reason'] ?? null,
+                    ]);
+
                     return;
                 }
 
                 try {
-                    Report::create([
-                        ...$validated,
+                    $report = Report::create([
+                        ...Arr::except($validated, ['isp']),
                         'video_id' => $videoId,
                         'report_count' => 1,
                         'last_reported_at' => now(),
+                    ]);
+
+                    $report->submissions()->create([
+                        'ip' => $ip,
+                        'isp' => $isp,
+                        'reason' => $validated['reason'] ?? null,
                     ]);
 
                     return;

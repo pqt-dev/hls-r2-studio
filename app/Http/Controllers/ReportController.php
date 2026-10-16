@@ -54,6 +54,45 @@ class ReportController extends Controller
     }
 
     /**
+     * List the individual submissions (IP, ISP, reason) of a report as JSON.
+     */
+    public function submissions(Report $report)
+    {
+        $limit = 500;
+
+        $total = $report->submissions()->count();
+
+        $perIsp = $report->submissions()
+            ->selectRaw('isp, count(*) as aggregate')
+            ->groupBy('isp')
+            ->orderByDesc('aggregate')
+            ->orderBy('isp')
+            ->get()
+            ->map(fn ($row) => ['isp' => $row->isp, 'count' => (int) $row->aggregate]);
+
+        $submissions = $report->submissions()
+            ->orderBy('isp')
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($submission) => [
+                'isp' => $submission->isp,
+                'ip' => $submission->ip,
+                'reason' => Report::REASONS[$submission->reason] ?? ($submission->reason ?? '—'),
+                'reported_at' => $submission->created_at->toDisplay('j M Y, H:i'),
+            ]);
+
+        return response()->json([
+            'total' => $total,
+            'limit' => $limit,
+            'truncated' => $total > $limit,
+            'per_isp' => $perIsp,
+            'submissions' => $submissions,
+        ]);
+    }
+
+    /**
      * Mark the given report as resolved.
      */
     public function resolve(Request $request, Report $report)

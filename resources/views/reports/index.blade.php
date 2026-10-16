@@ -81,6 +81,8 @@
             No reports found.
         </div>
     @else
+        {{-- Swapped from a fresh server response after "Mark as resolved" (see refreshList in the script below). --}}
+        <div id="reports-list">
         <form method="GET" action="{{ route('reports.index') }}" class="mb-3 flex flex-wrap items-center justify-between max-md:justify-start gap-2 md:text-xs text-sm text-muted-foreground">
             <span>{{ $reports->total() }} {{ Str::plural('report', $reports->total()) }}</span>
             <div class="flex items-center gap-2">
@@ -170,11 +172,16 @@
                                 @endif
                             </x-ui.table-cell>
                             <x-ui.table-cell align="right" class="whitespace-nowrap max-md:col-span-full max-md:p-0 max-md:text-left" data-actions-cell>
-                                @if ($report->status === 'new')
-                                    <x-ui.button variant="outline" size="sm" class="js-mark-resolved max-md:min-h-10 max-md:w-full" data-report-id="{{ $report->id }}" data-url="{{ route('reports.resolve', $report) }}" data-page-url="{{ $report->page_url }}">
-                                        Mark resolved
+                                <div class="flex items-center justify-end gap-2 max-md:flex-col max-md:items-stretch">
+                                    <x-ui.button variant="outline" size="sm" class="js-view-submissions max-md:min-h-10 max-md:w-full" data-url="{{ route('reports.submissions', $report) }}" data-page-url="{{ $report->page_url }}">
+                                        Details
                                     </x-ui.button>
-                                @endif
+                                    @if ($report->status === 'new')
+                                        <x-ui.button variant="outline" size="sm" class="js-mark-resolved max-md:min-h-10 max-md:w-full" data-report-id="{{ $report->id }}" data-url="{{ route('reports.resolve', $report) }}" data-page-url="{{ $report->page_url }}">
+                                            Mark as resolved
+                                        </x-ui.button>
+                                    @endif
+                                </div>
                             </x-ui.table-cell>
                         </x-ui.table-row>
                     @endforeach
@@ -183,13 +190,43 @@
             {{-- mobile-card:end --}}
         </x-ui.card>
         <div class="mt-4">{{ $reports->appends(request()->query())->links('partials.pagination') }}</div>
+        </div>
+
+        <x-ui.dialog id="submissions-modal" class="z-50 p-4" initialFocus="panel" aria-labelledby="submissions-modal-heading" panelClass="max-w-2xl">
+            <x-ui.dialog-header class="px-4 sm:px-5 py-4 border-b border-border">
+                <div class="min-w-0 pr-10">
+                    <x-ui.dialog-title id="submissions-modal-heading" class="text-base font-semibold">Report details</x-ui.dialog-title>
+                    <p id="submissions-modal-url" class="mt-1 break-all text-xs text-muted-foreground"></p>
+                </div>
+            </x-ui.dialog-header>
+            <div class="p-4 sm:p-5 space-y-3">
+                <p id="submissions-modal-error" class="hidden text-sm text-destructive"></p>
+                <div id="submissions-modal-summary" class="space-y-1 text-sm">
+                    <p id="submissions-modal-total" class="font-medium text-foreground"></p>
+                    <p id="submissions-modal-isps" class="text-muted-foreground"></p>
+                </div>
+                <div id="submissions-modal-table-wrap" class="hidden overflow-x-auto rounded-md border border-border">
+                    <x-ui.table>
+                        <x-ui.table-header>
+                            <x-ui.table-row :hover="false">
+                                <x-ui.table-head>ISP</x-ui.table-head>
+                                <x-ui.table-head>IP</x-ui.table-head>
+                                <x-ui.table-head>Reason</x-ui.table-head>
+                                <x-ui.table-head>Reported at</x-ui.table-head>
+                            </x-ui.table-row>
+                        </x-ui.table-header>
+                        <tbody id="submissions-modal-body"></tbody>
+                    </x-ui.table>
+                </div>
+                <p id="submissions-modal-truncated" class="hidden text-xs text-muted-foreground"></p>
+            </div>
+        </x-ui.dialog>
     @endif
 @endsection
 
 @push('scripts')
     <script>
         (function () {
-            const activeStatusFilter = @json($status);
 
             window.__pageCleanup = function () {
                 document.removeEventListener('click', onDocumentClick);
@@ -210,7 +247,111 @@
 
             document.getElementById('reports-error-banner-close').addEventListener('click', hideErrorBanner);
 
+            function openSubmissions(button) {
+                const modal = document.getElementById('submissions-modal');
+                const errorEl = document.getElementById('submissions-modal-error');
+                const totalEl = document.getElementById('submissions-modal-total');
+                const ispsEl = document.getElementById('submissions-modal-isps');
+                const tableWrap = document.getElementById('submissions-modal-table-wrap');
+                const body = document.getElementById('submissions-modal-body');
+                const truncatedEl = document.getElementById('submissions-modal-truncated');
+
+                document.getElementById('submissions-modal-url').textContent = button.dataset.pageUrl;
+                errorEl.classList.add('hidden');
+                errorEl.textContent = '';
+                totalEl.textContent = 'Loading...';
+                ispsEl.textContent = '';
+                tableWrap.classList.add('hidden');
+                truncatedEl.classList.add('hidden');
+                body.textContent = '';
+
+                window.uiDialog.open(modal);
+
+                fetch(button.dataset.url, { headers: { 'Accept': 'application/json' } })
+                    .then(function (response) {
+                        if (!response.ok) {
+                            throw new Error('Request failed');
+                        }
+                        return response.json();
+                    })
+                    .then(function (data) {
+                        totalEl.textContent = data.total + (data.total === 1 ? ' submission' : ' submissions');
+                        ispsEl.textContent = data.per_isp.map(function (row) { return row.isp + ': ' + row.count; }).join(', ');
+
+                        data.submissions.forEach(function (item) {
+                            const tr = document.createElement('tr');
+                            tr.className = 'border-b border-border last:border-0';
+                            [item.isp, item.ip, item.reason, item.reported_at].forEach(function (value) {
+                                const td = document.createElement('td');
+                                td.className = 'px-3 py-2 align-top whitespace-nowrap';
+                                td.textContent = value;
+                                tr.appendChild(td);
+                            });
+                            body.appendChild(tr);
+                        });
+
+                        tableWrap.classList.toggle('hidden', data.submissions.length === 0);
+
+                        if (data.truncated) {
+                            truncatedEl.textContent = 'Showing first ' + data.limit + ' of ' + data.total + ' submissions.';
+                            truncatedEl.classList.remove('hidden');
+                        }
+                    })
+                    .catch(function () {
+                        totalEl.textContent = '';
+                        errorEl.textContent = 'Failed to load submissions. Please try again.';
+                        errorEl.classList.remove('hidden');
+                    });
+            }
+
+            // Re-fetch the current URL (same filters, sort, search, page) and swap in the server-rendered list,
+            // so the result always matches a reload. Any failure falls back to a full reload.
+            function refreshList() {
+                const scrollX = window.scrollX;
+                const scrollY = window.scrollY;
+
+                fetch(window.location.href, {
+                    headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+                })
+                    .then(function (response) {
+                        if (!response.ok || response.redirected) {
+                            throw new Error('Refresh failed');
+                        }
+                        return response.text();
+                    })
+                    .then(function (html) {
+                        const incoming = new DOMParser().parseFromString(html, 'text/html').getElementById('reports-list');
+                        const current = document.getElementById('reports-list');
+
+                        if (!incoming || !current) {
+                            // The current page became empty (e.g. its last row was resolved): go to the previous page.
+                            const url = new URL(window.location.href);
+                            const page = parseInt(url.searchParams.get('page'), 10);
+
+                            if (page > 1) {
+                                url.searchParams.set('page', page - 1);
+                                window.location.replace(url.toString());
+                            } else {
+                                window.location.reload();
+                            }
+                            return;
+                        }
+
+                        current.replaceWith(incoming);
+                        window.scrollTo(scrollX, scrollY);
+                    })
+                    .catch(function () {
+                        window.location.reload();
+                    });
+            }
+
             function onDocumentClick(event) {
+                const detailsButton = event.target.closest('.js-view-submissions');
+                if (detailsButton) {
+                    openSubmissions(detailsButton);
+                    return;
+                }
+
                 const button = event.target.closest('.js-mark-resolved');
                 if (!button) {
                     return;
@@ -223,7 +364,7 @@
                 window.confirmDialog({
                     title: 'Mark report as resolved?',
                     message: 'Mark "' + pageUrl + '" as resolved? You can still find it under the Resolved filter afterward.',
-                    confirmText: 'Mark resolved',
+                    confirmText: 'Mark as resolved',
                     danger: false,
                 }).then(function (ok) {
                     if (!ok) {
@@ -248,28 +389,9 @@
                             }
                             return response.json();
                         })
-                        .then(function (data) {
+                        .then(function () {
                             hideErrorBanner();
-
-                            const row = button.closest('tr');
-
-                            const statusCell = row.querySelector('[data-status-cell]');
-                            statusCell.innerHTML = '<span class="inline-flex items-center rounded-md px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset whitespace-nowrap bg-emerald-100 text-emerald-700 ring-emerald-300">Resolved</span>';
-
-                            const resolvedAtLine = row.querySelector('[data-resolved-at-line]');
-                            resolvedAtLine.querySelector('[data-resolved-at-value]').textContent = data.resolved_at;
-                            if (data.resolved_by) {
-                                resolvedAtLine.querySelector('[data-resolved-at-value]').insertAdjacentText('afterend', ' by ' + data.resolved_by);
-                            }
-                            resolvedAtLine.style.display = '';
-
-                            button.remove();
-
-                            if (activeStatusFilter === 'new') {
-                                row.remove();
-                            }
-                            // else: leave the row in place — position must not change on resolve (sort order is driven
-                            // purely by the chosen sort field's value, which resolving doesn't change).
+                            refreshList();
                         })
                         .catch(function () {
                             showErrorBanner('Failed to mark as resolved. Please try again.');
