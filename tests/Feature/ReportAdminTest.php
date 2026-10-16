@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Report;
+use App\Models\ReportSubmission;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -25,6 +26,59 @@ class ReportAdminTest extends TestCase
         $response = $this->get('/reports');
 
         $response->assertOk();
+    }
+
+    public function test_reports_index_renders_details_button(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        $report = Report::create([
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'other',
+            'status' => 'new',
+        ]);
+
+        $response = $this->get('/reports');
+
+        $response->assertOk();
+        $response->assertSee('js-view-submissions', false);
+        $response->assertSee(route('reports.submissions', $report), false);
+    }
+
+    public function test_submissions_route_requires_auth(): void
+    {
+        $report = Report::create(['page_url' => 'https://toicovl.com/some-post', 'status' => 'new']);
+
+        $this->getJson("/reports/{$report->id}/submissions")->assertUnauthorized();
+    }
+
+    public function test_submissions_returns_json_sorted_by_isp(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        $report = Report::create(['page_url' => 'https://toicovl.com/some-post', 'status' => 'new']);
+
+        $report->submissions()->create(['ip' => '10.0.0.1', 'isp' => 'FPT', 'reason' => 'lag']);
+        $report->submissions()->create(['ip' => '10.0.0.2', 'isp' => 'Viettel', 'reason' => 'other']);
+        $report->submissions()->create(['ip' => '10.0.0.3', 'isp' => 'Viettel', 'reason' => null]);
+        ReportSubmission::create(['report_id' => Report::create(['page_url' => 'https://toicovl.com/other', 'status' => 'new'])->id, 'ip' => '10.9.9.9', 'isp' => 'Other']);
+
+        $response = $this->getJson("/reports/{$report->id}/submissions");
+
+        $response->assertOk();
+        $response->assertJsonPath('total', 3);
+        $response->assertJsonPath('truncated', false);
+        $response->assertJsonPath('per_isp.0', ['isp' => 'Viettel', 'count' => 2]);
+        $this->assertSame(['FPT', 'Viettel', 'Viettel'], array_column($response->json('submissions'), 'isp'));
+        $this->assertSame('Lag / buffering', $response->json('submissions.0.reason'));
+        $this->assertSame('—', collect($response->json('submissions'))->firstWhere('ip', '10.0.0.3')['reason']);
+    }
+
+    public function test_submissions_returns_404_for_missing_report(): void
+    {
+        $this->actingAs(User::factory()->create(['username' => 'tester']));
+
+        $this->getJson('/reports/999999/submissions')->assertNotFound();
     }
 
     public function test_resolve_updates_report_status(): void

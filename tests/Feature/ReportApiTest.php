@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Report;
+use App\Models\ReportSubmission;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -62,6 +63,44 @@ class ReportApiTest extends TestCase
         $response->assertJsonValidationErrors('reason');
     }
 
+    /**
+     * @dataProvider validReasonProvider
+     */
+    #[\PHPUnit\Framework\Attributes\DataProvider('validReasonProvider')]
+    public function test_each_current_reason_key_is_accepted(string $reason): void
+    {
+        $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => $reason,
+        ])->assertStatus(201);
+
+        $this->assertDatabaseHas('reports', ['page_url' => 'https://toicovl.com/some-post', 'reason' => $reason]);
+        $this->assertDatabaseHas('report_submissions', ['reason' => $reason]);
+    }
+
+    public static function validReasonProvider(): array
+    {
+        return [
+            'not_loading' => ['not_loading'],
+            'not_playing' => ['not_playing'],
+            'lag' => ['lag'],
+            'wrong_video' => ['wrong_video'],
+            'other' => ['other'],
+        ];
+    }
+
+    public function test_removed_no_audio_reason_returns_422(): void
+    {
+        $response = $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'no_audio',
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('reason');
+        $this->assertDatabaseCount('reports', 0);
+    }
+
     public function test_missing_reason_still_succeeds(): void
     {
         $response = $this->postJson('/api/reports', [
@@ -74,6 +113,78 @@ class ReportApiTest extends TestCase
             'page_url' => 'https://toicovl.com/some-post',
             'reason' => null,
         ]);
+    }
+
+    public function test_each_request_creates_its_own_submission_row(): void
+    {
+        $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'lag',
+            'isp' => 'Viettel',
+        ])->assertStatus(201);
+
+        $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'reason' => 'not_playing',
+            'isp' => 'VNPT',
+        ])->assertStatus(201);
+
+        $report = Report::first();
+
+        $this->assertDatabaseCount('reports', 1);
+        $this->assertDatabaseCount('report_submissions', 2);
+        $this->assertDatabaseHas('report_submissions', ['report_id' => $report->id, 'isp' => 'Viettel', 'reason' => 'lag']);
+        $this->assertDatabaseHas('report_submissions', ['report_id' => $report->id, 'isp' => 'VNPT', 'reason' => 'not_playing']);
+    }
+
+    public function test_submission_stores_the_request_ip(): void
+    {
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7'])
+            ->postJson('/api/reports', ['page_url' => 'https://toicovl.com/some-post'])
+            ->assertStatus(201);
+
+        $this->assertDatabaseHas('report_submissions', ['ip' => '203.0.113.7']);
+    }
+
+    public function test_client_sent_ip_is_ignored(): void
+    {
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.7'])
+            ->postJson('/api/reports', [
+                'page_url' => 'https://toicovl.com/some-post',
+                'ip' => '198.51.100.99',
+            ])
+            ->assertStatus(201);
+
+        $this->assertDatabaseHas('report_submissions', ['ip' => '203.0.113.7']);
+        $this->assertDatabaseMissing('report_submissions', ['ip' => '198.51.100.99']);
+    }
+
+    public function test_missing_or_blank_isp_is_stored_as_unknown(): void
+    {
+        $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+        ])->assertStatus(201);
+
+        $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'isp' => '   ',
+        ])->assertStatus(201);
+
+        $this->assertDatabaseCount('report_submissions', 2);
+        $this->assertSame(2, ReportSubmission::where('isp', 'Unknown')->count());
+    }
+
+    public function test_isp_longer_than_100_characters_returns_422(): void
+    {
+        $response = $this->postJson('/api/reports', [
+            'page_url' => 'https://toicovl.com/some-post',
+            'isp' => str_repeat('a', 101),
+        ]);
+
+        $response->assertStatus(422);
+        $response->assertJsonValidationErrors('isp');
+        $this->assertDatabaseCount('reports', 0);
+        $this->assertDatabaseCount('report_submissions', 0);
     }
 
     public function test_sixth_report_within_ten_minutes_is_throttled(): void
