@@ -10,6 +10,19 @@ return new class extends Migration
         return in_array(DB::connection()->getDriverName(), ['mysql', 'mariadb'], true);
     }
 
+    private ?bool $mariaDb = null;
+
+    private function isMariaDb(): bool
+    {
+        if ($this->mariaDb === null) {
+            // A MariaDB server can be reached through the 'mysql' driver, so check the server version string.
+            $this->mariaDb = $this->isMySql()
+                && str_contains(strtolower((string) DB::selectOne('select version() as v')->v), 'mariadb');
+        }
+
+        return $this->mariaDb;
+    }
+
     private function constraintExists(): bool
     {
         if (! $this->isMySql()) {
@@ -29,8 +42,8 @@ return new class extends Migration
             return;
         }
 
-        // MySQL/MariaDB use DROP CHECK; SQLite (3.53+, used by the test database) uses DROP CONSTRAINT.
-        DB::statement($this->isMySql()
+        // MariaDB and SQLite (3.53+, used by the test database) use DROP CONSTRAINT; MySQL uses DROP CHECK.
+        DB::statement($this->isMySql() && ! $this->isMariaDb()
             ? 'ALTER TABLE reports DROP CHECK chk_reports_reason'
             : 'ALTER TABLE reports DROP CONSTRAINT chk_reports_reason');
     }
