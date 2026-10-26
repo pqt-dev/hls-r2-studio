@@ -607,3 +607,43 @@ git pull
 | Restart the scheduler | Almost never needed, unless `routes/console.php` or a cleanup command was modified |
 
 If you are not sure whether a command is needed, just run them all — it does no harm.
+
+## Cloudflare and R2 setup checklist (before going live)
+
+These are manual steps in the Cloudflare and R2 dashboards; the code does not do them. UI labels can differ between dashboard versions, so check each item against the dashboard. Items marked "(verify)" were not verified against Cloudflare's documentation.
+
+Placeholders: `embed.example.com` = domain serving this app and the embed pages, `cdn.example.com` = R2 public custom domain used as `R2_URL`, `www.example.com` = the WordPress site.
+
+1. **SSL/TLS mode Full (strict) and Always Use HTTPS** for the domains. Why: avoids redirect loops and unencrypted hops to the origin; the app already sets `FORCE_HTTPS`.
+2. **`.env` on the VPS**: `TRUSTED_PROXIES=cloudflare`, `CACHE_STORE=failover` with Redis installed (see [Redis](#redis-cache-and-rate-limiting)), and `FFMPEG_NICE` / `FFMPEG_THREADS` (see the `.env` example in the [Plain VPS](#plain-vps-installation-no-panel) section). Then run `php artisan config:clear` and restart the queue workers. Why: real client IPs for throttling, shared rate-limit counters, and a responsive web app during transcoding.
+3. **Cache Rule for the embed page** (Rules → Cache Rules): when hostname equals `embed.example.com` and URI path starts with `/embed/` → Cache eligibility **Eligible for cache**; Edge TTL **Use cache-control header if present, bypass cache if not**; Browser TTL **Respect origin**. Why: Cloudflare does not cache HTML by default, and the app already sends `Cache-Control: public, max-age=60, s-maxage=300` without cookies. Consequence: allowlist changes or video deletion can take up to 5 minutes to show on the cached page (1 minute in browsers).
+4. **Cache Rule for the R2 domain**: hostname equals `cdn.example.com` → **Eligible for cache**; Edge TTL **Ignore cache-control header and use this TTL** = **1 day**; Browser TTL **Override** with **1 hour** (recommended; "Respect origin" also works). Why: `.m3u8` and `.ts` are not cached by Cloudflare by default (only listed extensions such as `.jpg`), so every segment would hit R2. Note: a deleted or taken-down video can still be served from the edge cache for up to the TTL; on the free plan purge works per URL only.
+5. **Do not challenge iframe traffic**: if viewers see Cloudflare challenge pages or blank frames inside the iframe, add a WAF custom rule with action **Skip** for URI path starts with `/embed/` (and for the R2 domain), or lower the security level for them. Why: iframes cannot solve challenges (verify).
+6. **Hotlink rule for the R2 domain** (Security → WAF → Custom rules, action **Block**), expression (verify the syntax in the dashboard):
+   ```
+   (http.host eq "cdn.example.com" and http.referer ne "" and not http.referer contains "embed.example.com")
+   ```
+   - Requests with an **empty Referer must stay allowed**: Safari/iOS native HLS playback usually sends no Referer, so blocking empty referers breaks iPhone playback.
+   - This only stops other websites' players, not scripts that send no Referer.
+   - After enabling it, test playback on an iPhone and a desktop browser.
+7. **R2 bucket CORS** (R2 → bucket → Settings → CORS policy) allowing the embed origin to GET the HLS files (verify the format in the dashboard):
+   ```json
+   [{"AllowedOrigins":["https://embed.example.com"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAgeSeconds":86400}]
+   ```
+   `R2_URL` must be the custom domain, not `r2.dev` (rate limited and not for production). Why: the player fetches playlists and segments cross-origin.
+8. **Embed allowlist in the app**: Settings → Embed protection → add `www.example.com` (and `*.example.com` if needed); empty means any site can frame the player. Also set `CORS_ALLOWED_ORIGINS` / `REPORT_ALLOWED_HOSTS` for the report API (see [TROUBLESHOOTING.md](TROUBLESHOOTING.md#common-errors-fixes-and-qa)).
+9. **Optional: only accept web traffic from Cloudflare** on the VPS firewall (verify). Why: stops attackers bypassing Cloudflare by hitting the origin IP directly. Plain VPS with ufw: remove the generic rule, then allow Cloudflare's published ranges (keep SSH allowed):
+   ```bash
+   sudo ufw delete allow 80/tcp
+   for ip in $(curl -s https://www.cloudflare.com/ips-v4; echo; curl -s https://www.cloudflare.com/ips-v6); do sudo ufw allow from "$ip" to any port 80,443 proto tcp; done
+   ```
+   Verify the site still loads afterwards. The ranges change rarely; re-run occasionally. On aaPanel use the panel firewall instead.
+10. **Smoke test** after going live:
+    - `curl -sI https://embed.example.com/embed/<id>` shows no `Set-Cookie`, `Cache-Control: public, max-age=60, s-maxage=300`, `X-Robots-Tag: noindex, nofollow`, and (on the second request) `cf-cache-status: HIT`.
+    - Play a video on desktop and on iPhone.
+    - The login page still works and throttling counts per real IP.
+    - `curl -sI https://embed.example.com/login` shows `x-robots-tag: noindex, nofollow, noarchive`.
+11. **Remove already-indexed pages from Google**: the app sends `X-Robots-Tag: noindex, nofollow, noarchive` on every response (the embed page keeps its own `noindex, nofollow`), and the login and app layouts also carry a `robots` meta tag.
+    - Keep `robots.txt` open. Do **not** add `Disallow: /`: Google must be able to fetch the pages to see the noindex, otherwise it keeps the URLs listed.
+    - To speed up removal, verify domain ownership in Google Search Console, then Removals → New request (temporary removal) for the site URLs. Otherwise Google drops them on its next crawl (days to weeks).
+    - Check with `curl -sI https://embed.example.com/login`: the `x-robots-tag` header must be present.
