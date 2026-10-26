@@ -64,6 +64,9 @@ Behind Cloudflare (orange cloud), set `TRUSTED_PROXIES=cloudflare` in `.env`; it
 **Q: What are the default rate limits of the APIs?**
 Login: 5 requests/minute. `/uploads/init`: 30 requests/minute. `/uploads/{id}/chunk`: 900 requests/minute. Activity log POST: 120 requests/minute. Upload requests have separate rate limits (each with its own counter), configurable in `config/videos.php` (`upload_rate_limits`). `/api/reports`: 5 requests/10 minutes per IP (plus 20 requests/10 minutes per `page_url`). Getting a "Too Many Requests" error when acting too quickly is caused by these limits.
 
+**Q: What happens if Redis goes down?**
+With `CACHE_STORE=failover` the app falls back to the database cache table, so login, embed and the other throttled routes keep working; Laravel dispatches a `CacheFailedOver` event when it happens. Rate-limit counters start from zero on the fallback store. Check with `redis-cli ping` (it should answer `PONG`), then install or restart Redis (`sudo systemctl restart redis-server`); the app uses it again automatically.
+
 ## Additional Notes
 
 **Progress percentage**: each video has one overall progress percentage, from the moment you click Upload until the HLS output is on R2 (100% only when the video is ready). Each stage (upload, merge, transcode, thumbnail, storyboard, R2 upload) gets a share proportional to its estimated time, which adapts to the file size: a light video spends most of its share on fixed costs, a heavy one on size-dependent stages. The estimates live in `config/videos.php` under `progress` and should be tuned per deployment (CPU and network speed shift the shares).

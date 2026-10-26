@@ -10,6 +10,62 @@
 > - **Already has aaPanel** → follow the [Deploying with aaPanel](#deploying-with-aapanel) section — simpler, no need to install Nginx/PHP-FPM manually.
 > - **A "blank" VPS with nothing installed** → follow the [Plain VPS Installation](#plain-vps-installation-no-panel) section right below.
 
+### Redis (cache and rate limiting)
+
+Used by both deployment paths. Rate-limit counters, the Activity Log dedup keys and scheduler locks live in Redis, expire on their own, and add no MySQL load or table growth. With `CACHE_STORE=failover` the app falls back to the database cache table if Redis is down. Sessions and the queue stay on the database. Install Redis before (or right after) setting the `.env` values shown in each path below.
+
+**Plain VPS:**
+
+```bash
+sudo apt install -y redis-server php8.4-redis
+```
+
+(Match the PHP version in the package name to the one you use.) Then edit `/etc/redis/redis.conf`:
+
+```conf
+bind 127.0.0.1 ::1
+maxmemory 256mb
+maxmemory-policy allkeys-lru
+```
+
+`allkeys-lru` can evict keys under memory pressure, which is acceptable for a cache. Then:
+
+```bash
+sudo systemctl enable --now redis-server
+```
+
+```bash
+redis-cli ping
+```
+
+It should answer `PONG`. Do NOT open port 6379 in ufw or any firewall.
+
+**aaPanel:** App Store → install **Redis** (confirm it listens on `127.0.0.1` and is set to start on boot). Then **PHP** → **8.4** → **Install extensions** → enable `redis` → restart PHP 8.4. If the aaPanel Redis has a password, set it as `REDIS_PASSWORD` in `.env`.
+
+**`.env`:** `CACHE_STORE=failover` and `REDIS_CLIENT=phpredis` (already included in the `.env` examples below). Set `CACHE_STORE=database` instead if you do not use Redis.
+
+**After changing it**, clear the config cache:
+
+```bash
+php artisan config:clear
+```
+
+Then restart PHP-FPM and the long-running processes, which keep the old config: on a plain VPS `sudo systemctl restart php8.4-fpm hls-r2-studio-queue@1 hls-r2-studio-queue@2 hls-r2-studio-reverb hls-r2-studio-scheduler`; on aaPanel restart PHP 8.4 in the panel and `systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2 hls-r2-studio-reverb hls-r2-studio-scheduler` (or the equivalent supervisor processes if you run them that way).
+
+**Verify:**
+
+```bash
+php artisan tinker --execute="Cache::put('ping','pong',60); echo Cache::get('ping');"
+```
+
+It should print `pong`. Then:
+
+```bash
+redis-cli -n 1 keys '*'
+```
+
+should list keys (Redis DB 1 is `REDIS_CACHE_DB`).
+
 ### Plain VPS Installation (No Panel)
 
 **Requirements**: PHP 8.4+ (required — `composer.lock` pins some Symfony packages that need PHP >= 8.4), Composer 2.2+ (run `composer self-update` if you get a `composer-runtime-api` error), Node.js + npm, MySQL, FFmpeg/FFprobe, a Cloudflare R2 account.
@@ -47,6 +103,10 @@ APP_URL=https://your-real-domain
 
 # Trust only Cloudflare's IP ranges for X-Forwarded-For (site proxied by Cloudflare); otherwise set your proxy IP
 TRUSTED_PROXIES=cloudflare
+
+# Cache and rate-limit counters in Redis, falling back to the database if Redis is down (see "Redis (cache and rate limiting)" above)
+CACHE_STORE=failover
+REDIS_CLIENT=phpredis
 
 # WebSocket (Reverb) — generate real random values for the 3 lines below, do not leave them empty
 REVERB_APP_ID=<random number>
@@ -345,6 +405,10 @@ FORCE_HTTPS=true
 
 # Trust only Cloudflare's IP ranges for X-Forwarded-For (site proxied by Cloudflare); otherwise set your proxy IP
 TRUSTED_PROXIES=cloudflare
+
+# Cache and rate-limit counters in Redis, falling back to the database if Redis is down (see "Redis (cache and rate limiting)" above)
+CACHE_STORE=failover
+REDIS_CLIENT=phpredis
 
 REVERB_APP_ID=<random number>
 REVERB_APP_KEY=<random string>
