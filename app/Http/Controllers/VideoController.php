@@ -317,6 +317,20 @@ class VideoController extends Controller
             'title' => ['nullable', 'string', 'max:255'],
         ]);
 
+        // A video needs about twice its size on disk while it is assembled and
+        // transcoded (merged original plus HLS output), so refuse early.
+        $totalSize = (int) $validated['total_size'];
+        $requiredBytes = 2 * $totalSize + self::DISK_FREE_MARGIN_BYTES;
+        $freeSpace = $this->freeDiskSpace(Storage::disk('local')->path(''));
+
+        if ($freeSpace !== false && $freeSpace < $requiredBytes) {
+            Log::warning("Not enough free disk space to start an upload: {$freeSpace} bytes free, need {$requiredBytes} bytes.");
+
+            return response()->json([
+                'message' => 'The server does not have enough free disk space to process this upload.',
+            ], 507);
+        }
+
         $uploadId = (string) Str::uuid();
         $uploadDir = "chunked_uploads/{$uploadId}";
 

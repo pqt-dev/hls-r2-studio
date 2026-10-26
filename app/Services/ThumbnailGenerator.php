@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\FfmpegCommand;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
@@ -282,7 +283,7 @@ class ThumbnailGenerator
 
     private function composeGridThumbnail(array $columnPaths, string $outputPath): void
     {
-        $process = new Process([
+        $process = new Process(FfmpegCommand::wrap([
             config('services.ffmpeg.binary'),
             '-y',
             '-i', $columnPaths[0],
@@ -292,7 +293,7 @@ class ThumbnailGenerator
             '-map', '[v]',
             '-frames:v', '1',
             $outputPath,
-        ]);
+        ]));
 
         $process->setTimeout(60);
         $process->run();
@@ -315,14 +316,14 @@ class ThumbnailGenerator
         $scaledPath = "{$workDir}/{$uid}_scaled.jpg";
         $trialPaths = [];
 
-        $scaleProcess = new Process([
+        $scaleProcess = new Process(FfmpegCommand::wrap([
             config('services.ffmpeg.binary'),
             '-y',
             '-i', $framePath,
             '-vf', "scale={$canvasWidth}:{$canvasHeight}:force_original_aspect_ratio=increase",
             '-frames:v', '1',
             $scaledPath,
-        ]);
+        ]));
         $scaleProcess->setTimeout(60);
         $scaleProcess->run();
 
@@ -375,14 +376,14 @@ class ThumbnailGenerator
                 $trialPath = "{$workDir}/{$uid}_trial_{$index}.jpg";
                 $trialPaths[] = $trialPath;
 
-                $cropProcess = new Process([
+                $cropProcess = new Process(FfmpegCommand::wrap([
                     config('services.ffmpeg.binary'),
                     '-y',
                     '-i', $scaledPath,
                     '-vf', "crop={$canvasWidth}:{$canvasHeight}:{$x}:{$y}",
                     '-frames:v', '1',
                     $trialPath,
-                ]);
+                ]));
                 $cropProcess->setTimeout(60);
                 $cropProcess->run();
 
@@ -415,14 +416,14 @@ class ThumbnailGenerator
             $finalX = $axis === 'x' ? $bestOffset : 0;
             $finalY = $axis === 'y' ? $bestOffset : 0;
 
-            $finalCropProcess = new Process([
+            $finalCropProcess = new Process(FfmpegCommand::wrap([
                 config('services.ffmpeg.binary'),
                 '-y',
                 '-i', $scaledPath,
                 '-vf', "crop={$canvasWidth}:{$canvasHeight}:{$finalX}:{$finalY}",
                 '-frames:v', '1',
                 $outputPath,
-            ]);
+            ]));
             $finalCropProcess->setTimeout(60);
             $finalCropProcess->run();
 
@@ -444,7 +445,7 @@ class ThumbnailGenerator
 
     private function extractThumbnailCandidate(string $inputPath, float $timestamp, string $outputPath): void
     {
-        $process = new Process([
+        $process = new Process(FfmpegCommand::wrap([
             config('services.ffmpeg.binary'),
             '-y',
             '-ss', (string) $timestamp,
@@ -452,7 +453,7 @@ class ThumbnailGenerator
             '-vf', 'thumbnail=24',
             '-frames:v', '1',
             $outputPath,
-        ]);
+        ]));
 
         $process->setTimeout(60);
         $process->run();

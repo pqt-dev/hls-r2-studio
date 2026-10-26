@@ -8,6 +8,7 @@ use App\Models\Setting;
 use App\Models\Video;
 use App\Services\StoryboardGenerator;
 use App\Services\ThumbnailGenerator;
+use App\Support\FfmpegCommand;
 use App\Support\UploadAssembler;
 use App\Support\VideoProgress;
 use App\Support\VideoStatusLogger;
@@ -430,6 +431,7 @@ class TranscodeVideoJob implements ShouldQueue
             '-g', (string) $gopSize,
             '-keyint_min', (string) $gopSize,
             '-sc_threshold', '0',
+            ...FfmpegCommand::threadArgs(),
         ];
 
         if ($settings->transcode_fps !== null) {
@@ -447,7 +449,7 @@ class TranscodeVideoJob implements ShouldQueue
             "{$tmpDir}/playlist.m3u8",
         ]);
 
-        $process = new Process($args);
+        $process = new Process(FfmpegCommand::wrap($args));
 
         $process->setTimeout(self::calculateProcessTimeout($duration));
         $process->start();

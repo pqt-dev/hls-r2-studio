@@ -295,7 +295,11 @@ class ChunkedUploadTest extends TestCase
         {
             protected function freeDiskSpace(string $path): float|false
             {
-                return 1024.0;
+                // Only the assemble check (completeUpload) sees too little space;
+                // init and chunk uploads see plenty.
+                return str_ends_with(rtrim($path, '/'), 'uploads')
+                    ? 1024.0
+                    : 1024.0 * 1024 * 1024 * 1024;
             }
         });
 

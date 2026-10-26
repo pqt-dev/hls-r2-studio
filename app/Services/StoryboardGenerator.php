@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Support\FfmpegCommand;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\Process\Process;
@@ -137,15 +138,16 @@ class StoryboardGenerator
         int $totalCandidates,
         int $tileSize
     ): array {
-        $process = new Process([
+        $process = new Process(FfmpegCommand::wrap([
             config('services.ffmpeg.binary'),
             '-y',
             '-i', $inputPath,
             '-vf', "fps={$totalCandidates}/{$duration},crop='min(iw\,ih)':'min(iw\,ih)',scale={$tileSize}:{$tileSize}",
             '-frames:v', (string) $totalCandidates,
+            ...FfmpegCommand::threadArgs(),
             '-start_number', '0',
             "{$tmpDir}/candidate_%04d.jpg",
-        ]);
+        ]));
 
         $process->setTimeout(self::calculateStoryboardTimeout($duration));
         $process->run();
@@ -409,7 +411,7 @@ class StoryboardGenerator
                 $sequencePaths[] = $sequencePath;
             }
 
-            $process = new Process([
+            $process = new Process(FfmpegCommand::wrap([
                 config('services.ffmpeg.binary'),
                 '-y',
                 '-start_number', '0',
@@ -417,7 +419,7 @@ class StoryboardGenerator
                 '-vf', "tile={$size}x{$size}",
                 '-frames:v', '1',
                 $finalPath,
-            ]);
+            ]));
 
             $process->setTimeout(60);
             $process->run();

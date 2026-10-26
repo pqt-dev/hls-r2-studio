@@ -108,6 +108,10 @@ TRUSTED_PROXIES=cloudflare
 CACHE_STORE=failover
 REDIS_CLIENT=phpredis
 
+# Run ffmpeg at low CPU priority so the web app stays responsive (0 disables); optional encoder thread limit per job
+FFMPEG_NICE=10
+# FFMPEG_THREADS=2
+
 # WebSocket (Reverb) — generate real random values for the 3 lines below, do not leave them empty
 REVERB_APP_ID=<random number>
 REVERB_APP_KEY=<random string>
@@ -261,6 +265,8 @@ WantedBy=multi-user.target
 sudo systemctl enable --now hls-r2-studio-queue@1 hls-r2-studio-queue@2
 ```
 
+> **Sizing the workers:** each queue worker runs one ffmpeg at a time, and ffmpeg uses all CPU cores by default, so on a small VPS (e.g. 4 vCPU shared with PHP-FPM and MySQL) run 1-2 workers. Cap the encoder with `FFMPEG_THREADS` (about CPU cores / number of workers, e.g. `2`) and keep `FFMPEG_NICE=10` so web requests are served first. Optionally you can instead (or additionally) throttle the whole unit by adding `Nice=10` and `CPUQuota=250%` (example) under `[Service]`; this is not required if `FFMPEG_NICE` is enough. After changing `.env` or config, restart the queue workers (restart commands above) so they pick up the new values.
+
 > `DB_QUEUE_RETRY_AFTER` in `.env` (default `176400`) **must always be greater than** the `--timeout` above (`172800`) — otherwise another worker will pick up a job that is still running, causing duplicate processing.
 
 Reverb (WebSocket) — `/etc/systemd/system/hls-r2-studio-reverb.service` (a single instance, no template):
@@ -410,6 +416,10 @@ TRUSTED_PROXIES=cloudflare
 CACHE_STORE=failover
 REDIS_CLIENT=phpredis
 
+# Run ffmpeg at low CPU priority so the web app stays responsive (0 disables); optional encoder thread limit per job
+FFMPEG_NICE=10
+# FFMPEG_THREADS=2
+
 REVERB_APP_ID=<random number>
 REVERB_APP_KEY=<random string>
 REVERB_APP_SECRET=<random string>
@@ -497,6 +507,8 @@ systemctl daemon-reload
 systemctl enable --now hls-r2-studio-queue@1
 systemctl enable --now hls-r2-studio-queue@2
 ```
+
+> **Sizing the workers:** each queue worker runs one ffmpeg at a time, and ffmpeg uses all CPU cores by default, so on a small VPS (e.g. 4 vCPU shared with PHP-FPM and MySQL) run 1-2 workers. Cap the encoder with `FFMPEG_THREADS` (about CPU cores / number of workers, e.g. `2`) and keep `FFMPEG_NICE=10` so web requests are served first. Optionally you can instead (or additionally) throttle the whole unit by adding `Nice=10` and `CPUQuota=250%` (example) under `[Service]`; this is not required if `FFMPEG_NICE` is enough. After changing `.env` or config, restart the queue workers (`systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2`) so they pick up the new values.
 
 > `--timeout=172800` (48 hours) matches the real job timeout in the code (an x8 multiplier on video length, see `TRANSCODE_TIMEOUT_MULTIPLIER` in the [Q&A section](TROUBLESHOOTING.md#common-errors-fixes-and-qa)). `DB_QUEUE_RETRY_AFTER` in `.env` (`176400`) must always be greater than this value.
 
