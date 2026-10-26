@@ -14,7 +14,18 @@ Route::middleware('guest')->group(function () {
 });
 
 // Public route: no auth, viewable inside an iframe on external sites.
-Route::get('/embed/{video}', [EmbedController::class, 'show'])->name('embed.show')->middleware('throttle:60,1');
+Route::get('/embed/{video}', [EmbedController::class, 'show'])->name('embed.show')
+    ->middleware('throttle:60,1')
+    // Public cacheable page: no session/cookie so views create no `sessions` rows and the CDN can cache it.
+    ->withoutMiddleware([
+        \Illuminate\Cookie\Middleware\EncryptCookies::class,
+        \Illuminate\Cookie\Middleware\AddQueuedCookiesToResponse::class,
+        \Illuminate\Session\Middleware\StartSession::class,
+        \Illuminate\View\Middleware\ShareErrorsFromSession::class,
+        \Illuminate\Foundation\Http\Middleware\PreventRequestForgery::class,
+        'auth.session',
+        \Illuminate\Session\Middleware\AuthenticateSession::class,
+    ]);
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');

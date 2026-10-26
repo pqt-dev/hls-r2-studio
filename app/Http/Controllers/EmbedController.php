@@ -53,6 +53,8 @@ class EmbedController extends Controller
             $response->header('Content-Security-Policy', "frame-ancestors 'self' ".implode(' ', $allowedOrigins));
         }
 
+        $response->headers->set('Cache-Control', 'public, max-age=60, s-maxage=300');
+
         return $response;
     }
 }
