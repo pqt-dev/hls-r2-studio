@@ -102,6 +102,16 @@ class EmbedShowTest extends TestCase
         $this->assertStringNotContainsString('no-cache', $cacheControl);
     }
 
+    public function test_embed_ok_response_has_noindex_header(): void
+    {
+        $video = $this->makeVideo('ready');
+
+        $response = $this->get(route('embed.show', $video));
+
+        $response->assertOk();
+        $response->assertHeader('X-Robots-Tag', 'noindex, nofollow');
+    }
+
     public function test_embed_404_response_is_not_publicly_cacheable(): void
     {
         $video = $this->makeVideo('pending');

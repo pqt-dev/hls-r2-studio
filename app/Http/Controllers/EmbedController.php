@@ -54,6 +54,7 @@ class EmbedController extends Controller
         }
 
         $response->headers->set('Cache-Control', 'public, max-age=60, s-maxage=300');
+        $response->headers->set('X-Robots-Tag', 'noindex, nofollow');
 
         return $response;
     }
