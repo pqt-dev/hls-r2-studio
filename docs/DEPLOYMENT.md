@@ -45,6 +45,9 @@ APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://your-real-domain
 
+# Trust only Cloudflare's IP ranges for X-Forwarded-For (site proxied by Cloudflare); otherwise set your proxy IP
+TRUSTED_PROXIES=cloudflare
+
 # WebSocket (Reverb) — generate real random values for the 3 lines below, do not leave them empty
 REVERB_APP_ID=<random number>
 REVERB_APP_KEY=<random string>
@@ -339,6 +342,9 @@ APP_ENV=production
 APP_DEBUG=false
 APP_URL=https://your-real-domain
 FORCE_HTTPS=true
+
+# Trust only Cloudflare's IP ranges for X-Forwarded-For (site proxied by Cloudflare); otherwise set your proxy IP
+TRUSTED_PROXIES=cloudflare
 
 REVERB_APP_ID=<random number>
 REVERB_APP_KEY=<random string>

@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\TrustedProxies;
+
 return [
 
     /*
@@ -47,18 +49,14 @@ return [
     |--------------------------------------------------------------------------
     |
     | Comma-separated list of proxy IPs/CIDRs whose X-Forwarded-* headers are
-    | trusted, or '*' to trust every proxy. Restrict this to your reverse
-    | proxy in production so X-Forwarded-For cannot be spoofed.
+    | trusted, or '*' to trust every proxy. The keyword 'cloudflare' expands to
+    | Cloudflare's published IP ranges and can be combined with other entries
+    | (e.g. 'cloudflare,127.0.0.1'). Restrict this to your reverse proxy in
+    | production so X-Forwarded-For cannot be spoofed.
     |
     */
 
-    'trusted_proxies' => (function () {
-        $value = trim((string) env('TRUSTED_PROXIES', '*'));
-
-        return $value === '*'
-            ? '*'
-            : array_values(array_filter(array_map('trim', explode(',', $value))));
-    })(),
+    'trusted_proxies' => TrustedProxies::resolve((string) env('TRUSTED_PROXIES', '*')),
 
     /*
     |--------------------------------------------------------------------------
