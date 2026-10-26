@@ -1,6 +1,8 @@
+> English | [Tiếng Việt](TROUBLESHOOTING.vi.md)
+
 # Troubleshooting, Data Structure, and Q&A
 
-> Back to the [README](../README.md). Production setup steps are in [DEPLOYMENT.md](DEPLOYMENT.md) (the "step 4" referenced below is in its Plain VPS section).
+> Back to the [README](../README.md). Production setup steps are in [DEPLOYMENT.md](DEPLOYMENT.md) (the "step 4" referenced below is the local run step in the README).
 
 ## Data Structure
 
@@ -29,7 +31,7 @@
 | `systemctl restart nginx`/`php-fpm-84` reports an error but the service is still running (aaPanel) | The LSB-style startup script mishandles "restart" when the service is already running | Use `/etc/init.d/nginx reload` and `/etc/init.d/php-fpm-84 restart` instead of `systemctl restart` |
 
 **Q: The whole site freezes while a video is uploading, and opening the Upload page is very slow?**
-This only happens with the dev server (`php artisan serve`), which is single-threaded: while one request runs (an 8 MB chunk upload) every other request, including page navigation and status polling, waits for it. Start it with `PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload` (see step 4). It does not happen in production with Nginx + PHP-FPM, which serves requests concurrently.
+This only happens with the dev server (`php artisan serve`), which is single-threaded: while one request runs (an 8 MB chunk upload) every other request, including page navigation and status polling, waits for it. Start it with `PHP_CLI_SERVER_WORKERS=4 php artisan serve --no-reload` (see step 4 of the README). It does not happen in production with Nginx + PHP-FPM, which serves requests concurrently.
 
 **Q: Why is the web app slow while a video is transcoding?**
 ffmpeg is CPU-heavy and shares the VPS with PHP-FPM and MySQL. Keep `FFMPEG_NICE=10` (lower CPU priority for ffmpeg), set `FFMPEG_THREADS` (about CPU cores / number of queue workers, e.g. `2`), or run fewer queue workers, then restart the queue workers.
@@ -44,7 +46,7 @@ Check whether the queue worker is still running (`systemctl status hls-r2-studio
 Add that domain to `CORS_ALLOWED_ORIGINS` in `.env` (comma-separated; by default only `https://toicovl.com` is allowed). To also reject reports whose `page_url` host is not yours, set `REPORT_ALLOWED_HOSTS` (comma-separated hosts, exact match; empty means no restriction). The `/api/reports` route has a rate limit of 5 requests per 10 minutes per IP, plus 20 requests per 10 minutes per `page_url`.
 
 **Q: Where do I change the upload limit?**
-You must change 3 places at the same time: `UPLOAD_MAX_SIZE_MB` in `.env`, `upload_max_filesize`/`post_max_size` in `php.ini`, and `client_max_body_size` in Nginx — changing 1 place while missing the other 2 will still be blocked.
+Uploads are chunked. The total file size limit is `UPLOAD_MAX_SIZE_MB` in `.env` (app level). Each request carries only one chunk (`UPLOAD_CHUNK_SIZE_MB`, default 8), so Nginx `client_max_body_size`, php.ini `upload_max_filesize` and `post_max_size` only need to exceed the chunk size (the deployment guide uses 100M). Cloudflare Free/Pro caps a request body at 100 MB, so keep the chunk at most about 90 MB. A 413 means one of those limits is below the chunk size. See [section 9 of DEPLOYMENT.md](DEPLOYMENT.md#9-web-server-and-ssl).
 
 **Q: Any other advanced options?**
 Not required, with reasonable defaults; add them to `.env` if you want to change them:
@@ -54,7 +56,7 @@ TRANSCODE_ORPHANED_TTL_HOURS=60     # how long before crashed/stuck HLS transcod
 UPLOAD_ORPHANED_TTL_HOURS=72        # how long before orphaned original video files are cleaned up
 TRANSCODE_TIMEOUT_MULTIPLIER=8      # multiplier applied to video length to compute the HLS transcode timeout
 STORYBOARD_TILE_SIZE=160            # size (px) of each tile in the storyboard grid image
-REVERB_ALLOWED_ORIGINS=*                 # comma-separated origins allowed to connect to Reverb (default `*`); in production set it to your real domain, e.g. https://your-real-domain
+REVERB_ALLOWED_ORIGINS=*                 # comma-separated origins allowed to connect to Reverb (default `*`); hostnames only, no scheme; in production set it to your real domain, e.g. embed.example.com
 KEEP_ORIGINAL_UPLOAD=false          # true keeps original uploads on disk; the orphaned-upload cleanup then does nothing
 DB_QUEUE_RETRY_AFTER=176400         # must be greater than the queue worker's --timeout
 ```
