@@ -196,6 +196,9 @@
                     <x-ui.button variant="outline" size="sm" class="mt-2" data-copy-btn aria-live="polite" onclick="copyModalField('embed-modal-code', this)">
                         <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy</span>
                     </x-ui.button>
+                    <x-ui.button variant="outline" size="sm" class="mt-2" data-copy-btn data-copy-idle-label="Copy shortcode" aria-live="polite" onclick="copyEmbedShortcode(this)">
+                        <x-lucide-copy class="w-3.5 h-3.5" /> <span data-copy-label>Copy shortcode</span>
+                    </x-ui.button>
                 </div>
                 {{-- tabs:start --}}
                 </div>
@@ -332,7 +335,7 @@
             const COPY_BTN_COPIED_CLASSES = ['border-primary', 'bg-primary', 'text-primary-foreground', 'hover:bg-primary/90', 'hover:text-primary-foreground'];
 
             function setCopyButtonState(button, copied) {
-                button.querySelector('[data-copy-label]').textContent = copied ? 'Copied' : 'Copy';
+                button.querySelector('[data-copy-label]').textContent = copied ? 'Copied' : (button.dataset.copyIdleLabel || 'Copy');
                 button.classList.remove(...(copied ? COPY_BTN_IDLE_CLASSES : COPY_BTN_COPIED_CLASSES));
                 button.classList.add(...(copied ? COPY_BTN_COPIED_CLASSES : COPY_BTN_IDLE_CLASSES));
             }
@@ -697,6 +700,18 @@
                 copyTextToClipboard(document.getElementById(elementId).value, button);
             }
 
+            // WordPress shortcode for the mu-plugin in wordpress/hls-embed.php; the id is the last segment of the embed URL.
+            function copyEmbedShortcode(button) {
+                if (!embedModalState) return;
+                const id = embedModalState.embedUrl.split('?')[0].replace(/\/+$/, '').split('/').pop();
+                // Same click-time state as the iframe code; ratio is only added when it differs from the 16 / 9 default.
+                let shortcode = '[hls_embed_vl id="' + id + '"';
+                if (embedModalState.aspectRatio !== '16 / 9') shortcode += ' ratio="' + embedModalState.aspectRatio + '"';
+                if (document.getElementById('embed-modal-autoplay').checked) shortcode += ' autoplay="1"';
+                if (document.getElementById('embed-modal-mute').checked) shortcode += ' muted="1"';
+                copyTextToClipboard(shortcode + ']', button);
+            }
+
             function openEditModal(videoId, title) {
                 const form = document.getElementById('edit-modal-form');
                 form.action = '/videos/' + videoId;
@@ -874,6 +889,7 @@
             window.openEmbedModal = openEmbedModal;
             window.closeEmbedModal = closeEmbedModal;
             window.copyModalField = copyModalField;
+            window.copyEmbedShortcode = copyEmbedShortcode;
         })();
     </script>
 @endpush
