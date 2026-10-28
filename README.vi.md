@@ -93,7 +93,7 @@ php artisan reverb:start                 # không bắt buộc: tiến độ tra
 
 Các tài liệu dưới đây viết bằng tiếng Anh:
 
-- [docs/DEPLOYMENT.vi.md](docs/DEPLOYMENT.vi.md): VPS thuần (Nginx + PHP-FPM + systemd), aaPanel, cập nhật/deploy lại khi có code mới
+- [docs/DEPLOYMENT.vi.md](docs/DEPLOYMENT.vi.md): hướng dẫn aaPanel (systemd service, Cloudflare), phụ lục ngắn cho VPS thuần (Nginx + PHP-FPM), cập nhật/deploy lại khi có code mới
 - [docs/TROUBLESHOOTING.vi.md](docs/TROUBLESHOOTING.vi.md): lỗi thường gặp, cấu trúc dữ liệu, Q&A (rate limit, `FORCE_HTTPS`, `TRUSTED_PROXIES`, CORS, tuỳ chọn env nâng cao)
 
 ## Cấu trúc project

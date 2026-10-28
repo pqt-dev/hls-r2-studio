@@ -91,7 +91,7 @@ php artisan reverb:start                 # optional: live transcode progress (ot
 
 ## Production / Deploy
 
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): plain VPS (Nginx + PHP-FPM + systemd), aaPanel, and updating/redeploying with new code
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md): aaPanel setup (systemd services, Cloudflare), a short plain-VPS appendix (Nginx + PHP-FPM), and updating/redeploying with new code
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): common errors, data structure, Q&A (rate limits, `FORCE_HTTPS`, `TRUSTED_PROXIES`, CORS, advanced env options)
 
 ## Project Structure
