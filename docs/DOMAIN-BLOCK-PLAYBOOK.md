@@ -4,6 +4,51 @@
 
 > Related: [DEPLOYMENT.md](DEPLOYMENT.md) (server and Cloudflare setup), [TROUBLESHOOTING.md](TROUBLESHOOTING.md) (errors, Q&A). Back to the [README](../README.md).
 
+## Summary
+
+**Prepare (do it before a block)**
+
+Embed site, B to C (section 2.1):
+
+1. Buy domain `C` (not `.vn`) and add it to Cloudflare on the same account as R2.
+2. Cloudflare: DNS record of type A for `C` to the same VPS IP (Proxied), Origin CA certificate, SSL Full (strict), Cache Rule `/embed/*`, WAF Skip rule for `/embed/`, `/apps/` and `/app/`.
+3. aaPanel: add `C` to the EXISTING site (Domain Manager); do not clone the site.
+4. R2 (Cloudflare): attach `cdn.C` to the same bucket and add `https://C` to the CORS `AllowedOrigins`.
+5. Write down (do not apply yet) the standby `.env` values: `APP_URL`, `REVERB_*`, `REVERB_ALLOWED_ORIGINS`, `R2_URL`.
+6. Test on WP Staging: set `HLS_EMBED_HOST` to `https://C` and open `https://C/embed/ID`.
+
+FIFU and main site (sections 2.3 and 2.4):
+
+1. Install or check WP-CLI (`wp --info`) and run it as the site user, not root.
+2. Dry-run `wp search-replace` to learn where the cdn host and the WordPress domain are stored.
+3. Buy domain `D`, add it to Cloudflare, and verify both properties in Search Console.
+4. Rehearse the whole switch on WP Staging and time it.
+
+General (section 4): keep a copy of the WPCode snippet "HLS Embed shortcode" outside WordPress; have someone in Vietnam test `A`, `B` and `cdn.B` regularly.
+
+**Response (when blocked)**
+
+If embed domain `B` is blocked (`cdn.B` goes with it) (sections 2.1, 2.2 and 2.3):
+
+1. Confirm the block from a network in Vietnam.
+2. VPS `.env`: apply the standby values (`APP_URL`, `REVERB_*`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` to `https://cdn.C`).
+3. Run `config:clear` and `npm run build` (because of `REVERB_*`), then restart the queue workers, Reverb and the scheduler.
+4. Check `https://C/up`, a playlist and a segment on `cdn.C`, and that there are no CORS errors.
+5. WPCode snippet "HLS Embed shortcode": change `HLS_EMBED_HOST` to `https://C`.
+6. Purge caches (caching plugin and Cloudflare).
+7. FIFU: back up with `wp db export`, dry-run, then the real run of `wp search-replace 'https://cdn.B' 'https://cdn.C' --skip-columns=guid`, purge caches, check thumbnails.
+
+If WordPress domain `A` is blocked (section 2.4):
+
+1. Add `D` to the existing WordPress site and configure Cloudflare for `D`.
+2. `wp db export`, then dry-run and real run of `wp search-replace` for `https://A` and `http://A` to `D`, and check the Site Address.
+3. Dashboard: add `D` to the Embed allowlist (Dashboard Settings page), add `D` to `CORS_ALLOWED_ORIGINS` and `REPORT_ALLOWED_HOSTS` in `.env`, then `config:clear` and restart the services.
+4. Purge caches, 301 redirect `A` to `D`, Search Console Change of Address.
+
+Last (section 3): announce the new domain on channels you own, only after everything is verified. A 301 redirect helps only Googlebot and VPN users, not users in Vietnam.
+
+Details are in sections 1 to 6 below.
+
 This playbook is for the admin who runs the WordPress site and this dashboard. It explains how to prepare standby domains before a block and how to switch to them after a block, step by step.
 
 Assumption: a block means users in Vietnam cannot reach a domain. The main WordPress domain and the embed domain may be blocked at the same time, so each can be switched on its own.

@@ -4,6 +4,51 @@
 
 > Liên quan: [DEPLOYMENT.vi.md](DEPLOYMENT.vi.md) (cài đặt server và Cloudflare), [TROUBLESHOOTING.vi.md](TROUBLESHOOTING.vi.md) (lỗi, Q&A). Quay lại [README](../README.vi.md).
 
+## Tóm tắt
+
+**Chuẩn bị (làm trước khi bị chặn)**
+
+Site embed, B sang C (mục 2.1):
+
+1. Mua domain `C` (không dùng `.vn`) và thêm vào Cloudflare trên cùng tài khoản với R2.
+2. Cloudflare: DNS record loại A cho `C` trỏ tới cùng IP VPS (Proxied), Origin CA certificate, SSL Full (strict), Cache Rule `/embed/*`, WAF Skip rule cho `/embed/`, `/apps/` và `/app/`.
+3. aaPanel: thêm `C` vào site HIỆN CÓ (Domain Manager); không clone site.
+4. R2 (Cloudflare): gắn `cdn.C` vào cùng bucket và thêm `https://C` vào CORS `AllowedOrigins`.
+5. Ghi lại (chưa áp dụng) các giá trị `.env` dự phòng: `APP_URL`, `REVERB_*`, `REVERB_ALLOWED_ORIGINS`, `R2_URL`.
+6. Test trên WP Staging: đặt `HLS_EMBED_HOST` thành `https://C` và mở `https://C/embed/ID`.
+
+FIFU và site chính (mục 2.3 và 2.4):
+
+1. Cài hoặc kiểm tra WP-CLI (`wp --info`) và chạy bằng user của site, không chạy bằng root.
+2. Dry-run `wp search-replace` để biết host cdn và domain WordPress được lưu ở đâu.
+3. Mua domain `D`, thêm vào Cloudflare, và xác minh cả hai property trong Search Console.
+4. Diễn tập toàn bộ việc chuyển đổi trên WP Staging và ghi lại thời gian.
+
+Chung (mục 4): giữ một bản sao của WPCode snippet "HLS Embed shortcode" bên ngoài WordPress; nhờ người ở Việt Nam test `A`, `B` và `cdn.B` định kỳ.
+
+**Ứng phó (khi bị chặn)**
+
+Nếu domain embed `B` bị chặn (`cdn.B` bị chặn theo) (mục 2.1, 2.2 và 2.3):
+
+1. Xác nhận bị chặn từ một mạng ở Việt Nam.
+2. `.env` trên VPS: áp dụng các giá trị dự phòng (`APP_URL`, `REVERB_*`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` sang `https://cdn.C`).
+3. Chạy `config:clear` và `npm run build` (vì `REVERB_*`), rồi restart queue worker, Reverb và scheduler.
+4. Kiểm tra `https://C/up`, một playlist và một segment trên `cdn.C`, và không có lỗi CORS.
+5. WPCode snippet "HLS Embed shortcode": đổi `HLS_EMBED_HOST` thành `https://C`.
+6. Purge cache (plugin cache và Cloudflare).
+7. FIFU: backup bằng `wp db export`, dry-run, rồi chạy thật `wp search-replace 'https://cdn.B' 'https://cdn.C' --skip-columns=guid`, purge cache, kiểm tra thumbnail.
+
+Nếu domain WordPress `A` bị chặn (mục 2.4):
+
+1. Thêm `D` vào site WordPress hiện có và cấu hình Cloudflare cho `D`.
+2. `wp db export`, rồi dry-run và chạy thật `wp search-replace` cho `https://A` và `http://A` sang `D`, và kiểm tra Site Address.
+3. Dashboard: thêm `D` vào Embed allowlist (trang Settings của Dashboard), thêm `D` vào `CORS_ALLOWED_ORIGINS` và `REPORT_ALLOWED_HOSTS` trong `.env`, rồi `config:clear` và restart các dịch vụ.
+4. Purge cache, redirect 301 từ `A` sang `D`, Change of Address trong Search Console.
+
+Cuối cùng (mục 3): thông báo domain mới trên các kênh bạn sở hữu, chỉ sau khi mọi thứ đã được kiểm tra xong. Redirect 301 chỉ giúp Googlebot và người dùng VPN, không giúp người dùng ở Việt Nam.
+
+Chi tiết nằm ở các mục 1 đến 6 bên dưới.
+
 Playbook này dành cho admin vận hành website WordPress và dashboard này. Nội dung hướng dẫn từng bước cách chuẩn bị các domain dự phòng trước khi bị chặn và cách chuyển sang chúng sau khi bị chặn.
 
 Giả định: "bị chặn" nghĩa là người dùng ở Việt Nam không truy cập được một domain. Domain WordPress chính và domain embed có thể bị chặn cùng lúc, nên mỗi domain có thể được chuyển riêng.
