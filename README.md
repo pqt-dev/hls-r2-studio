@@ -86,7 +86,7 @@ php artisan reverb:start                 # optional: live transcode progress (ot
 **Important notes**
 
 - R2 public URL: the code does not make the bucket public. Set a public bucket (custom domain or `r2.dev`) in Cloudflare, then enter it in `R2_URL`.
-- Reports from another domain: add that domain to `CORS_ALLOWED_ORIGINS` in `.env`.
+- Reports from another domain: add that domain to the Embed allowlist (Settings > Embed protection > Embed allowlist).
 - `DB_QUEUE_RETRY_AFTER` (`176400`) must stay greater than the queue worker `--timeout` (`172800`).
 
 ## Production / Deploy

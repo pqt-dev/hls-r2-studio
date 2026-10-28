@@ -19,7 +19,10 @@ return [
 
     'allowed_methods' => ['POST', 'OPTIONS'],
 
-    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', 'https://toicovl.com'))))),
+    // Optional extra origins from CORS_ALLOWED_ORIGINS. The "Embed allowlist"
+    // in the Settings page is the main place: the MergeEmbedAllowlistIntoCors
+    // middleware adds its origins and wildcard patterns here for api/* requests.
+    'allowed_origins' => array_values(array_filter(array_map('trim', explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''))))),
 
     'allowed_origins_patterns' => [],
 

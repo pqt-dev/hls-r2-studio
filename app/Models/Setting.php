@@ -86,6 +86,140 @@ class Setting extends Model
         return array_slice(self::parseEmbedEntries($this->embed_allowed_domains)['valid'], 0, self::EMBED_MAX_ENTRIES);
     }
 
+    /**
+     * Read-only lookup of the settings row: never creates it and never
+     * throws, so it is safe before migrations ran or while the DB is down.
+     */
+    public static function findWithoutCreating(): ?self
+    {
+        try {
+            return static::query()->find(1);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * The validated, lowercased embed allowlist entries,
+     * capped at the entry limit.
+     *
+     * @return list<string>
+     */
+    public static function embedAllowlistEntries(?string $text): array
+    {
+        return array_slice(self::parseEmbedEntries($text)['valid'], 0, self::EMBED_MAX_ENTRIES);
+    }
+
+    /**
+     * Exact CORS origins derived from the embed allowlist: entries without
+     * a scheme become https://host[:port], entries with a scheme are kept as
+     * given. Wildcard entries are handled by embedAllowlistCorsPatterns().
+     *
+     * @return list<string>
+     */
+    public static function embedAllowlistCorsOrigins(?string $text): array
+    {
+        $origins = [];
+
+        foreach (self::embedAllowlistEntries($text) as $entry) {
+            [$scheme, $hostPort] = self::splitScheme($entry);
+
+            if (str_starts_with($hostPort, '*.')) {
+                continue;
+            }
+
+            $origin = ($scheme ?? 'https').'://'.$hostPort;
+            $origins[$origin] = $origin;
+        }
+
+        return array_values($origins);
+    }
+
+    /**
+     * CORS origin regex patterns for wildcard embed allowlist entries: *.host[:port]
+     * matches one or more subdomain labels of host (never the apex itself),
+     * using the entry's scheme or https by default.
+     *
+     * @return list<string>
+     */
+    public static function embedAllowlistCorsPatterns(?string $text): array
+    {
+        $patterns = [];
+
+        foreach (self::embedAllowlistEntries($text) as $entry) {
+            [$scheme, $hostPort] = self::splitScheme($entry);
+
+            if (! str_starts_with($hostPort, '*.')) {
+                continue;
+            }
+
+            $pattern = '#^'.preg_quote(($scheme ?? 'https').'://', '#')
+                .'(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+'
+                .preg_quote(substr($hostPort, 2), '#').'$#D';
+            $patterns[$pattern] = $pattern;
+        }
+
+        return array_values($patterns);
+    }
+
+    /**
+     * Hosts accepted in a report's page URL, derived from the embed
+     * allowlist entries with scheme and port removed. Wildcard entries keep their
+     * "*." prefix; see embedAllowlistHostMatches().
+     *
+     * @return list<string>
+     */
+    public static function embedAllowlistReportHosts(?string $text): array
+    {
+        $hosts = [];
+
+        foreach (self::embedAllowlistEntries($text) as $entry) {
+            $host = preg_replace('/:[0-9]+$/', '', self::splitScheme($entry)[1]);
+            $hosts[$host] = $host;
+        }
+
+        return array_values($hosts);
+    }
+
+    /**
+     * Whether a host matches one of the embed allowlist report hosts: exact entries
+     * match the host exactly, *.host matches any subdomain of host but not host.
+     *
+     * @param  list<string>  $allowlistHosts
+     */
+    public static function embedAllowlistHostMatches(string $host, array $allowlistHosts): bool
+    {
+        $host = strtolower($host);
+
+        if ($host === '') {
+            return false;
+        }
+
+        foreach ($allowlistHosts as $allowed) {
+            if (str_starts_with($allowed, '*.')) {
+                if (str_ends_with($host, substr($allowed, 1)) && strlen($host) > strlen($allowed) - 1) {
+                    return true;
+                }
+            } elseif ($host === $allowed) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * @return array{0: ?string, 1: string} The scheme (null when absent) and the rest of the entry.
+     */
+    private static function splitScheme(string $entry): array
+    {
+        if (preg_match('#^(https?)://(.+)$#', $entry, $matches) === 1) {
+            return [$matches[1], $matches[2]];
+        }
+
+        return [null, $entry];
+    }
+
     public function r2Disk()
     {
         $base = config('filesystems.disks.r2');

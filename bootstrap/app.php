@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\AddRobotsTag;
+use App\Http\Middleware\MergeEmbedAllowlistIntoCors;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -15,6 +16,8 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(headers: Request::HEADER_X_FORWARDED_FOR | Request::HEADER_X_FORWARDED_HOST | Request::HEADER_X_FORWARDED_PORT | Request::HEADER_X_FORWARDED_PROTO | Request::HEADER_X_FORWARDED_AWS_ELB);
+        // Must run before the global HandleCors middleware reads config('cors').
+        $middleware->prepend(MergeEmbedAllowlistIntoCors::class);
         $middleware->authenticateSessions();
         $middleware->append(AddRobotsTag::class);
     })

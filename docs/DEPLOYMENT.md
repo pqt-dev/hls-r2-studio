@@ -10,7 +10,7 @@ From a fresh VPS to a live, Cloudflare-fronted install, in order. The main flow 
 |---|---|
 | `embed-site.com` | App and embed domain (this server) |
 | `cdn.embed-site.com` | R2 public custom domain (= `R2_URL`) |
-| `main-site.com` | WordPress site that embeds the player (may answer on both `main-site.com` and `www.main-site.com`) |
+| `main-site.com` | WordPress site that embeds the player (may answer on both `main-site.com` and `www.main-site.com`; both go into the Embed allowlist) |
 | `<git-repo-url>` | Your repository URL |
 
 aaPanel values used below: dashboard dir `/www/wwwroot/embed-site.com`, PHP CLI `/www/server/php/84/bin/php`, user `www`. Work in a root shell (`sudo -i`), so no `sudo` is needed.
@@ -48,7 +48,7 @@ VPS: 2 vCPU / 4 GB minimum, 4 vCPU / 8 GB recommended; disk about 2x the largest
 2. R2: create the bucket, connect the custom domain `cdn.embed-site.com` (Settings > Custom Domains). `R2_URL` must be this domain, never `r2.dev`.
 3. R2 > Manage API tokens: **Object Read & Write** token limited to this bucket. Note the Access Key ID, Secret Access Key and S3 endpoint `https://<account-id>.r2.cloudflarestorage.com`.
 4. SSL/TLS > Origin Server > Create Certificate: **RSA**, hostname `embed-site.com`, 15 years. Copy the certificate and private key now (the key is shown once); install them in section 9.
-5. Know your WordPress origin(s): the site may answer on both `main-site.com` and `www.main-site.com` (for `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS` and the embed allowlist).
+5. Know your WordPress origin(s): the site may answer on both `main-site.com` and `www.main-site.com` (both go into the Embed allowlist, section 12).
 
 ## 1. Server software
 
@@ -139,15 +139,14 @@ REVERB_SERVER_HOST=127.0.0.1
 REVERB_SERVER_PORT=8080
 # Hostname only, NOT a URL
 REVERB_ALLOWED_ORIGINS=embed-site.com
-# Origins WITH scheme, hosts WITHOUT scheme
-CORS_ALLOWED_ORIGINS=https://main-site.com,https://www.main-site.com
-REPORT_ALLOWED_HOSTS=main-site.com,www.main-site.com
 # Chunk must stay <= ~90 MB (Cloudflare caps a request body at 100 MB on Free/Pro)
 UPLOAD_MAX_SIZE_MB=2048
 UPLOAD_CHUNK_SIZE_MB=8
 FFMPEG_NICE=10
 FFMPEG_THREADS=2
 ```
+
+`CORS_ALLOWED_ORIGINS` and `REPORT_ALLOWED_HOSTS` are optional extras (default empty); the main site domains go in the Embed allowlist (section 12).
 
 Generate the Reverb values with `openssl rand -hex 10` (`REVERB_APP_ID`), `openssl rand -hex 20` (`REVERB_APP_KEY`), `openssl rand -hex 32` (`REVERB_APP_SECRET`). `FFMPEG_THREADS` is about CPU cores / workers. Set `FFMPEG_BINARY`/`FFPROBE_BINARY` only if `which ffmpeg`/`which ffprobe` returns nothing.
 
@@ -329,7 +328,7 @@ After the origin works over HTTPS (section 9).
 
 ## 12. App settings, smoke tests, Google cleanup
 
-1. **Embed allowlist**: log in at `https://embed-site.com/login` > Settings > **Embed protection** > Allowed domains: add `main-site.com` and `www.main-site.com` (one per line; `*.main-site.com` and `https://host:port` accepted). Empty means any site can frame the player; the app's own site is always allowed.
+1. **Embed allowlist**: log in at `https://embed-site.com/login` > Settings > **Embed protection** > Embed allowlist: add `main-site.com` and `www.main-site.com` (one per line; `*.main-site.com` and `https://host:port` accepted). The same list also lets those sites send playback reports (CORS) and sets the accepted report hosts (if it is empty, any website can frame the player and any report host is accepted; otherwise reports are accepted only from listed hosts). It is stored in the database: no `.env` edit, `config:clear` or restart needed (cached embed pages can take up to 5 minutes to update). The app's own site is always allowed.
 2. **Smoke tests**:
 
    ```bash
@@ -412,6 +411,7 @@ Full table and Q&A: [TROUBLESHOOTING.md](TROUBLESHOOTING.md#common-errors-fixes-
 | HTTP 500 after install or update | Root-owned files in `storage/` (section 8) |
 | Live progress never updates, console shows `localhost:8080` | Built before `.env` had the final `REVERB_*`: fix `.env`, run `npm run build` |
 | WebSocket connects but updates never arrive (`Pusher error: 404`) | Nginx lacks `location /apps/`, or a Cloudflare rule blocks VPS > Cloudflare > `/apps/` |
+| Reports from the main site fail with a CORS error or "The page URL host is not allowed" | The domain is missing from the Embed allowlist (section 12) |
 | Upload fails with 413 | `client_max_body_size` or Cloudflare's body cap is below `UPLOAD_CHUNK_SIZE_MB` |
 | Blank page `open_basedir restriction in effect` | "Anti-XSS attack" still on (section 9) |
 | Everything except `/` is 404 | URL rewrite not enabled (section 9) |

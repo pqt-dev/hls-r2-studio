@@ -10,7 +10,7 @@
 |---|---|
 | `embed-site.com` | Domain của app và embed (server này) |
 | `cdn.embed-site.com` | Custom domain public của R2 (= `R2_URL`) |
-| `main-site.com` | Website WordPress nhúng player (có thể trả lời trên cả `main-site.com` và `www.main-site.com`) |
+| `main-site.com` | Website WordPress nhúng player (có thể trả lời trên cả `main-site.com` và `www.main-site.com`; cả hai đều đưa vào Embed allowlist) |
 | `<git-repo-url>` | URL repository của bạn |
 
 Giá trị aaPanel dùng bên dưới: thư mục dashboard `/www/wwwroot/embed-site.com`, PHP CLI `/www/server/php/84/bin/php`, user `www`. Làm việc trong root shell (`sudo -i`) nên không cần `sudo`.
@@ -48,7 +48,7 @@ VPS: tối thiểu 2 vCPU / 4 GB, khuyến nghị 4 vCPU / 8 GB; ổ đĩa kho�
 2. R2: tạo bucket, kết nối custom domain `cdn.embed-site.com` (Settings > Custom Domains). `R2_URL` phải là domain này, không bao giờ dùng `r2.dev`.
 3. R2 > Manage API tokens: token **Object Read & Write** giới hạn cho bucket này. Ghi lại Access Key ID, Secret Access Key và S3 endpoint `https://<account-id>.r2.cloudflarestorage.com`.
 4. SSL/TLS > Origin Server > Create Certificate: **RSA**, hostname `embed-site.com`, 15 năm. Copy certificate và private key ngay (key chỉ hiển thị một lần); cài ở mục 9.
-5. Xác định origin WordPress: site có thể trả lời trên cả `main-site.com` và `www.main-site.com` (cho `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS` và embed allowlist).
+5. Xác định origin WordPress: site có thể trả lời trên cả `main-site.com` và `www.main-site.com` (cả hai đều đưa vào Embed allowlist, mục 12).
 
 ## 1. Phần mềm trên server
 
@@ -139,15 +139,14 @@ REVERB_SERVER_HOST=127.0.0.1
 REVERB_SERVER_PORT=8080
 # Hostname only, NOT a URL
 REVERB_ALLOWED_ORIGINS=embed-site.com
-# Origins WITH scheme, hosts WITHOUT scheme
-CORS_ALLOWED_ORIGINS=https://main-site.com,https://www.main-site.com
-REPORT_ALLOWED_HOSTS=main-site.com,www.main-site.com
 # Chunk must stay <= ~90 MB (Cloudflare caps a request body at 100 MB on Free/Pro)
 UPLOAD_MAX_SIZE_MB=2048
 UPLOAD_CHUNK_SIZE_MB=8
 FFMPEG_NICE=10
 FFMPEG_THREADS=2
 ```
+
+`CORS_ALLOWED_ORIGINS` và `REPORT_ALLOWED_HOSTS` là phần bổ sung tùy chọn (mặc định rỗng); các domain của site chính nằm trong Embed allowlist (mục 12).
 
 Tạo các giá trị Reverb bằng `openssl rand -hex 10` (`REVERB_APP_ID`), `openssl rand -hex 20` (`REVERB_APP_KEY`), `openssl rand -hex 32` (`REVERB_APP_SECRET`). `FFMPEG_THREADS` khoảng số core CPU / số worker. Chỉ đặt `FFMPEG_BINARY`/`FFPROBE_BINARY` khi `which ffmpeg`/`which ffprobe` không trả về gì.
 
@@ -329,7 +328,7 @@ Làm sau khi origin đã chạy được qua HTTPS (mục 9).
 
 ## 12. Cài đặt trong app, smoke test, dọn index Google
 
-1. **Embed allowlist**: đăng nhập tại `https://embed-site.com/login` > Settings > **Embed protection** > Allowed domains: thêm `main-site.com` và `www.main-site.com` (mỗi dòng một domain; chấp nhận `*.main-site.com` và `https://host:port`). Để trống nghĩa là site nào cũng nhúng được player; site của chính app luôn được cho phép.
+1. **Embed allowlist**: đăng nhập tại `https://embed-site.com/login` > Settings > **Embed protection** > Embed allowlist: thêm `main-site.com` và `www.main-site.com` (mỗi dòng một domain; chấp nhận `*.main-site.com` và `https://host:port`). Cùng danh sách này cũng cho phép các site đó gửi báo cáo phát video (CORS) và quy định host được chấp nhận trong báo cáo (nếu để trống thì site nào cũng nhúng được player và host nào cũng được chấp nhận; nếu không, báo cáo chỉ được nhận từ các host trong danh sách). Danh sách nằm trong database: không cần sửa `.env`, `config:clear` hay restart (trang embed đã cache có thể mất tới 5 phút mới cập nhật). Site của chính app luôn được cho phép.
 2. **Smoke test**:
 
    ```bash
@@ -412,6 +411,7 @@ Bảng đầy đủ và Q&A: [TROUBLESHOOTING.vi.md](TROUBLESHOOTING.vi.md#lỗi
 | HTTP 500 sau khi cài hoặc cập nhật | File thuộc root trong `storage/` (mục 8) |
 | Live progress không cập nhật, console hiển thị `localhost:8080` | Build trước khi `.env` có giá trị `REVERB_*` cuối cùng: sửa `.env`, chạy `npm run build` |
 | WebSocket kết nối nhưng cập nhật không tới (`Pusher error: 404`) | Nginx thiếu `location /apps/`, hoặc một rule Cloudflare chặn VPS > Cloudflare > `/apps/` |
+| Báo cáo từ site chính lỗi CORS hoặc "The page URL host is not allowed" | Domain chưa có trong Embed allowlist (mục 12) |
 | Upload thất bại với 413 | `client_max_body_size` hoặc giới hạn body của Cloudflare thấp hơn `UPLOAD_CHUNK_SIZE_MB` |
 | Trang trắng `open_basedir restriction in effect` | "Anti-XSS attack" vẫn đang bật (mục 9) |
 | Mọi trang trừ `/` đều 404 | URL rewrite chưa được bật (mục 9) |

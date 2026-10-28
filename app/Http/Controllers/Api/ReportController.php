@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Middleware\MergeEmbedAllowlistIntoCors;
 use App\Models\Report;
+use App\Models\Setting;
 use App\Models\Video;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
@@ -26,12 +28,19 @@ class ReportController extends Controller
             'isp' => ['nullable', 'string', 'max:100'],
         ]);
 
-        $allowedHosts = config('videos.report_allowed_hosts');
+        // Allowed hosts = REPORT_ALLOWED_HOSTS (exact match, optional extra)
+        // plus the embed allowlist from the Settings page (set by the
+        // MergeEmbedAllowlistIntoCors middleware; "*.host" matches subdomains).
+        // Only when both are empty is there no restriction, so an install with
+        // an empty REPORT_ALLOWED_HOSTS and a non-empty embed allowlist is now
+        // restricted to that list.
+        $envHosts = array_map('strtolower', config('videos.report_allowed_hosts'));
+        $allowlistHosts = (array) $request->attributes->get(MergeEmbedAllowlistIntoCors::REPORT_HOSTS_ATTRIBUTE, []);
 
-        if ($allowedHosts !== []) {
+        if ($envHosts !== [] || $allowlistHosts !== []) {
             $host = strtolower((string) parse_url($validated['page_url'], PHP_URL_HOST));
 
-            if (! in_array($host, array_map('strtolower', $allowedHosts), true)) {
+            if (! in_array($host, $envHosts, true) && ! Setting::embedAllowlistHostMatches($host, $allowlistHosts)) {
                 throw ValidationException::withMessages([
                     'page_url' => 'The page URL host is not allowed.',
                 ]);

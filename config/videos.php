@@ -188,8 +188,10 @@ return [
     | Report Allowed Hosts
     |--------------------------------------------------------------------------
     |
-    | Comma-separated list of hosts accepted in the `page_url` of a playback
-    | report. When empty, any host is accepted.
+    | Optional extra: comma-separated list of hosts (exact match) accepted in
+    | the `page_url` of a playback report. The "Embed allowlist" in the
+    | Settings page is the main place; both lists are combined at request time
+    | (see Api\ReportController). Only when both are empty is any host accepted.
     |
     */
 

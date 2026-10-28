@@ -21,8 +21,8 @@ Backups: this playbook relies on the automatic backups of aaPanel and does not c
 | Setting | Where |
 |---|---|
 | `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" on the WordPress site |
-| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL`, `CORS_ALLOWED_ORIGINS` (default `https://toicovl.com`), `REPORT_ALLOWED_HOSTS` | `.env` of the dashboard (aaPanel > Files, or SSH `nano`) |
-| Embed allowlist (WordPress domains allowed to frame the player) | Dashboard Settings > Embed protection > Allowed domains. It is in the database, NOT in `.env` |
+| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` (optional extras, empty by default: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` of the dashboard (aaPanel > Files, or SSH `nano`) |
+| Embed allowlist (main site domains: allowed to frame the player, to send reports via CORS, and accepted as report hosts) | Dashboard Settings > Embed protection > Embed allowlist. It is in the database, NOT in `.env` |
 | R2 CORS policy, R2 custom domain | Cloudflare > R2 > the bucket > Settings |
 | Cache and Redirect rules, DNS, SSL mode, Origin certificate | Cloudflare, in the zone of that domain |
 | Add a domain, install the certificate | aaPanel > Website > the existing site |
@@ -148,15 +148,7 @@ WordPress stores absolute URLs of its own domain (posts, postmeta, options, ofte
    ```bash
    sudo -u www wp search-replace 'https://main-site.com' 'https://new-main-site.com' --all-tables-with-prefix --skip-columns=guid --report-changed-only --path=/www/wwwroot/main-site.com
    ```
-5. Dashboard: add `new-main-site.com` and `www.new-main-site.com` to the Embed allowlist (Dashboard Settings > Embed protection > Allowed domains; database). In the dashboard `.env` add `https://new-main-site.com` and `https://www.new-main-site.com` to `CORS_ALLOWED_ORIGINS` (with scheme) and `new-main-site.com` and `www.new-main-site.com` to `REPORT_ALLOWED_HOSTS` (no scheme). Then reload and restart (no `npm run build`):
-
-   ```bash
-   cd /www/wwwroot/embed-site.com
-   sudo -u www /www/server/php/84/bin/php artisan config:clear
-   systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2
-   systemctl restart hls-r2-studio-reverb
-   systemctl restart hls-r2-studio-scheduler
-   ```
+5. Dashboard: add `new-main-site.com` and `www.new-main-site.com` to the Embed allowlist (Dashboard Settings > Embed protection > Embed allowlist). It is in the database and also covers report CORS and report hosts: no `.env` edit, `config:clear` or restart.
 6. Purge ALL page caches. Embed pages can take up to 5 minutes to show the allowlist change.
 7. Cloudflare, old zone > Redirect Rules: 301 to `https://new-main-site.com`, keep path and query. Search Console: Change of Address. Keep the redirect at least 1 year (Google asks 180 days minimum).
 8. Check on the new domain: videos play, thumbnails load.

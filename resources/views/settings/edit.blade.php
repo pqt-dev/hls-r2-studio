@@ -170,9 +170,9 @@
                     @method('PUT')
 
                     <div>
-                        <x-ui.label for="embed_allowed_domains" class="block mb-2">Allowed domains</x-ui.label>
-                        <x-ui.textarea name="embed_allowed_domains" id="embed_allowed_domains" rows="5" class="font-mono" placeholder="example.com&#10;*.example.com&#10;https://example.com:8443">{{ old('embed_allowed_domains', $settings->embed_allowed_domains) }}</x-ui.textarea>
-                        <p class="mt-1 text-xs text-muted-foreground">Only these domains can embed the player iframe. Leave empty to allow any website. Your own site is always allowed.</p>
+                        <x-ui.label for="embed_allowed_domains" class="block mb-2">Embed allowlist</x-ui.label>
+                        <x-ui.textarea name="embed_allowed_domains" id="embed_allowed_domains" rows="5" class="font-mono" placeholder="main-site.com&#10;www.main-site.com&#10;*.main-site.com&#10;https://main-site.com:8443">{{ old('embed_allowed_domains', $settings->embed_allowed_domains) }}</x-ui.textarea>
+                        <p class="mt-1 text-xs text-muted-foreground">Domains of your main site, the website that shows the player. One per line. This list controls three things: which sites may embed the player in an iframe (empty = any website can embed it), which origins may send playback reports to the report API, and which hosts are accepted in a report's page URL. Accepted forms: main-site.com, www.main-site.com (list it separately), *.main-site.com, https://main-site.com:8443. Your own site is always allowed.</p>
                         @error('embed_allowed_domains')
                             <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
                         @enderror

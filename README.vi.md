@@ -86,7 +86,7 @@ php artisan reverb:start                 # không bắt buộc: tiến độ tra
 **Lưu ý quan trọng**
 
 - URL public R2: code không tự public hoá bucket. Hãy cấu hình bucket public (custom domain hoặc `r2.dev`) trên Cloudflare rồi điền vào `R2_URL`.
-- Report từ domain khác: thêm domain đó vào `CORS_ALLOWED_ORIGINS` trong `.env`.
+- Report từ domain khác: thêm domain đó vào Embed allowlist (Settings > Embed protection > Embed allowlist).
 - `DB_QUEUE_RETRY_AFTER` (`176400`) phải luôn lớn hơn `--timeout` của queue worker (`172800`).
 
 ## Production / Deploy

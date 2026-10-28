@@ -21,8 +21,8 @@ Backup: playbook này dựa vào backup tự động của aaPanel và không t�
 | Thiết lập | Nơi sửa |
 |---|---|
 | `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" trên website WordPress |
-| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL`, `CORS_ALLOWED_ORIGINS` (mặc định `https://toicovl.com`), `REPORT_ALLOWED_HOSTS` | `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) |
-| Embed allowlist (các domain WordPress được phép nhúng player) | Dashboard Settings > Embed protection > Allowed domains. Nằm trong database, KHÔNG nằm trong `.env` |
+| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` (phần bổ sung tùy chọn, mặc định rỗng: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) |
+| Embed allowlist (domain của site chính: được phép nhúng player, gửi báo cáo qua CORS và là host được chấp nhận trong báo cáo) | Dashboard Settings > Embed protection > Embed allowlist. Nằm trong database, KHÔNG nằm trong `.env` |
 | R2 CORS policy, R2 custom domain | Cloudflare > R2 > bucket > Settings |
 | Cache và Redirect rule, DNS, chế độ SSL, Origin certificate | Cloudflare, trong zone của domain đó |
 | Thêm domain, cài certificate | aaPanel > Website > site hiện có |
@@ -148,15 +148,7 @@ WordPress lưu URL tuyệt đối của chính domain của nó (posts, postmeta
    ```bash
    sudo -u www wp search-replace 'https://main-site.com' 'https://new-main-site.com' --all-tables-with-prefix --skip-columns=guid --report-changed-only --path=/www/wwwroot/main-site.com
    ```
-5. Dashboard: thêm `new-main-site.com` và `www.new-main-site.com` vào Embed allowlist (Dashboard Settings > Embed protection > Allowed domains; database). Trong `.env` của dashboard, thêm `https://new-main-site.com` và `https://www.new-main-site.com` vào `CORS_ALLOWED_ORIGINS` (có scheme) và `new-main-site.com` và `www.new-main-site.com` vào `REPORT_ALLOWED_HOSTS` (không scheme). Rồi nạp lại config và restart (không cần `npm run build`):
-
-   ```bash
-   cd /www/wwwroot/embed-site.com
-   sudo -u www /www/server/php/84/bin/php artisan config:clear
-   systemctl restart hls-r2-studio-queue@1 hls-r2-studio-queue@2
-   systemctl restart hls-r2-studio-reverb
-   systemctl restart hls-r2-studio-scheduler
-   ```
+5. Dashboard: thêm `new-main-site.com` và `www.new-main-site.com` vào Embed allowlist (Dashboard Settings > Embed protection > Embed allowlist). Danh sách nằm trong database và cũng quy định CORS và host của báo cáo: không cần sửa `.env`, `config:clear` hay restart.
 6. Purge TẤT CẢ page cache. Trang embed có thể mất tới 5 phút mới hiển thị thay đổi allowlist.
 7. Cloudflare, zone cũ > Redirect Rules: 301 tới `https://new-main-site.com`, giữ path và query. Search Console: Change of Address. Giữ redirect ít nhất 1 năm (Google yêu cầu tối thiểu 180 ngày).
 8. Kiểm tra trên domain mới: video phát được, thumbnail load được.
