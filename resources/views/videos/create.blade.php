@@ -1308,7 +1308,6 @@
 
                 const copyLogBtn = document.getElementById('copy-log-btn');
                 const copyLogStatus = document.getElementById('copy-log-status');
-                let copyFeedbackTimerId = null;
 
                 function getVisibleLogLines() {
                     return Array.from(logBox.querySelectorAll('p'))
@@ -1316,74 +1315,17 @@
                         .map(function (p) { return p.textContent; });
                 }
 
-                function copyViaTextarea(text) {
-                    const ta = document.createElement('textarea');
-                    ta.value = text;
-                    ta.setAttribute('readonly', '');
-                    ta.style.position = 'fixed';
-                    ta.style.top = '-1000px';
-                    ta.style.left = '-1000px';
-                    document.body.appendChild(ta);
-                    try {
-                        ta.select();
-                        return document.execCommand('copy') === true;
-                    } catch (e) {
-                        return false;
-                    } finally {
-                        ta.remove();
-                    }
-                }
-
-                function showCopyFeedback(message, ok, duration) {
-                    const label = copyLogBtn.querySelector('[data-copy-label]');
-                    const copyIcon = copyLogBtn.querySelector('[data-copy-icon="copy"]');
-                    const checkIcon = copyLogBtn.querySelector('[data-copy-icon="check"]');
-                    clearTimeout(copyFeedbackTimerId);
-                    if (!copyLogBtn.style.minWidth) {
-                        copyLogBtn.style.minWidth = copyLogBtn.offsetWidth + 'px';
-                    }
-                    label.textContent = message;
-                    copyIcon.classList.toggle('hidden', ok);
-                    checkIcon.classList.toggle('hidden', !ok);
+                function setCopyLogStatus(message) {
                     copyLogStatus.textContent = message;
-                    copyFeedbackTimerId = setTimeout(function () {
-                        copyFeedbackTimerId = null;
-                        label.textContent = 'Copy log';
-                        copyIcon.classList.remove('hidden');
-                        checkIcon.classList.add('hidden');
-                        copyLogBtn.style.minWidth = '';
-                        copyLogStatus.textContent = '';
-                    }, duration);
                 }
 
                 async function handleCopyLogClick() {
-                    try {
-                        const lines = getVisibleLogLines();
-                        if (lines.length === 0) {
-                            showCopyFeedback('Nothing to copy', false, 1500);
-                            return;
-                        }
-                        const text = lines.join('\n');
-                        let copied = false;
-                        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-                            try {
-                                await navigator.clipboard.writeText(text);
-                                copied = true;
-                            } catch (e) {
-                                copied = false;
-                            }
-                        }
-                        if (!copied) {
-                            copied = copyViaTextarea(text);
-                        }
-                        if (copied) {
-                            showCopyFeedback('Copied', true, 1500);
-                        } else {
-                            showCopyFeedback('Copy failed', false, 2000);
-                        }
-                    } catch (e) {
-                        showCopyFeedback('Copy failed', false, 2000);
+                    const lines = getVisibleLogLines();
+                    if (lines.length === 0) {
+                        window.copyButton.feedback(copyLogBtn, 'Nothing to copy', false, 1500, setCopyLogStatus);
+                        return;
                     }
+                    await window.copyButton.copy(lines.join('\n'), copyLogBtn, { onStatus: setCopyLogStatus });
                 }
 
                 copyLogBtn.addEventListener('click', handleCopyLogClick);
@@ -2252,7 +2194,7 @@
                     document.removeEventListener('visibilitychange', handleOutboxVisibility);
                     window.removeEventListener('pagehide', handlePageHide);
                     copyLogBtn.removeEventListener('click', handleCopyLogClick);
-                    clearTimeout(copyFeedbackTimerId);
+                    window.copyButton.reset(copyLogBtn);
                 };
 
                 async function applyStatusSnapshot(video) {

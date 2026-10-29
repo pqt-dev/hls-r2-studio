@@ -330,28 +330,13 @@
             // data goes stale after an upload/delete. Remember the latest custom
             // image per video (keyed by its upload URL) and prefer it on reopen.
             const COPY_ICON_SVG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>';
-            // Idle classes mirror the ui button component outline variant; copied classes use the primary token.
-            const COPY_BTN_IDLE_CLASSES = ['border-input', 'bg-background', 'text-foreground', 'hover:bg-accent', 'hover:text-accent-foreground'];
-            const COPY_BTN_COPIED_CLASSES = ['border-primary', 'bg-primary', 'text-primary-foreground', 'hover:bg-primary/90', 'hover:text-primary-foreground'];
-
-            function setCopyButtonState(button, copied) {
-                button.querySelector('[data-copy-label]').textContent = copied ? 'Copied' : (button.dataset.copyIdleLabel || 'Copy');
-                button.classList.remove(...(copied ? COPY_BTN_IDLE_CLASSES : COPY_BTN_COPIED_CLASSES));
-                button.classList.add(...(copied ? COPY_BTN_COPIED_CLASSES : COPY_BTN_IDLE_CLASSES));
+            // Shared by every copy button; see resources/js/copy-button.js. Only the Embed modal buttons are exclusive.
+            function copyTextToClipboard(text, button) {
+                return window.copyButton.copy(text, button, { exclusive: document.getElementById('embed-modal') });
             }
 
             function resetCopyButtons() {
-                document.querySelectorAll('#embed-modal [data-copy-btn]').forEach(function (button) {
-                    setCopyButtonState(button, false);
-                });
-            }
-
-            // Shared by every copy button. The "Copied" state is kept until the Embed modal is opened again.
-            function copyTextToClipboard(text, button) {
-                if (!navigator.clipboard) return;
-                navigator.clipboard.writeText(text).then(function () {
-                    setCopyButtonState(button, true);
-                }).catch(function () {});
+                window.copyButton.reset(document.getElementById('embed-modal'));
             }
 
             const customImageOverrides = {};
@@ -692,6 +677,7 @@
                 showImagesError('');
                 document.getElementById('embed-modal-images-section').classList.add('hidden');
                 setEmbedTab('preview'); // tabs
+                resetCopyButtons();
 
                 window.uiDialog.close(document.getElementById('embed-modal'));
             }
