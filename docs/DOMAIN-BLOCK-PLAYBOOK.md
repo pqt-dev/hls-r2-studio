@@ -16,6 +16,8 @@ How to prepare standby domains and switch to them when a domain is blocked. A bl
 
 Server: one aaPanel VPS runs both sites, and you work over SSH as root. Dashboard: `/www/wwwroot/embed-site.com`. WordPress: `/www/wwwroot/main-site.com`. PHP CLI: `/www/server/php/84/bin/php`. Site user: `www`. WP Staging copy: `/www/wwwroot/main-site.com/staging` (Verify the real path once; aaPanel and plugin labels also change between versions).
 
+WP-CLI must run as the site user: `sudo -u www wp ... --path=...`. Run as root, it refuses and tells you to run it as the site owner.
+
 Backups: this playbook relies on the automatic backups of aaPanel and does not create any.
 
 | Setting | Where |
@@ -27,6 +29,7 @@ Backups: this playbook relies on the automatic backups of aaPanel and does not c
 | Cache and Redirect rules, DNS, SSL mode, Origin certificate | Cloudflare, in the zone of that domain |
 | Add a domain, install the certificate | aaPanel > Website > the existing site |
 | Absolute URLs of FIFU images and of WordPress itself | WordPress database, with `wp search-replace` |
+| `WP_HOME`, `WP_SITEURL`, `COOKIE_DOMAIN`, `DOMAIN_CURRENT_SITE` | `wp-config.php` of the WordPress site, edited by hand. NOT changed by `wp search-replace`, and they override `home` / `siteurl` from the database |
 
 ## Embed site (`embed-site.com` to `new-embed-site.com`)
 
@@ -136,22 +139,44 @@ WordPress stores absolute URLs of its own domain (posts, postmeta, options, ofte
    ```bash
    sudo -u www wp search-replace 'https://main-site.com' 'https://new-main-site.com' --all-tables-with-prefix --skip-columns=guid --dry-run --report-changed-only --path=/www/wwwroot/main-site.com
    ```
-4. Rehearse the whole switch on WP Staging (`--path=/www/wwwroot/main-site.com/staging`) and time it.
+4. Find domain references stored in FILES, which the database dry run cannot see. Likely places: `wp-config.php`, caching plugin config files, mu-plugins, hard-coded URLs in the theme or child theme, and nginx rewrite/redirect rules in aaPanel (Website > the site > Config / Redirect; Verify the labels).
+
+   ```bash
+   grep -nE "WP_HOME|WP_SITEURL|COOKIE_DOMAIN|DOMAIN_CURRENT_SITE" /www/wwwroot/main-site.com/wp-config.php
+   ```
+   ```bash
+   grep -rn "main-site.com" /www/wwwroot/main-site.com --include=*.php --include=.htaccess --exclude-dir=uploads --exclude-dir=cache --exclude-dir=staging --exclude-dir=node_modules
+   ```
+5. Rehearse the whole switch on WP Staging (`--path=/www/wwwroot/main-site.com/staging`) and time it.
 
 ### Respond
 
 1. Confirm the block from a network in Vietnam.
 2. aaPanel: Website > the WordPress site > Domain Manager > add the new domain (never clone the site). Then DNS, a NEW Origin certificate, SSL and Full (strict) as in embed Prepare steps 1 and 2.
 3. Before changing the database, check in aaPanel that the latest automatic backup of the WordPress database exists.
-4. Real run. If old `http://main-site.com` links or the `www.` form exist, run the same command with `http://main-site.com` to `http://new-main-site.com` (and the `www.` host). Search-replace already rewrites `home` and `siteurl`; check that Settings > General shows the new address.
+4. Real run. If old `http://main-site.com` links or the `www.` form exist, run the same command with `http://main-site.com` to `http://new-main-site.com` (and the `www.` host). Search-replace rewrites `home` and `siteurl` in the database only; constants in `wp-config.php` override them (next step). Check Settings > General: the fields are greyed out (locked) while the constants exist.
 
    ```bash
    sudo -u www wp search-replace 'https://main-site.com' 'https://new-main-site.com' --all-tables-with-prefix --skip-columns=guid --report-changed-only --path=/www/wwwroot/main-site.com
    ```
-5. Dashboard: add `new-main-site.com` and `www.new-main-site.com` to the Embed allowlist (Dashboard Settings > Embed protection > Embed allowlist). It is in the database and also covers report CORS and report hosts: no `.env` edit, `config:clear` or restart.
-6. Purge ALL page caches. Embed pages can take up to 5 minutes to show the allowlist change.
-7. Cloudflare, old zone > Redirect Rules: 301 to `https://new-main-site.com`, keep path and query. Search Console: Change of Address. Keep the redirect at least 1 year (Google asks 180 days minimum).
-8. Check on the new domain: videos play, thumbnails load.
+5. Update `wp-config.php` BEFORE enabling any redirect. If `WP_HOME` and `WP_SITEURL` still hold the old domain, WordPress redirects new to old while the old zone redirects old to new: ERR_TOO_MANY_REDIRECTS. Back it up first, then set `WP_HOME` and `WP_SITEURL` (and `COOKIE_DOMAIN` / `DOMAIN_CURRENT_SITE` if present) to `https://new-main-site.com`, or remove the constants so the database values apply.
+
+   ```bash
+   cp /www/wwwroot/main-site.com/wp-config.php /www/wwwroot/main-site.com/wp-config.php.bak
+   ```
+   Verify: both commands must show the new domain.
+
+   ```bash
+   sudo -u www wp option get home --path=/www/wwwroot/main-site.com
+   ```
+   ```bash
+   sudo -u www wp option get siteurl --path=/www/wwwroot/main-site.com
+   ```
+6. Re-run the dry run from Prepare step 3. Expect 0 replacements (empty table).
+7. Dashboard: add `new-main-site.com` and `www.new-main-site.com` to the Embed allowlist (Dashboard Settings > Embed protection > Embed allowlist). It is in the database and also covers report CORS and report hosts: no `.env` edit, `config:clear` or restart.
+8. Purge ALL page caches. Embed pages can take up to 5 minutes to show the allowlist change.
+9. Cloudflare, old zone > Redirect Rules: 301 to `https://new-main-site.com`, keep path and query. Use the Cloudflare Redirect Rules of the OLD zone, not an aaPanel site-level redirect: the new domain lives on the same site and would redirect to itself. Search Console: Change of Address. Keep the redirect at least 1 year (Google asks 180 days minimum).
+10. Check on the new domain: videos play, thumbnails load.
 
 ## Runbook (in this order)
 
@@ -180,6 +205,12 @@ More: [DEPLOYMENT.md](DEPLOYMENT.md#troubleshooting-pointers) and [TROUBLESHOOTI
 | Old host is still shown | Page cache not purged |
 | Dashboard live progress stops | `REVERB_*` wrong, `npm run build` not run, or Reverb not restarted |
 | Cloudflare 521 / 526 | Origin certificate not installed, or Full (strict) set before it |
+| ERR_TOO_MANY_REDIRECTS on the new main domain | `WP_HOME` / `WP_SITEURL` in `wp-config.php` still the old domain; an aaPanel site-level redirect also applying to the new domain; Cloudflare SSL on Flexible; stale redirect in cache. Diagnose with the command below: `x-redirect-by: WordPress` means WordPress issues the redirect |
+| wp-cli refuses to run, or suggests `sudo -u USER -i -- wp` | Run it as the site user: `sudo -u www wp ... --path=...` |
+
+```bash
+curl -sIL --max-redirs 6 https://new-main-site.com | grep -iE "^(HTTP|location)"
+```
 
 ## Also do
 
