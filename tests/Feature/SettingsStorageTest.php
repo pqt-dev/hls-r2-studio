@@ -24,6 +24,6 @@ class SettingsStorageTest extends TestCase
 
     public function test_guest_is_redirected_to_login(): void
     {
-        $this->put('/settings/storage', [])->assertRedirect('/login');
+        $this->put('/settings/storage', [])->assertNotFound();
     }
 }

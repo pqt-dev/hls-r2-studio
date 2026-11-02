@@ -61,6 +61,8 @@ REVERB_APP_KEY=<ngẫu nhiên>
 REVERB_APP_SECRET=<ngẫu nhiên>
 
 APP_URL=http://localhost:8000
+
+ADMIN_LOGIN_KEY=<chuỗi bí mật, ví dụ: openssl rand -hex 12>
 ```
 
 **3. Tạo database, migrate, tạo admin**
@@ -81,7 +83,9 @@ php artisan schedule:work                # không bắt buộc: dọn rác tự 
 php artisan reverb:start                 # không bắt buộc: tiến độ transcode live (thiếu thì tự reload để xem)
 ```
 
-**5. Mở** `http://localhost:8000/login`
+**5. Mở** `http://localhost:8000/<ADMIN_LOGIN_KEY>` (ví dụ `ADMIN_LOGIN_KEY=abc123` thì mở `http://localhost:8000/abc123`)
+
+Trang đăng nhập admin **không** nằm ở `/login` nữa mà chỉ truy cập được tại URL bí mật `/{ADMIN_LOGIN_KEY}`. Mọi URL khác (kể cả `/login`, và mọi trang cần đăng nhập khi chưa đăng nhập) đều trả về 404 thường để không ai biết có trang đăng nhập. Nếu `ADMIN_LOGIN_KEY` để trống thì trang đăng nhập bị tắt hoàn toàn (mọi URL đều 404), nên bắt buộc phải đặt giá trị này. Sau khi đổi `ADMIN_LOGIN_KEY`, chạy `php artisan config:clear`.
 
 **Lưu ý quan trọng**
 

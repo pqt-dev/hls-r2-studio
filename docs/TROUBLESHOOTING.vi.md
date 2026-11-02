@@ -23,7 +23,7 @@
 | `composer install` báo một package Symfony yêu cầu PHP >= 8.4 | Đang chạy PHP < 8.4 trong khi `composer.lock` khoá phiên bản cần 8.4 | Cài/nâng cấp PHP lên 8.4 |
 | `composer install` báo lệch `composer-runtime-api` | Composer cài sẵn quá cũ (< 2.2) | `composer self-update` |
 | Trang trắng, lỗi `open_basedir restriction in effect` (aaPanel) | Công tắc "Anti-XSS attack" đang bật, giới hạn PHP chỉ đọc được `public/` | Tắt công tắc này tại site → Directory |
-| `404 Not Found` khi truy cập `/login` (trang chủ `/` vẫn chạy) | Thiếu rewrite rule pretty-URL cho Laravel | Bật template URL rewrite của Laravel (aaPanel) hoặc kiểm tra lại `try_files` trong cấu hình Nginx (VPS thuần) |
+| `404 Not Found` khi truy cập `/<ADMIN_LOGIN_KEY>` (một URL tĩnh khác vẫn chạy) | Thiếu rewrite rule pretty-URL cho Laravel | Bật template URL rewrite của Laravel (aaPanel) hoặc kiểm tra lại `try_files` trong cấu hình Nginx (VPS thuần) |
 | Upload lỗi ngay từ đầu với "The server does not have enough free disk space to process this upload." | Server cần trống khoảng 2 lần dung lượng file (file gốc đã ghép cộng với output HLS) cộng thêm một chút dự phòng | Giải phóng dung lượng đĩa trên server hoặc upload file nhỏ hơn |
 | Video bị kẹt ở "Processing" mãi, log có `Job timed out` | Queue worker thiếu flag `--timeout`, nên Laravel kill job sau 60s mặc định | Thêm `--timeout=172800` vào `ExecStart` trong systemd unit |
 | Console báo `You must pass your app key when you instantiate Pusher` | `REVERB_*`/`VITE_REVERB_*` bị thiếu trong `.env` tại thời điểm `npm run build`, hoặc Reverb chưa được cấu hình | Điền đủ các biến, chạy lại `npm run build` và đảm bảo Reverb đang chạy |

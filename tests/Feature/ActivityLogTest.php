@@ -146,8 +146,8 @@ class ActivityLogTest extends TestCase
 
     public function test_store_requires_authentication(): void
     {
-        $this->post('/activity-log', ['entries' => [['message' => 'x']]])->assertRedirect(route('login'));
-        $this->get('/activity-log')->assertRedirect(route('login'));
+        $this->post('/activity-log', ['entries' => [['message' => 'x']]])->assertNotFound();
+        $this->get('/activity-log')->assertNotFound();
     }
 
     public function test_store_persists_entries_and_returns_the_count(): void

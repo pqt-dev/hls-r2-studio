@@ -101,7 +101,7 @@ class InProgressBadgeTest extends TestCase
 
     public function test_count_endpoint_redirects_guests_to_login(): void
     {
-        $this->get(route('videos.in-progress-count'))->assertRedirect(route('login'));
+        $this->get(route('videos.in-progress-count'))->assertNotFound();
     }
 
     public function test_count_endpoint_returns_count_and_progress_for_pending_and_processing_only(): void
@@ -132,6 +132,8 @@ class InProgressBadgeTest extends TestCase
 
     public function test_login_page_renders_without_ring(): void
     {
-        $this->get(route('login'))->assertOk()->assertDontSee('data-in-progress-ring', false);
+        config(['auth.admin_login_key' => 'test-login-key']);
+
+        $this->get('/test-login-key')->assertOk()->assertDontSee('data-in-progress-ring', false);
     }
 }

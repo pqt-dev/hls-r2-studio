@@ -203,7 +203,9 @@ class EmbedAllowlistCorsTest extends TestCase
     {
         $this->setEmbedAllowlist('main-site.com');
 
-        $this->get('/login')->assertOk();
+        config(['auth.admin_login_key' => 'test-login-key']);
+
+        $this->get('/test-login-key')->assertOk();
 
         $this->assertSame([], config('cors.allowed_origins'));
         $this->assertSame([], config('cors.allowed_origins_patterns'));

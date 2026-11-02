@@ -15,7 +15,9 @@ class RobotsTagTest extends TestCase
 
     public function test_login_page_has_robots_header_and_meta(): void
     {
-        $response = $this->get('/login');
+        config(['auth.admin_login_key' => 'test-login-key']);
+
+        $response = $this->get('/test-login-key');
 
         $response->assertOk();
         $response->assertHeader('X-Robots-Tag', self::TAG);
@@ -26,7 +28,7 @@ class RobotsTagTest extends TestCase
     {
         $response = $this->get('/');
 
-        $response->assertRedirect(route('login'));
+        $response->assertNotFound();
         $response->assertHeader('X-Robots-Tag', self::TAG);
     }
 

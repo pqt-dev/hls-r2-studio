@@ -12,9 +12,9 @@ class PagesRenderTest extends TestCase
 
     public function test_guest_is_redirected_from_pages_not_covered_elsewhere(): void
     {
-        $this->get('/upload')->assertRedirect(route('login'));
-        $this->get('/logs')->assertRedirect(route('login'));
-        $this->get('/settings')->assertRedirect(route('login'));
+        $this->get('/upload')->assertNotFound();
+        $this->get('/logs')->assertNotFound();
+        $this->get('/settings')->assertNotFound();
     }
 
     public function test_authenticated_user_can_render_upload_logs_and_settings_pages(): void

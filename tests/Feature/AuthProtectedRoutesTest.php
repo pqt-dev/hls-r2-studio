@@ -46,7 +46,7 @@ class AuthProtectedRoutesTest extends TestCase
     {
         $response = $this->{$method}($uri, $data);
 
-        $response->assertRedirect(route('login'));
+        $response->assertNotFound();
     }
 
     public function test_authenticated_user_can_access_videos_index(): void

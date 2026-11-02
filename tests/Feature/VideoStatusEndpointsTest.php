@@ -23,7 +23,7 @@ class VideoStatusEndpointsTest extends TestCase
 
     public function test_status_requires_authentication(): void
     {
-        $this->get('/videos/status?ids=1')->assertRedirect(route('login'));
+        $this->get('/videos/status?ids=1')->assertNotFound();
     }
 
     public function test_status_requires_ids_parameter(): void
@@ -67,7 +67,7 @@ class VideoStatusEndpointsTest extends TestCase
     {
         $video = $this->makeVideo();
 
-        $this->get("/videos/{$video->id}/status-log")->assertRedirect(route('login'));
+        $this->get("/videos/{$video->id}/status-log")->assertNotFound();
     }
 
     public function test_status_log_returns_entries_for_the_video_in_order(): void

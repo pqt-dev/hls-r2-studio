@@ -127,6 +127,8 @@ R2_SECRET_ACCESS_KEY=<secret-access-key>
 R2_BUCKET=<bucket-name>
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 R2_URL=https://cdn.embed-site.com
+# Secret login path: the login page is at /<ADMIN_LOGIN_KEY>; empty = login page disabled (every URL returns 404). Run config:clear after changing it.
+ADMIN_LOGIN_KEY=<random-secret>
 # REVERB_HOST/PORT/SCHEME are the PUBLIC address the browser uses
 REVERB_APP_ID=<generated>
 REVERB_APP_KEY=<generated>
@@ -328,15 +330,15 @@ After the origin works over HTTPS (section 9).
 
 ## 12. App settings, smoke tests, Google cleanup
 
-1. **Embed allowlist**: log in at `https://embed-site.com/login` > Settings > **Embed protection** > Embed allowlist: add `main-site.com` and `www.main-site.com` (one per line; `*.main-site.com` and `https://host:port` accepted). The same list also lets those sites send playback reports (CORS) and sets the accepted report hosts (if it is empty, any website can frame the player and any report host is accepted; otherwise reports are accepted only from listed hosts). It is stored in the database: no `.env` edit, `config:clear` or restart needed (cached embed pages can take up to 5 minutes to update). The app's own site is always allowed.
+1. **Embed allowlist**: log in at `https://embed-site.com/<ADMIN_LOGIN_KEY>` > Settings > **Embed protection** > Embed allowlist: add `main-site.com` and `www.main-site.com` (one per line; `*.main-site.com` and `https://host:port` accepted). The same list also lets those sites send playback reports (CORS) and sets the accepted report hosts (if it is empty, any website can frame the player and any report host is accepted; otherwise reports are accepted only from listed hosts). It is stored in the database: no `.env` edit, `config:clear` or restart needed (cached embed pages can take up to 5 minutes to update). The app's own site is always allowed.
 2. **Smoke tests**:
 
    ```bash
    curl -s -o /dev/null -w "%{http_code}\n" https://embed-site.com/up
-   curl -sI https://embed-site.com/login
+   curl -sI https://embed-site.com/<ADMIN_LOGIN_KEY>
    curl -sI https://embed-site.com/embed/<video-id>
    ```
-   - `/up` is 200; `/login` has `x-robots-tag: noindex, nofollow, noarchive`.
+   - `/up` is 200; `/<ADMIN_LOGIN_KEY>` has `x-robots-tag: noindex, nofollow, noarchive`.
    - `/embed/<video-id>` (needs a ready video): no `Set-Cookie`, `Cache-Control: public, max-age=60, s-maxage=300`, and `cf-cache-status: HIT` on the second request.
    - Upload a short video: stages complete and progress moves live (`wss://embed-site.com/app/...` status 101 in dev tools, which also proves `/apps/` through Cloudflare). Play the embed on desktop and iPhone.
    - 6 wrong logins in a row give HTTP 429 on the 6th (5 per minute per IP).

@@ -61,6 +61,8 @@ REVERB_APP_KEY=<random>
 REVERB_APP_SECRET=<random>
 
 APP_URL=http://localhost:8000
+
+ADMIN_LOGIN_KEY=<secret string, e.g. openssl rand -hex 12>
 ```
 
 **3. Create the database, migrate, create the admin**
@@ -81,7 +83,9 @@ php artisan schedule:work                # optional: daily cleanup of leftover f
 php artisan reverb:start                 # optional: live transcode progress (otherwise reload to see progress)
 ```
 
-**5. Open** `http://localhost:8000/login`
+**5. Open** `http://localhost:8000/<ADMIN_LOGIN_KEY>` (e.g. with `ADMIN_LOGIN_KEY=abc123`, open `http://localhost:8000/abc123`)
+
+The admin login page is no longer at `/login`; it is only reachable at the secret URL `/{ADMIN_LOGIN_KEY}`. Every other URL (including `/login`, and every protected page when not logged in) returns a plain 404 so nobody learns a login page exists. If `ADMIN_LOGIN_KEY` is empty the login page is disabled entirely (every URL returns 404), so it must be set. Run `php artisan config:clear` after changing it.
 
 **Important notes**
 

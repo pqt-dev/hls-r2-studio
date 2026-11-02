@@ -84,7 +84,7 @@ class SettingsPasswordTest extends TestCase
         $this->withSession(['password_hash_web' => $oldHash])
             ->actingAs($user->fresh())
             ->get('/videos')
-            ->assertRedirect(route('login'));
+            ->assertNotFound();
 
         $this->assertGuest();
     }

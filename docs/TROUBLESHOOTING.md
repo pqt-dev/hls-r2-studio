@@ -23,7 +23,7 @@
 | `composer install` reports a Symfony package requires PHP >= 8.4 | Running PHP < 8.4 while `composer.lock` pins a version that needs 8.4 | Install/upgrade PHP to 8.4 |
 | `composer install` reports a `composer-runtime-api` mismatch | The preinstalled Composer is too old (< 2.2) | `composer self-update` |
 | Blank page, error `open_basedir restriction in effect` (aaPanel) | The "Anti-XSS attack" toggle is on, restricting PHP to reading only `public/` | Turn this toggle off at site → Directory |
-| `404 Not Found` when visiting `/login` (the home page `/` still works) | Missing the pretty-URL rewrite rule for Laravel | Enable the Laravel URL rewrite template (aaPanel) or recheck `try_files` in the Nginx config (plain VPS) |
+| `404 Not Found` when visiting `/<ADMIN_LOGIN_KEY>` (another static URL still works) | Missing the pretty-URL rewrite rule for Laravel | Enable the Laravel URL rewrite template (aaPanel) or recheck `try_files` in the Nginx config (plain VPS) |
 | Upload fails at the start with "The server does not have enough free disk space to process this upload." | The server needs about 2x the file size free (merged original plus HLS output) plus a small margin | Free disk space on the server or upload a smaller file |
 | A video is stuck on "Processing" forever, the log has `Job timed out` | The queue worker is missing the `--timeout` flag, so Laravel kills the job after the default 60s | Add `--timeout=172800` to `ExecStart` in the systemd unit |
 | Console reports `You must pass your app key when you instantiate Pusher` | `REVERB_*`/`VITE_REVERB_*` are missing from `.env` at `npm run build` time, or Reverb is not configured | Fill in all the variables, run `npm run build` again, and make sure Reverb is running |

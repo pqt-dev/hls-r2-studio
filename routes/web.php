@@ -6,12 +6,8 @@ use App\Http\Controllers\EmbedController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\SettingsController;
 use App\Http\Controllers\VideoController;
+use App\Http\Middleware\EnsureAdminLoginKey;
 use Illuminate\Support\Facades\Route;
-
-Route::middleware('guest')->group(function () {
-    Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
-    Route::post('/login', [AuthController::class, 'login'])->name('login.attempt')->middleware('throttle:5,1');
-});
 
 // Public route: no auth, viewable inside an iframe on external sites.
 Route::get('/embed/{video}', [EmbedController::class, 'show'])->name('embed.show')
@@ -60,4 +56,12 @@ Route::middleware('auth')->group(function () {
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/{report}/submissions', [ReportController::class, 'submissions'])->name('reports.submissions');
     Route::put('/reports/{report}/resolve', [ReportController::class, 'resolve'])->name('reports.resolve');
+});
+
+// Admin login lives at the secret URL /{key} (config auth.admin_login_key). This wildcard must stay the LAST
+// route so it never shadows another single-segment route. The throttle runs before the key check so that
+// guessing the key is rate limited; a wrong or empty key answers 404.
+Route::middleware(['throttle:30,1,admin-login-key', EnsureAdminLoginKey::class, 'guest'])->group(function () {
+    Route::get('/{key}', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('/{key}', [AuthController::class, 'login'])->name('login.attempt')->middleware('throttle:5,1');
 });

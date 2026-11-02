@@ -16,7 +16,7 @@ class ReportAdminTest extends TestCase
     {
         $response = $this->get('/reports');
 
-        $response->assertRedirect(route('login'));
+        $response->assertNotFound();
     }
 
     public function test_authenticated_user_can_view_reports_index(): void

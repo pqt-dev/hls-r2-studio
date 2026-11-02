@@ -25,7 +25,7 @@ class SettingsEmbedProtectionTest extends TestCase
 
     public function test_guest_cannot_update_embed_settings(): void
     {
-        $this->put('/settings/embed', ['embed_allowed_domains' => 'a.com'])->assertRedirect(route('login'));
+        $this->put('/settings/embed', ['embed_allowed_domains' => 'a.com'])->assertNotFound();
     }
 
     public function test_embed_domains_are_saved_and_normalized(): void

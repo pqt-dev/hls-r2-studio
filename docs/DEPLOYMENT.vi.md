@@ -127,6 +127,8 @@ R2_SECRET_ACCESS_KEY=<secret-access-key>
 R2_BUCKET=<bucket-name>
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 R2_URL=https://cdn.embed-site.com
+# Đường dẫn đăng nhập bí mật: trang login nằm ở /<ADMIN_LOGIN_KEY>; để trống = tắt trang login (mọi URL đều 404). Chạy config:clear sau khi đổi.
+ADMIN_LOGIN_KEY=<random-secret>
 # REVERB_HOST/PORT/SCHEME are the PUBLIC address the browser uses
 REVERB_APP_ID=<generated>
 REVERB_APP_KEY=<generated>
@@ -328,15 +330,15 @@ Làm sau khi origin đã chạy được qua HTTPS (mục 9).
 
 ## 12. Cài đặt trong app, smoke test, dọn index Google
 
-1. **Embed allowlist**: đăng nhập tại `https://embed-site.com/login` > Settings > **Embed protection** > Embed allowlist: thêm `main-site.com` và `www.main-site.com` (mỗi dòng một domain; chấp nhận `*.main-site.com` và `https://host:port`). Cùng danh sách này cũng cho phép các site đó gửi báo cáo phát video (CORS) và quy định host được chấp nhận trong báo cáo (nếu để trống thì site nào cũng nhúng được player và host nào cũng được chấp nhận; nếu không, báo cáo chỉ được nhận từ các host trong danh sách). Danh sách nằm trong database: không cần sửa `.env`, `config:clear` hay restart (trang embed đã cache có thể mất tới 5 phút mới cập nhật). Site của chính app luôn được cho phép.
+1. **Embed allowlist**: đăng nhập tại `https://embed-site.com/<ADMIN_LOGIN_KEY>` > Settings > **Embed protection** > Embed allowlist: thêm `main-site.com` và `www.main-site.com` (mỗi dòng một domain; chấp nhận `*.main-site.com` và `https://host:port`). Cùng danh sách này cũng cho phép các site đó gửi báo cáo phát video (CORS) và quy định host được chấp nhận trong báo cáo (nếu để trống thì site nào cũng nhúng được player và host nào cũng được chấp nhận; nếu không, báo cáo chỉ được nhận từ các host trong danh sách). Danh sách nằm trong database: không cần sửa `.env`, `config:clear` hay restart (trang embed đã cache có thể mất tới 5 phút mới cập nhật). Site của chính app luôn được cho phép.
 2. **Smoke test**:
 
    ```bash
    curl -s -o /dev/null -w "%{http_code}\n" https://embed-site.com/up
-   curl -sI https://embed-site.com/login
+   curl -sI https://embed-site.com/<ADMIN_LOGIN_KEY>
    curl -sI https://embed-site.com/embed/<video-id>
    ```
-   - `/up` trả về 200; `/login` có `x-robots-tag: noindex, nofollow, noarchive`.
+   - `/up` trả về 200; `/<ADMIN_LOGIN_KEY>` có `x-robots-tag: noindex, nofollow, noarchive`.
    - `/embed/<video-id>` (cần video đã sẵn sàng): không có `Set-Cookie`, có `Cache-Control: public, max-age=60, s-maxage=300`, và `cf-cache-status: HIT` ở request thứ hai.
    - Upload một video ngắn: các giai đoạn hoàn tất và progress chạy trực tiếp (`wss://embed-site.com/app/...` status 101 trong dev tools, điều này cũng chứng minh `/apps/` qua Cloudflare hoạt động). Phát embed trên desktop và iPhone.
    - 6 lần đăng nhập sai liên tiếp cho HTTP 429 ở lần thứ 6 (5 mỗi phút mỗi IP).

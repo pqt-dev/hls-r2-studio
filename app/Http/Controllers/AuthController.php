@@ -44,6 +44,9 @@ class AuthController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect()->route('login');
+        // With the login page disabled (empty key) there is no login URL, so fall back to the dashboard.
+        $key = trim((string) config('auth.admin_login_key'));
+
+        return $key === '' ? redirect('/') : redirect()->route('login', ['key' => $key]);
     }
 }

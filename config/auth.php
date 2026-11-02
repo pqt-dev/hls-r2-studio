@@ -114,4 +114,16 @@ return [
 
     'password_timeout' => env('AUTH_PASSWORD_TIMEOUT', 10800),
 
+    /*
+    |--------------------------------------------------------------------------
+    | Admin Login Key
+    |--------------------------------------------------------------------------
+    |
+    | Secret URL segment of the admin login page (served at "/{key}"). When it
+    | is empty, the login page is disabled entirely and every URL returns 404.
+    |
+    */
+
+    'admin_login_key' => env('ADMIN_LOGIN_KEY', ''),
+
 ];

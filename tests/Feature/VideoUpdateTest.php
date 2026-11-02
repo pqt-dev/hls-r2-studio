@@ -24,7 +24,7 @@ class VideoUpdateTest extends TestCase
     {
         $video = $this->makeVideo();
 
-        $this->put("/videos/{$video->id}", ['title' => 'New title'])->assertRedirect(route('login'));
+        $this->put("/videos/{$video->id}", ['title' => 'New title'])->assertNotFound();
 
         $this->assertSame('Old title', $video->fresh()->title);
     }

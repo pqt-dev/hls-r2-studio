@@ -28,7 +28,7 @@
                 </x-ui.alert>
             @endif
 
-            <form method="POST" action="{{ route('login.attempt') }}" class="space-y-5">
+            <form method="POST" action="{{ route('login.attempt', ['key' => config('auth.admin_login_key')]) }}" class="space-y-5">
                 @csrf
 
                 <div>
