@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
 class Video extends Model
 {
     protected $fillable = [
+        'public_id',
         'title',
         'original_filename',
         'original_size_bytes',
@@ -42,6 +43,34 @@ class Video extends Model
         'storyboards' => 'array',
         'failed_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (Video $video) {
+            if (empty($video->public_id)) {
+                $video->public_id = static::generatePublicId();
+            }
+        });
+    }
+
+    /**
+     * Random 12-char [a-z0-9] id used in public URLs; retried until no existing row uses it.
+     */
+    public static function generatePublicId(): string
+    {
+        $alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+        $max = strlen($alphabet) - 1;
+
+        do {
+            $id = '';
+
+            for ($i = 0; $i < 12; $i++) {
+                $id .= $alphabet[random_int(0, $max)];
+            }
+        } while (static::where('public_id', $id)->exists());
+
+        return $id;
+    }
 
     /**
      * Videos that are still queued or being transcoded.

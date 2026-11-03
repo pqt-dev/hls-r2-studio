@@ -34,7 +34,7 @@ class EmbedShowTest extends TestCase
 
         $video = $this->makeVideo('ready');
 
-        $response = $this->get(route('embed.show', $video));
+        $response = $this->get(route('embed.show', ['video' => $video->public_id]));
 
         $response->assertOk();
         // The URL is emitted through @json, so slashes are escaped.
@@ -48,7 +48,7 @@ class EmbedShowTest extends TestCase
         foreach (['pending', 'processing', 'failed'] as $status) {
             $video = $this->makeVideo($status);
 
-            $this->get(route('embed.show', $video))->assertNotFound();
+            $this->get(route('embed.show', ['video' => $video->public_id]))->assertNotFound();
         }
     }
 
@@ -57,22 +57,39 @@ class EmbedShowTest extends TestCase
         $this->get('/embed/999999')->assertNotFound();
     }
 
+    public function test_embed_resolves_by_public_id_not_numeric_id(): void
+    {
+        $video = $this->makeVideo('ready');
+
+        $this->assertMatchesRegularExpression('/^[a-z0-9]{12}$/', $video->public_id);
+        $this->get('/embed/'.$video->public_id)->assertOk();
+        $this->get('/embed/'.$video->id)->assertNotFound();
+    }
+
+    public function test_legacy_video_with_numeric_public_id_still_resolves(): void
+    {
+        $video = $this->makeVideo('ready');
+        $video->forceFill(['public_id' => (string) $video->id])->save();
+
+        $this->get('/embed/'.$video->id)->assertOk();
+    }
+
     public function test_embed_route_is_throttled_to_60_requests_per_minute(): void
     {
         $video = $this->makeVideo('pending');
 
         for ($i = 0; $i < 60; $i++) {
-            $this->get(route('embed.show', $video))->assertNotFound();
+            $this->get(route('embed.show', ['video' => $video->public_id]))->assertNotFound();
         }
 
-        $this->get(route('embed.show', $video))->assertStatus(429);
+        $this->get(route('embed.show', ['video' => $video->public_id]))->assertStatus(429);
     }
 
     public function test_embed_response_sets_no_cookies(): void
     {
         $video = $this->makeVideo('ready');
 
-        $response = $this->get(route('embed.show', $video));
+        $response = $this->get(route('embed.show', ['video' => $video->public_id]));
 
         $response->assertOk();
         $this->assertSame([], $response->headers->getCookies());
@@ -84,7 +101,7 @@ class EmbedShowTest extends TestCase
         $video = $this->makeVideo('ready');
         $before = DB::table('sessions')->count();
 
-        $this->get(route('embed.show', $video))->assertOk();
+        $this->get(route('embed.show', ['video' => $video->public_id]))->assertOk();
 
         $this->assertSame($before, DB::table('sessions')->count());
     }
@@ -93,7 +110,7 @@ class EmbedShowTest extends TestCase
     {
         $video = $this->makeVideo('ready');
 
-        $cacheControl = (string) $this->get(route('embed.show', $video))->assertOk()->headers->get('Cache-Control');
+        $cacheControl = (string) $this->get(route('embed.show', ['video' => $video->public_id]))->assertOk()->headers->get('Cache-Control');
 
         $this->assertStringContainsString('public', $cacheControl);
         $this->assertStringContainsString('max-age=60', $cacheControl);
@@ -106,7 +123,7 @@ class EmbedShowTest extends TestCase
     {
         $video = $this->makeVideo('ready');
 
-        $response = $this->get(route('embed.show', $video));
+        $response = $this->get(route('embed.show', ['video' => $video->public_id]));
 
         $response->assertOk();
         $response->assertHeader('X-Robots-Tag', 'noindex, nofollow');
@@ -116,7 +133,7 @@ class EmbedShowTest extends TestCase
     {
         $video = $this->makeVideo('pending');
 
-        $cacheControl = (string) $this->get(route('embed.show', $video))->assertNotFound()->headers->get('Cache-Control');
+        $cacheControl = (string) $this->get(route('embed.show', ['video' => $video->public_id]))->assertNotFound()->headers->get('Cache-Control');
 
         $this->assertStringNotContainsString('s-maxage=300', $cacheControl);
     }

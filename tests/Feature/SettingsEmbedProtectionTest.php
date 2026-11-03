@@ -88,7 +88,7 @@ class SettingsEmbedProtectionTest extends TestCase
     {
         Setting::current()->update(['embed_allowed_domains' => "example.com\n*.example.org\nhttps://a.com:8443"]);
 
-        $response = $this->get(route('embed.show', $this->makeReadyVideo()));
+        $response = $this->get(route('embed.show', ['video' => $this->makeReadyVideo()->public_id]));
 
         $response->assertOk();
         $response->assertHeader('Content-Security-Policy', "frame-ancestors 'self' example.com *.example.org https://a.com:8443");
@@ -96,7 +96,7 @@ class SettingsEmbedProtectionTest extends TestCase
 
     public function test_embed_response_has_no_csp_header_when_empty(): void
     {
-        $response = $this->get(route('embed.show', $this->makeReadyVideo()));
+        $response = $this->get(route('embed.show', ['video' => $this->makeReadyVideo()->public_id]));
 
         $response->assertOk();
         $response->assertHeaderMissing('Content-Security-Policy');

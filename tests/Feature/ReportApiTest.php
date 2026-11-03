@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Report;
 use App\Models\ReportSubmission;
+use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -317,5 +318,42 @@ class ReportApiTest extends TestCase
         ]);
 
         $response->assertStatus(201);
+    }
+
+    private function reportedVideoId(string $pageUrl): ?int
+    {
+        $this->postJson('/api/reports', ['page_url' => $pageUrl])->assertStatus(201);
+
+        return Report::where('page_url', $pageUrl)->value('video_id');
+    }
+
+    private function makeVideo(): Video
+    {
+        return Video::create(['title' => 'v', 'original_filename' => 'v.mp4', 'status' => 'ready']);
+    }
+
+    public function test_report_resolves_video_from_new_style_public_id(): void
+    {
+        $video = $this->makeVideo();
+
+        $this->assertSame($video->id, $this->reportedVideoId('https://toicovl.com/embed/'.$video->public_id.'?autoplay=1'));
+    }
+
+    public function test_report_resolves_video_from_legacy_numeric_id(): void
+    {
+        $video = $this->makeVideo();
+        $video->forceFill(['public_id' => (string) $video->id])->save();
+
+        $this->assertSame($video->id, $this->reportedVideoId('https://toicovl.com/embed/'.$video->id));
+    }
+
+    public function test_report_with_unknown_or_malformed_embed_id_has_no_video(): void
+    {
+        $this->makeVideo();
+
+        $this->assertNull($this->reportedVideoId('https://toicovl.com/embed/zzzzzzzzzzzz'));
+        $this->assertNull($this->reportedVideoId('https://toicovl.com/embed/ABC123'));
+        $this->assertNull($this->reportedVideoId('https://toicovl.com/embed/'.str_repeat('a', 33)));
+        $this->assertNull($this->reportedVideoId('https://toicovl.com/other/abc123'));
     }
 }

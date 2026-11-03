@@ -121,10 +121,12 @@ class ReportController extends Controller
 
         $candidateId = $segments[count($segments) - 1];
 
-        if (! ctype_digit($candidateId)) {
+        if (! preg_match('/^[a-z0-9]{1,32}$/', $candidateId)) {
             return null;
         }
 
-        return Video::whereKey((int) $candidateId)->exists() ? (int) $candidateId : null;
+        $id = Video::where('public_id', $candidateId)->value('id');
+
+        return $id !== null ? (int) $id : null;
     }
 }

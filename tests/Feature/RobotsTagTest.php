@@ -68,7 +68,7 @@ class RobotsTagTest extends TestCase
             'playlist_path' => '2026/10/07/embed-1/playlist.m3u8',
         ]);
 
-        $response = $this->get(route('embed.show', $video));
+        $response = $this->get(route('embed.show', ['video' => $video->public_id]));
 
         $response->assertOk();
         $this->assertSame('noindex, nofollow', $response->headers->get('X-Robots-Tag'));

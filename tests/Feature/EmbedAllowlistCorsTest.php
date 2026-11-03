@@ -224,7 +224,7 @@ class EmbedAllowlistCorsTest extends TestCase
             'playlist_path' => '2026/10/07/embed-1/playlist.m3u8',
         ]);
 
-        $this->get(route('embed.show', $video))
+        $this->get(route('embed.show', ['video' => $video->public_id]))
             ->assertOk()
             ->assertHeader('Content-Security-Policy', "frame-ancestors 'self' main-site.com www.main-site.com *.main-site.com https://host:8443 http://host");
     }

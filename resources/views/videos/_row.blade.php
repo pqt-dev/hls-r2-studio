@@ -18,7 +18,7 @@
         ? "{$video->output_width} / {$video->output_height}"
         : '16 / 9';
 
-    $embedUrl = route('embed.show', $video);
+    $embedUrl = route('embed.show', ['video' => $video->public_id]);
 
     // The candidate images a user can pick a feature image from: the
     // thumbnail plus every storyboard grid that was generated. Videos

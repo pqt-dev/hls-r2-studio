@@ -10,7 +10,7 @@ use App\Http\Middleware\EnsureAdminLoginKey;
 use Illuminate\Support\Facades\Route;
 
 // Public route: no auth, viewable inside an iframe on external sites.
-Route::get('/embed/{video}', [EmbedController::class, 'show'])->name('embed.show')
+Route::get('/embed/{video:public_id}', [EmbedController::class, 'show'])->name('embed.show')
     ->middleware('throttle:60,1')
     // Public cacheable page: no session/cookie so views create no `sessions` rows and the CDN can cache it.
     ->withoutMiddleware([
