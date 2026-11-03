@@ -686,7 +686,7 @@
                 copyTextToClipboard(document.getElementById(elementId).value, button);
             }
 
-            // WordPress shortcode for the mu-plugin in wordpress/hls-embed.php; the id is the last segment of the embed URL.
+            // WordPress shortcode for the mu-plugin in docs/wordpress-snippets/hls-embed.php; the id is the last segment of the embed URL.
             function copyEmbedShortcode(button) {
                 if (!embedModalState) return;
                 const id = embedModalState.embedUrl.split('?')[0].replace(/\/+$/, '').split('/').pop();

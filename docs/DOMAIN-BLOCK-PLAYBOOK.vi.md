@@ -20,7 +20,7 @@ Backup: playbook này dựa vào backup tự động của aaPanel và không t�
 
 | Thiết lập | Nơi sửa |
 |---|---|
-| `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" trên website WordPress |
+| `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" trên website WordPress (nguồn: `docs/wordpress-snippets/hls-embed.wpcode.php`). Giá trị mặc định là placeholder `https://embed-site.com`, bắt buộc phải thay bằng URL thật của site embed |
 | `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` (phần bổ sung tùy chọn, mặc định rỗng: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) |
 | Embed allowlist (domain của site chính: được phép nhúng player, gửi báo cáo qua CORS và là host được chấp nhận trong báo cáo) | Dashboard Settings > Embed protection > Embed allowlist. Nằm trong database, KHÔNG nằm trong `.env` |
 | R2 CORS policy, R2 custom domain | Cloudflare > R2 > bucket > Settings |
@@ -36,15 +36,15 @@ Bài viết chỉ lưu shortcode, nên host embed chỉ đổi ở một chỗ (
 
 1. Mua `new-embed-site.com` (không dùng `.vn`), thêm thành zone trong cùng tài khoản Cloudflare với R2, và thêm DNS record loại A trỏ tới IP của VPS, Proxied.
 2. aaPanel: Website > site dashboard hiện có > Domain Manager > thêm domain (không bao giờ clone site). Trong Cloudflare tạo Origin CA certificate MỚI cho domain đó, dán vào tab SSL của site, và chỉ sau đó mới đặt Cloudflare SSL là Full (strict), nếu không sẽ bị 521/526. Đồng thời thêm các rule Cloudflare cho zone mới: bước 1, 3 và 5 của [DEPLOYMENT.vi.md mục 11](DEPLOYMENT.vi.md#11-cấu-hình-cloudflare).
-3. Cloudflare > R2 > bucket > Settings: gắn `cdn.new-embed-site.com` vào cùng bucket, và trong CORS policy thêm `https://new-embed-site.com` (giữ origin cũ). Verify: một bucket có thể có nhiều custom domain.
+3. Cloudflare > R2 > bucket > Settings: gắn `cdn.new-embed-site.com` vào cùng bucket, và trong CORS policy thêm `https://<new-embed-host>` (giữ origin cũ). Verify: một bucket có thể có nhiều custom domain.
 
    ```json
-   [{"AllowedOrigins":["https://embed-site.com","https://new-embed-site.com"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAgeSeconds":86400}]
+   [{"AllowedOrigins":["https://embed-site.com","https://<new-embed-host>"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAgeSeconds":86400}]
    ```
-4. Test trên WP Staging: đặt `HLS_EMBED_HOST` thành `https://new-embed-site.com`, purge cache staging, mở một bài có `[hls_embed_vl id="N"]`, rồi kiểm tra header. Việc phát video có thể trả 403 cho tới khi đổi `R2_URL` (hotlink rule); bản thân iframe phải load được. Verify: asset của trang embed có phụ thuộc `APP_URL` không (DevTools > Network: có request nào tới `embed-site.com` không?).
+4. Test trên WP Staging: đặt `HLS_EMBED_HOST` thành `https://<new-embed-host>`, purge cache staging, mở một bài có `[hls_embed_vl id="N"]`, rồi kiểm tra header. Việc phát video có thể trả 403 cho tới khi đổi `R2_URL` (hotlink rule); bản thân iframe phải load được. Verify: asset của trang embed có phụ thuộc `APP_URL` không (DevTools > Network: có request nào tới `embed-site.com` không?).
 
    ```bash
-   curl -sI https://new-embed-site.com/embed/ID
+   curl -sI https://<new-embed-host>/embed/ID
    ```
 5. Các giá trị `.env` cần đổi được liệt kê ở bước 2 của phần Ứng phó.
 
@@ -54,7 +54,7 @@ Bài viết chỉ lưu shortcode, nên host embed chỉ đổi ở một chỗ (
 2. Sửa `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) và đặt các dòng sau. `REVERB_PORT` và `REVERB_SCHEME` giữ nguyên. `R2_URL` cũng đổi ở đây, vì cdn bị chặn cùng domain embed.
 
    ```env
-   APP_URL=https://new-embed-site.com
+   APP_URL=https://<new-embed-host>
    REVERB_HOST=new-embed-site.com
    REVERB_ALLOWED_ORIGINS=new-embed-site.com
    R2_URL=https://cdn.new-embed-site.com
@@ -69,12 +69,12 @@ Bài viết chỉ lưu shortcode, nên host embed chỉ đổi ở một chỗ (
    systemctl restart hls-r2-studio-reverb
    systemctl restart hls-r2-studio-scheduler
    ```
-4. WPCode snippet "HLS Embed shortcode" trên website WordPress: đổi `HLS_EMBED_HOST` thành `https://new-embed-site.com`, lưu, giữ ở trạng thái Active.
+4. WPCode snippet "HLS Embed shortcode" trên website WordPress: đổi `HLS_EMBED_HOST` thành `https://<new-embed-host>`, lưu, giữ ở trạng thái Active.
 5. Purge TẤT CẢ page cache (plugin cache và Cloudflare).
-6. Kiểm tra (mong đợi 200). Sau đó mở một bài có video từ một mạng ở Việt Nam: page source hiển thị iframe từ `https://new-embed-site.com/embed/`.
+6. Kiểm tra (mong đợi 200). Sau đó mở một bài có video từ một mạng ở Việt Nam: page source hiển thị iframe từ `https://<new-embed-host>/embed/`.
 
    ```bash
-   curl -s -o /dev/null -w "%{http_code}\n" https://new-embed-site.com/up
+   curl -s -o /dev/null -w "%{http_code}\n" https://<new-embed-host>/up
    ```
 
 ## Custom domain (R2): `cdn.embed-site.com` sang `cdn.new-embed-site.com`

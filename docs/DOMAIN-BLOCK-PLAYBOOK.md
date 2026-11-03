@@ -20,7 +20,7 @@ Backups: this playbook relies on the automatic backups of aaPanel and does not c
 
 | Setting | Where |
 |---|---|
-| `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" on the WordPress site |
+| `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" on the WordPress site (source: `docs/wordpress-snippets/hls-embed.wpcode.php`). Its default is the placeholder `https://embed-site.com`, which must be replaced with the real embed site URL |
 | `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` (optional extras, empty by default: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` of the dashboard (aaPanel > Files, or SSH `nano`) |
 | Embed allowlist (main site domains: allowed to frame the player, to send reports via CORS, and accepted as report hosts) | Dashboard Settings > Embed protection > Embed allowlist. It is in the database, NOT in `.env` |
 | R2 CORS policy, R2 custom domain | Cloudflare > R2 > the bucket > Settings |
@@ -36,15 +36,15 @@ Posts store only the shortcode, so the embed host changes in one place (`HLS_EMB
 
 1. Buy `new-embed-site.com` (not `.vn`), add it as a zone in the same Cloudflare account as R2, and add a DNS record of type A to the VPS IP, Proxied.
 2. aaPanel: Website > the existing dashboard site > Domain Manager > add the domain (never clone the site). In Cloudflare create a NEW Origin CA certificate for it, paste it in the site's SSL tab, and only then set Cloudflare SSL to Full (strict), or you get 521/526. Also add the Cloudflare rules for the new zone: steps 1, 3 and 5 of [DEPLOYMENT.md section 11](DEPLOYMENT.md#11-cloudflare-settings).
-3. Cloudflare > R2 > the bucket > Settings: attach `cdn.new-embed-site.com` to the same bucket, and in the CORS policy add `https://new-embed-site.com` (keep the old origin). Verify: one bucket can have several custom domains.
+3. Cloudflare > R2 > the bucket > Settings: attach `cdn.new-embed-site.com` to the same bucket, and in the CORS policy add `https://<new-embed-host>` (keep the old origin). Verify: one bucket can have several custom domains.
 
    ```json
-   [{"AllowedOrigins":["https://embed-site.com","https://new-embed-site.com"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAgeSeconds":86400}]
+   [{"AllowedOrigins":["https://embed-site.com","https://<new-embed-host>"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAgeSeconds":86400}]
    ```
-4. Test on WP Staging: set `HLS_EMBED_HOST` to `https://new-embed-site.com`, purge staging caches, open a post with `[hls_embed_vl id="N"]`, then check the headers. Playback can return 403 until `R2_URL` changes (hotlink rule); the iframe itself must load. Verify: whether embed page assets depend on `APP_URL` (DevTools > Network: any request to `embed-site.com`?).
+4. Test on WP Staging: set `HLS_EMBED_HOST` to `https://<new-embed-host>`, purge staging caches, open a post with `[hls_embed_vl id="N"]`, then check the headers. Playback can return 403 until `R2_URL` changes (hotlink rule); the iframe itself must load. Verify: whether embed page assets depend on `APP_URL` (DevTools > Network: any request to `embed-site.com`?).
 
    ```bash
-   curl -sI https://new-embed-site.com/embed/ID
+   curl -sI https://<new-embed-host>/embed/ID
    ```
 5. The `.env` values to switch are listed in Respond step 2.
 
@@ -54,7 +54,7 @@ Posts store only the shortcode, so the embed host changes in one place (`HLS_EMB
 2. Edit the dashboard `.env` (aaPanel > Files, or SSH `nano`) and set these lines. `REVERB_PORT` and `REVERB_SCHEME` stay the same. `R2_URL` changes here too, because the cdn goes down with the embed domain.
 
    ```env
-   APP_URL=https://new-embed-site.com
+   APP_URL=https://<new-embed-host>
    REVERB_HOST=new-embed-site.com
    REVERB_ALLOWED_ORIGINS=new-embed-site.com
    R2_URL=https://cdn.new-embed-site.com
@@ -69,12 +69,12 @@ Posts store only the shortcode, so the embed host changes in one place (`HLS_EMB
    systemctl restart hls-r2-studio-reverb
    systemctl restart hls-r2-studio-scheduler
    ```
-4. WPCode snippet "HLS Embed shortcode" on the WordPress site: change `HLS_EMBED_HOST` to `https://new-embed-site.com`, save, keep it Active.
+4. WPCode snippet "HLS Embed shortcode" on the WordPress site: change `HLS_EMBED_HOST` to `https://<new-embed-host>`, save, keep it Active.
 5. Purge ALL page caches (caching plugin and Cloudflare).
-6. Verify (expect 200). Then open a post with a video from a network in Vietnam: the page source shows an iframe from `https://new-embed-site.com/embed/`.
+6. Verify (expect 200). Then open a post with a video from a network in Vietnam: the page source shows an iframe from `https://<new-embed-host>/embed/`.
 
    ```bash
-   curl -s -o /dev/null -w "%{http_code}\n" https://new-embed-site.com/up
+   curl -s -o /dev/null -w "%{http_code}\n" https://<new-embed-host>/up
    ```
 
 ## Custom domain (R2): `cdn.embed-site.com` to `cdn.new-embed-site.com`
