@@ -20,3 +20,14 @@ updates:
         update-types:
           - minor
           - patch
+    ignore:
+      # TypeScript 7 fails `npm ci` (ERESOLVE): typescript-eslint's peer range does not allow it.
+      # Revisit once typescript-eslint supports TypeScript 7.
+      - dependency-name: typescript
+        update-types:
+          - version-update:semver-major
+      # @electron/asar 4 is a breaking major; scripts/verify-dist.mjs uses the v3 API.
+      # Revisit after migrating verify-dist.mjs to the v4 API.
+      - dependency-name: "@electron/asar"
+        update-types:
+          - version-update:semver-major
