@@ -19,13 +19,20 @@ class VideoController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
-        $validated = $request->validate($this->rules($request));
+        // Idempotency first: a retry of an already-registered video must not fail on unrelated field differences.
+        $publicId = $request->input('public_id');
 
-        $existing = Video::where('public_id', $validated['public_id'])->first();
+        if (is_string($publicId) && preg_match('/^[a-z0-9]{12}$/D', $publicId) === 1) {
+            $existing = Video::where('public_id', $publicId)->first();
 
-        if ($existing) {
-            return $this->existingResponse($existing, $validated['disk_prefix']);
+            if ($existing) {
+                $diskPrefix = $request->input('disk_prefix');
+
+                return $this->existingResponse($existing, is_string($diskPrefix) ? $diskPrefix : null);
+            }
         }
+
+        $validated = $request->validate($this->rules($request));
 
         try {
             $playlistExists = Setting::current()->r2Disk()->exists($validated['playlist_path']);
@@ -77,9 +84,9 @@ class VideoController extends Controller
         return response()->json($this->payload($video), 201);
     }
 
-    private function existingResponse(Video $video, string $diskPrefix): JsonResponse
+    private function existingResponse(Video $video, ?string $diskPrefix): JsonResponse
     {
-        if ($video->disk_prefix !== $diskPrefix) {
+        if ($diskPrefix === null || $video->disk_prefix !== $diskPrefix) {
             return response()->json(['error' => 'public_id_conflict'], 409);
         }
 
@@ -123,13 +130,13 @@ class VideoController extends Controller
             'title' => ['required', 'string', 'max:255'],
             'original_filename' => ['required', 'string', 'max:255'],
             'original_size_bytes' => ['required', 'integer', 'min:1'],
-            'disk_prefix' => ['required', 'string', function (string $attribute, mixed $value, \Closure $fail) use ($prefix) {
+            'disk_prefix' => ['required', 'string', 'max:255', function (string $attribute, mixed $value, \Closure $fail) use ($prefix) {
                 if ($prefix === null || $value !== $prefix) {
                     $fail('The disk prefix is invalid.');
                 }
             }],
-            'playlist_path' => ['required', 'string', $mustEqual($prefix === null ? null : $prefix.'playlist.m3u8')],
-            'thumbnail_path' => ['nullable', 'string', $mustEqual($prefix === null ? null : $prefix.'thumbnail.jpg')],
+            'playlist_path' => ['required', 'string', 'max:255', $mustEqual($prefix === null ? null : $prefix.'playlist.m3u8')],
+            'thumbnail_path' => ['nullable', 'string', 'max:255', $mustEqual($prefix === null ? null : $prefix.'thumbnail.jpg')],
             'storyboards' => ['nullable', 'array', function (string $attribute, mixed $value, \Closure $fail) use ($prefix) {
                 foreach ((array) $value as $key => $entry) {
                     $expected = $prefix === null ? null : $prefix.'storyboard_'.$key.'.jpg';
@@ -138,6 +145,8 @@ class VideoController extends Controller
                         || ! is_array($entry)
                         || array_keys($entry) !== ['path']
                         || $expected === null
+                        || ! is_string($entry['path'])
+                        || strlen($entry['path']) > 255
                         || $entry['path'] !== $expected) {
                         $fail('The storyboards are invalid.');
 

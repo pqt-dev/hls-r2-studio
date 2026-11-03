@@ -297,6 +297,162 @@ class AppApiVideoRegisterTest extends TestCase
         $this->register($this->payload(['storyboards' => $storyboards]))->assertCreated();
     }
 
+    private function longPrefix(int $length): string
+    {
+        $head = '2026/11/03/';
+        $tail = '-'.self::PUBLIC_ID.'/';
+        $prefix = $head.str_repeat('a', $length - strlen($head) - strlen($tail)).$tail;
+        $this->assertSame($length, strlen($prefix));
+
+        return $prefix;
+    }
+
+    public function test_prefix_over_255_chars_is_a_validation_error(): void
+    {
+        $this->fakeR2();
+        $prefix = $this->longPrefix(256);
+
+        $response = $this->register($this->payload([
+            'disk_prefix' => $prefix,
+            'playlist_path' => $prefix.'playlist.m3u8',
+            'thumbnail_path' => null,
+            'storyboards' => null,
+        ]));
+
+        $response->assertStatus(422)->assertJsonValidationErrors('disk_prefix');
+        $this->assertSame(0, Video::count());
+    }
+
+    public function test_paths_at_the_255_char_boundary_are_accepted(): void
+    {
+        // 237 + len('storyboard_3x3.jpg') = 255 characters.
+        $prefix = $this->longPrefix(237);
+        $fake = $this->fakeR2(withPlaylist: false);
+        $fake->put($prefix.'playlist.m3u8', '#EXTM3U');
+
+        $this->register($this->payload([
+            'disk_prefix' => $prefix,
+            'playlist_path' => $prefix.'playlist.m3u8',
+            'thumbnail_path' => $prefix.'thumbnail.jpg',
+            'storyboards' => ['3x3' => ['path' => $prefix.'storyboard_3x3.jpg']],
+        ]))->assertCreated();
+
+        $this->assertSame($prefix, Video::firstOrFail()->disk_prefix);
+        $this->assertSame(255, strlen(Video::first()->storyboards['3x3']['path']));
+    }
+
+    public function test_storyboard_path_over_255_chars_is_a_validation_error(): void
+    {
+        $prefix = $this->longPrefix(238);
+        $this->fakeR2();
+
+        $this->register($this->payload([
+            'disk_prefix' => $prefix,
+            'playlist_path' => $prefix.'playlist.m3u8',
+            'thumbnail_path' => null,
+            'storyboards' => ['3x3' => ['path' => $prefix.'storyboard_3x3.jpg']],
+        ]))->assertStatus(422)->assertJsonValidationErrors('storyboards');
+
+        $this->assertSame(0, Video::count());
+    }
+
+    public function test_playlist_path_over_255_chars_is_a_validation_error(): void
+    {
+        $prefix = $this->longPrefix(250);
+        $this->fakeR2();
+
+        $this->register($this->payload([
+            'disk_prefix' => $prefix,
+            'playlist_path' => $prefix.'playlist.m3u8',
+            'thumbnail_path' => null,
+            'storyboards' => null,
+        ]))->assertStatus(422)->assertJsonValidationErrors('playlist_path');
+    }
+
+    private function existingVideo(): Video
+    {
+        return Video::create([
+            'public_id' => self::PUBLIC_ID, 'title' => 'x', 'original_filename' => 'x.mp4', 'status' => 'ready',
+            'disk_prefix' => self::PREFIX, 'playlist_path' => self::PREFIX.'playlist.m3u8',
+        ]);
+    }
+
+    public function test_retry_of_an_existing_video_skips_the_remaining_validation(): void
+    {
+        $video = $this->existingVideo();
+        Storage::partialMock()->shouldReceive('build')->never();
+
+        $response = $this->register($this->payload([
+            'title' => '   ',
+            'original_size_bytes' => 'bad',
+            'playlist_path' => 'wrong',
+            'storyboards' => 'x',
+        ]));
+
+        $response->assertOk()->assertExactJson([
+            'id' => $video->id,
+            'public_id' => self::PUBLIC_ID,
+            'embed_url' => url('/embed/'.self::PUBLIC_ID),
+        ]);
+        $this->assertSame(1, Video::count());
+    }
+
+    public function test_retry_of_an_existing_video_with_another_prefix_conflicts_without_leaks(): void
+    {
+        $this->existingVideo();
+
+        $response = $this->register($this->payload(['disk_prefix' => '2026/11/04/other-'.self::PUBLIC_ID.'/', 'title' => '']));
+
+        $response->assertStatus(409)->assertExactJson(['error' => 'public_id_conflict']);
+        $this->assertNoLeak($response);
+    }
+
+    public function test_retry_of_an_existing_video_without_a_prefix_conflicts(): void
+    {
+        $this->existingVideo();
+
+        foreach ([null, ['x'], 123] as $value) {
+            $payload = $this->payload(['disk_prefix' => $value]);
+            if ($value === null) {
+                unset($payload['disk_prefix']);
+            }
+
+            $response = $this->register($payload);
+
+            $response->assertStatus(409)->assertExactJson(['error' => 'public_id_conflict']);
+            $this->assertNoLeak($response);
+        }
+    }
+
+    public function test_malformed_public_id_is_validated_and_not_looked_up(): void
+    {
+        $this->existingVideo();
+
+        $response = $this->register($this->payload(['public_id' => self::PUBLIC_ID.'x']));
+
+        $response->assertStatus(422)->assertJsonValidationErrors('public_id');
+        $this->assertNoLeak($response);
+    }
+
+    public function test_new_public_id_with_invalid_fields_is_a_validation_error(): void
+    {
+        $this->fakeR2();
+
+        $response = $this->register($this->payload(['title' => '   ']));
+
+        $response->assertStatus(422)->assertJsonValidationErrors('title');
+        $this->assertNoLeak($response);
+        $this->assertSame(0, Video::count());
+    }
+
+    private function assertNoLeak(TestResponse $response): void
+    {
+        $content = $response->getContent();
+        foreach (['exception', 'trace', 'Exception', 'SQLSTATE', 'vendor/', 'file'] as $needle) {
+            $this->assertStringNotContainsString($needle, $content);
+        }
+    }
+
     public function test_validation_runs_before_any_r2_call(): void
     {
         Storage::partialMock()->shouldReceive('build')->never();
