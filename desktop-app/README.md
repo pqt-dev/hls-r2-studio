@@ -7,7 +7,7 @@ fully separate Node project (own `package.json`, own lockfile). See
 
 ## Prerequisites
 
-- Node.js LTS (>= 22.12) and npm
+- Node.js 24 LTS (what CI uses; 22.12 or newer 22.x also satisfies the toolchain `engines`) and npm
 - No ffmpeg needed for development of pure logic; the real binaries are bundled at packaging time
 
 ## Commands
@@ -189,8 +189,10 @@ final states (removable): done, failed, cancelled, interrupted
 ```
 
 Notes: a cancelled register retry returns to `register_failed`/`needs_sign_in` (files stay on R2).
-Retry of a job interrupted or failed while uploading removes the old R2 prefix first (best effort);
-it never deletes files of a job that may already be registered.
+Retry of a job that failed or was cancelled while uploading removes the old partial R2 prefix first
+(best effort). An interrupted job (app closed while it was running) never has its R2 files deleted
+on retry, because it may already be registered on the site; its prefix is only logged as possibly
+orphaned.
 
 ## Known limitations
 

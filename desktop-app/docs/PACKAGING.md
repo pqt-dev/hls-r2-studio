@@ -172,7 +172,7 @@ On a clean Windows VM without Node.js or ffmpeg:
 1. Check the installer hash against `SHA256SUMS.txt`.
 2. Run the installer: SmartScreen "Run anyway", no admin prompt; Start Menu and Desktop shortcuts exist.
 3. Launch the app; the startup ffmpeg self-check passes.
-4. Sign in with the site URL and a token.
+4. Sign in with the site URL, username and password (the site issues the token).
 5. Process one real video (landscape and ideally portrait); output uploads to R2 and registers on the site.
 6. About shows the ffmpeg version (9.0.2) and the third-party notices.
 7. `resources\bin\ffmpeg.exe`, `resources\bin\ffprobe.exe`, `resources\LICENSES\THIRD-PARTY-NOTICES.txt`
