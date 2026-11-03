@@ -14,12 +14,24 @@ class Setting extends Model
         'transcode_fps',
         'display_timezone',
         'embed_allowed_domains',
+        'r2_access_key_id',
+        'r2_secret_access_key',
+        'r2_bucket',
+        'r2_endpoint',
+        'r2_url',
+    ];
+
+    protected $hidden = [
+        'r2_access_key_id',
+        'r2_secret_access_key',
     ];
 
     protected $casts = [
         'delete_from_r2_on_destroy' => 'boolean',
         'transcode_segment_seconds' => 'integer',
         'transcode_fps' => 'integer',
+        'r2_access_key_id' => 'encrypted',
+        'r2_secret_access_key' => 'encrypted',
     ];
 
     public static function current(): self
@@ -220,11 +232,82 @@ class Setting extends Model
         return [null, $entry];
     }
 
-    public function r2Disk()
+    /**
+     * The R2 values stored in the DB, or null unless all five are present
+     * and decryptable (a changed APP_KEY counts as not configured).
+     *
+     * @return array{key: string, secret: string, bucket: string, endpoint: string, url: string}|null
+     */
+    private function storedR2Config(): ?array
     {
-        $base = config('filesystems.disks.r2');
+        try {
+            $config = [
+                'key' => $this->r2_access_key_id,
+                'secret' => $this->r2_secret_access_key,
+                'bucket' => $this->r2_bucket,
+                'endpoint' => $this->r2_endpoint,
+                'url' => $this->r2_url,
+            ];
+        } catch (\Throwable) {
+            return null;
+        }
 
-        return Storage::build([
+        foreach ($config as $value) {
+            if (! is_string($value) || trim($value) === '') {
+                return null;
+            }
+        }
+
+        return $config;
+    }
+
+    /**
+     * A decrypted R2 credential column, or null when empty or undecryptable.
+     */
+    private function readR2Credential(string $column): ?string
+    {
+        try {
+            $value = $this->{$column};
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return is_string($value) && trim($value) !== '' ? $value : null;
+    }
+
+    /**
+     * Last 4 characters of the stored access key id, null when none is stored.
+     */
+    public function r2AccessKeyLast4(): ?string
+    {
+        $key = $this->readR2Credential('r2_access_key_id');
+
+        return $key === null ? null : mb_substr($key, -4);
+    }
+
+    public function hasR2Secret(): bool
+    {
+        return $this->readR2Credential('r2_secret_access_key') !== null;
+    }
+
+    /**
+     * Whether the DB holds a complete, decryptable R2 config.
+     */
+    public function hasR2Config(): bool
+    {
+        return $this->storedR2Config() !== null;
+    }
+
+    /**
+     * Disk definition for R2: DB values when complete, otherwise the env config.
+     *
+     * @return array<string, mixed>
+     */
+    public function r2DiskConfig(): array
+    {
+        $base = $this->storedR2Config() ?? config('filesystems.disks.r2');
+
+        return [
             'driver' => 's3',
             'key' => $base['key'],
             'secret' => $base['secret'],
@@ -233,6 +316,11 @@ class Setting extends Model
             'endpoint' => $base['endpoint'],
             'url' => $base['url'],
             'use_path_style_endpoint' => true,
-        ]);
+        ];
+    }
+
+    public function r2Disk()
+    {
+        return Storage::build($this->r2DiskConfig());
     }
 }

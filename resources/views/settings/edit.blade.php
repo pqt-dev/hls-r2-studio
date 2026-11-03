@@ -77,6 +77,76 @@
 
         <x-ui.card class="min-w-0 overflow-hidden">
             <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-50 to-orange-100 ring-1 ring-inset ring-orange-200/70 flex items-center justify-center shrink-0">
+                    <x-lucide-database class="w-4 h-4 text-orange-600 stroke-[1.75]" />
+                </div>
+                <h3 class="text-sm font-semibold text-foreground">Storage (R2)</h3>
+            </div>
+            <x-ui.card-content class="not-first:pt-5!">
+                <form method="POST" action="{{ route('settings.r2') }}" class="space-y-5">
+                    @csrf
+                    @method('PUT')
+
+                    @unless ($settings->hasR2Config())
+                        <p class="text-xs text-muted-foreground">The active R2 config still comes from .env. Save the values below to store them in the database instead.</p>
+                    @endunless
+
+                    <div>
+                        <x-ui.label for="r2_access_key_id" class="block mb-2">Access key ID</x-ui.label>
+                        <x-ui.input type="text" name="r2_access_key_id" id="r2_access_key_id" autocomplete="off" />
+                        @if ($settings->r2AccessKeyLast4() !== null)
+                            <p class="mt-1 text-xs text-muted-foreground">Configured (ends with {{ $settings->r2AccessKeyLast4() }}). Leave blank to keep the current key.</p>
+                        @endif
+                        @error('r2_access_key_id')
+                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <x-ui.label for="r2_secret_access_key" class="block mb-2">Secret access key</x-ui.label>
+                        <x-ui.input type="password" name="r2_secret_access_key" id="r2_secret_access_key" autocomplete="new-password" placeholder="{{ $settings->hasR2Secret() ? 'Configured - leave blank to keep the current secret' : '' }}" />
+                        @error('r2_secret_access_key')
+                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <x-ui.label for="r2_bucket" class="block mb-2">Bucket</x-ui.label>
+                        <x-ui.input type="text" name="r2_bucket" id="r2_bucket" value="{{ old('r2_bucket', $settings->r2_bucket) }}" />
+                        @error('r2_bucket')
+                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <x-ui.label for="r2_endpoint" class="block mb-2">Endpoint</x-ui.label>
+                        <x-ui.input type="text" name="r2_endpoint" id="r2_endpoint" placeholder="https://&lt;account-id&gt;.r2.cloudflarestorage.com" value="{{ old('r2_endpoint', $settings->r2_endpoint) }}" />
+                        @error('r2_endpoint')
+                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div>
+                        <x-ui.label for="r2_url" class="block mb-2">Public URL</x-ui.label>
+                        <x-ui.input type="text" name="r2_url" id="r2_url" placeholder="https://cdn.example.com" value="{{ old('r2_url', $settings->r2_url) }}" />
+                        @error('r2_url')
+                            <p class="mt-1 text-xs text-destructive">{{ $message }}</p>
+                        @enderror
+                    </div>
+
+                    <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end gap-2">
+                        <x-ui.button type="submit" form="r2-test-form" variant="outline" class="max-md:w-full">Test connection</x-ui.button>
+                        <x-ui.button type="submit" class="max-md:w-full">Save R2 settings</x-ui.button>
+                    </div>
+                </form>
+                <form method="POST" action="{{ route('settings.r2.test') }}" id="r2-test-form" class="hidden">
+                    @csrf
+                </form>
+            </x-ui.card-content>
+        </x-ui.card>
+
+        <x-ui.card class="min-w-0 overflow-hidden">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
                 <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 ring-1 ring-inset ring-slate-200/70 flex items-center justify-center shrink-0">
                     <x-lucide-film class="w-4 h-4 text-slate-700 stroke-[1.75]" />
                 </div>

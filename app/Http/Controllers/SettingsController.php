@@ -6,6 +6,7 @@ use App\Models\Setting;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Str;
 use Illuminate\View\View;
 
 class SettingsController extends Controller
@@ -25,6 +26,63 @@ class SettingsController extends Controller
         ]);
 
         return back()->with('success', 'Storage options saved.');
+    }
+
+    public function updateR2(Request $request): RedirectResponse
+    {
+        $settings = Setting::current();
+        $hasKey = $settings->r2AccessKeyLast4() !== null;
+        $hasSecret = $settings->hasR2Secret();
+
+        $request->merge(array_map(
+            fn ($value) => is_string($value) ? trim($value) : $value,
+            $request->only(['r2_access_key_id', 'r2_secret_access_key', 'r2_bucket', 'r2_endpoint', 'r2_url']),
+        ));
+
+        $validated = $request->validate([
+            'r2_access_key_id' => [$hasKey ? 'nullable' : 'required', 'string', 'max:255'],
+            'r2_secret_access_key' => [$hasSecret ? 'nullable' : 'required', 'string', 'max:1000'],
+            'r2_bucket' => ['required', 'string', 'max:255'],
+            'r2_endpoint' => ['required', 'url:https', 'max:255'],
+            'r2_url' => ['required', 'url:https', 'max:255'],
+        ]);
+
+        $attributes = [
+            'r2_bucket' => $validated['r2_bucket'],
+            'r2_endpoint' => $validated['r2_endpoint'],
+            'r2_url' => rtrim($validated['r2_url'], '/'),
+        ];
+
+        // Blank credential inputs keep the stored values.
+        foreach (['r2_access_key_id', 'r2_secret_access_key'] as $column) {
+            if (($validated[$column] ?? '') !== '') {
+                $attributes[$column] = $validated[$column];
+            }
+        }
+
+        $settings->update($attributes);
+
+        return back()->with('success', 'R2 settings saved.');
+    }
+
+    public function testR2(): RedirectResponse
+    {
+        $key = '_connection-test/'.Str::random(16).'.txt';
+
+        try {
+            $disk = Setting::current()->r2Disk();
+
+            if ($disk->put($key, 'ok') === false) {
+                throw new \RuntimeException('Write failed.');
+            }
+
+            $disk->delete($key);
+        } catch (\Throwable) {
+            // Details are never surfaced: SDK errors can echo endpoint or credential data.
+            return back()->withErrors(['r2_test' => 'R2 connection test failed. Check the access key, secret, bucket and endpoint.']);
+        }
+
+        return back()->with('success', 'R2 connection test succeeded.');
     }
 
     public function updateTranscode(Request $request): RedirectResponse

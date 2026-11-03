@@ -48,6 +48,8 @@ Route::middleware('auth')->group(function () {
 
     Route::get('/settings', [SettingsController::class, 'edit'])->name('settings.edit');
     Route::put('/settings/storage', [SettingsController::class, 'updateStorage'])->name('settings.storage');
+    Route::put('/settings/r2', [SettingsController::class, 'updateR2'])->name('settings.r2');
+    Route::post('/settings/r2/test', [SettingsController::class, 'testR2'])->name('settings.r2.test')->middleware('throttle:10,1');
     Route::put('/settings/transcode', [SettingsController::class, 'updateTranscode'])->name('settings.transcode');
     Route::put('/settings/display', [SettingsController::class, 'updateDisplay'])->name('settings.display');
     Route::put('/settings/embed', [SettingsController::class, 'updateEmbed'])->name('settings.embed');
