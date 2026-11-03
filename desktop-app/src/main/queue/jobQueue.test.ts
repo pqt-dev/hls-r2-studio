@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { JobRecord } from '../../shared/types';
 import { PipelineError } from '../pipeline/errors';
@@ -504,7 +505,7 @@ describe('retry', () => {
         expect(await h.queue.retry('job-1')).toEqual({ ok: true });
 
         expect(h.deleted).toEqual([{ bucket: 'bucket', prefix }]);
-        expect(h.removed).toEqual(['/tmp/hls/pub000000001']);
+        expect(h.removed).toEqual([join('/tmp/hls', 'pub000000001')]);
         expect(h.runs).toHaveLength(2);
         expect(h.runs[1]?.opts.job.publicId).toBe('pub000000002');
         expect(h.job('job-1')).toMatchObject({
@@ -762,9 +763,9 @@ describe('recovery', () => {
             'd:done',
         ]);
         expect(h.removed.sort()).toEqual([
-            '/tmp/hls/aaaaaaaaaaaa',
-            '/tmp/hls/bbbbbbbbbbbb',
-            '/tmp/hls/cccccccccccc',
+            join('/tmp/hls', 'aaaaaaaaaaaa'),
+            join('/tmp/hls', 'bbbbbbbbbbbb'),
+            join('/tmp/hls', 'cccccccccccc'),
         ]);
         expect(h.job('u')).toMatchObject({
             errorMessage: expect.stringContaining('closed while this job was running'),

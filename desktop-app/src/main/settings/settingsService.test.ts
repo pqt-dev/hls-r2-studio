@@ -1,3 +1,4 @@
+import { normalize } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createMemoryStore } from '../testing/memoryStore';
 import { classifyTmpRoot, createSettingsService } from './settingsService';
@@ -49,9 +50,9 @@ describe('settingsService', () => {
 
         expect(result).toMatchObject({
             ok: true,
-            settings: { tmpRoot: '/data/tmp', maxConcurrent: 2 },
+            settings: { tmpRoot: normalize('/data/tmp'), maxConcurrent: 2 },
         });
-        expect(t.ensureDir).toHaveBeenCalledWith('/data/tmp');
+        expect(t.ensureDir).toHaveBeenCalledWith(normalize('/data/tmp'));
         expect(t.changeSiteUrl).toHaveBeenCalledWith('https://new.example.com');
         expect(t.onChanged).toHaveBeenCalled();
     });
