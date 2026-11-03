@@ -254,5 +254,58 @@
                 </form>
             </x-ui.card-content>
         </x-ui.card>
+
+        <x-ui.card class="min-w-0 overflow-hidden lg:col-span-2">
+            <div class="flex items-center gap-3 px-4 py-3 border-b border-border bg-muted/40">
+                <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-50 to-violet-100 ring-1 ring-inset ring-violet-200/70 flex items-center justify-center shrink-0">
+                    <x-lucide-monitor-smartphone class="w-4 h-4 text-violet-600 stroke-[1.75]" />
+                </div>
+                <h3 class="text-sm font-semibold text-foreground">Desktop app access</h3>
+            </div>
+            <x-ui.card-content class="not-first:pt-5! space-y-5">
+                @if ($appTokens->isEmpty())
+                    <p class="text-sm text-muted-foreground">No desktop app is signed in. Tokens appear here after the app logs in.</p>
+                @else
+                    <div class="overflow-x-auto">
+                        <x-ui.table>
+                            <thead>
+                                <x-ui.table-row>
+                                    <x-ui.table-head>Device</x-ui.table-head>
+                                    <x-ui.table-head>Created</x-ui.table-head>
+                                    <x-ui.table-head>Last used</x-ui.table-head>
+                                    <x-ui.table-head>Expires</x-ui.table-head>
+                                    <x-ui.table-head align="right"><span class="sr-only">Actions</span></x-ui.table-head>
+                                </x-ui.table-row>
+                            </thead>
+                            <tbody>
+                                @foreach ($appTokens as $appToken)
+                                    <x-ui.table-row>
+                                        <x-ui.table-cell class="font-medium text-foreground">{{ $appToken->name }}</x-ui.table-cell>
+                                        <x-ui.table-cell class="text-muted-foreground whitespace-nowrap">{{ $appToken->created_at->toDisplay('j M Y, H:i') }}</x-ui.table-cell>
+                                        <x-ui.table-cell class="text-muted-foreground whitespace-nowrap">{{ $appToken->last_used_at ? $appToken->last_used_at->toDisplay('j M Y, H:i') : 'Never' }}</x-ui.table-cell>
+                                        <x-ui.table-cell class="text-muted-foreground whitespace-nowrap">{{ $appToken->expires_at ? $appToken->expires_at->toDisplay('j M Y, H:i') : 'Never' }}</x-ui.table-cell>
+                                        <x-ui.table-cell class="text-right">
+                                            <form method="POST" action="{{ route('settings.app-tokens.destroy', $appToken->id) }}">
+                                                @csrf
+                                                @method('DELETE')
+                                                <x-ui.button type="submit" size="sm" variant="destructive-outline">Revoke</x-ui.button>
+                                            </form>
+                                        </x-ui.table-cell>
+                                    </x-ui.table-row>
+                                @endforeach
+                            </tbody>
+                        </x-ui.table>
+                    </div>
+
+                    <div class="-mx-6 -mb-6 border-t border-border bg-muted/40 px-6 py-3 flex justify-end">
+                        <form method="POST" action="{{ route('settings.app-tokens.destroy-all') }}" class="max-md:w-full">
+                            @csrf
+                            @method('DELETE')
+                            <x-ui.button type="submit" variant="destructive-outline" class="max-md:w-full">Revoke all</x-ui.button>
+                        </form>
+                    </div>
+                @endif
+            </x-ui.card-content>
+        </x-ui.card>
     </div>
 @endsection

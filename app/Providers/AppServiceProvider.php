@@ -55,6 +55,21 @@ class AppServiceProvider extends ServiceProvider
             return Limit::perMinutes(10, 20)->by(sha1($pageUrl));
         });
 
+        // Desktop app login: 5 attempts per minute per IP + username (hashed, so the key length is bounded).
+        RateLimiter::for('app-login', function (Request $request) {
+            $username = $request->input('username');
+            $username = is_string($username) ? mb_strtolower($username) : '';
+
+            return Limit::perMinute(5)->by('app-login:'.$request->ip().'|'.sha1($username));
+        });
+
+        // Authenticated desktop app routes: 60 requests per minute per token.
+        RateLimiter::for('app-api', function (Request $request) {
+            $tokenId = $request->user()?->currentAccessToken()?->id;
+
+            return Limit::perMinute(60)->by('app-api:'.($tokenId ?? $request->user()?->getAuthIdentifier() ?? $request->ip()));
+        });
+
         // Each upload limiter has its own key, so chunk requests never consume the init or activity-log budget.
         foreach (['upload-init' => 'init', 'upload-chunk' => 'chunk', 'activity-log' => 'activity_log'] as $name => $configKey) {
             RateLimiter::for($name, function (Request $request) use ($name, $configKey) {

@@ -54,6 +54,8 @@ Route::middleware('auth')->group(function () {
     Route::put('/settings/display', [SettingsController::class, 'updateDisplay'])->name('settings.display');
     Route::put('/settings/embed', [SettingsController::class, 'updateEmbed'])->name('settings.embed');
     Route::put('/settings/password', [SettingsController::class, 'updatePassword'])->name('settings.password');
+    Route::delete('/settings/app-tokens', [SettingsController::class, 'destroyAppTokens'])->name('settings.app-tokens.destroy-all');
+    Route::delete('/settings/app-tokens/{token}', [SettingsController::class, 'destroyAppToken'])->where('token', '[0-9]+')->name('settings.app-tokens.destroy');
 
     Route::get('/reports', [ReportController::class, 'index'])->name('reports.index');
     Route::get('/reports/{report}/submissions', [ReportController::class, 'submissions'])->name('reports.submissions');

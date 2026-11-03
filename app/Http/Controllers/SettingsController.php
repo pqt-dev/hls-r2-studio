@@ -16,7 +16,9 @@ class SettingsController extends Controller
         $settings = Setting::current();
         $user = auth()->user();
 
-        return view('settings.edit', compact('settings', 'user'));
+        $appTokens = $user->tokens()->latest('id')->get();
+
+        return view('settings.edit', compact('settings', 'user', 'appTokens'));
     }
 
     public function updateStorage(Request $request): RedirectResponse
@@ -153,6 +155,24 @@ class SettingsController extends Controller
 
         Auth::logoutOtherDevices($validated['password']);
 
+        // Desktop app tokens must not survive a password change.
+        auth()->user()->tokens()->delete();
+
         return back()->with('success', 'Password changed.');
+    }
+
+    public function destroyAppToken(Request $request, string $token): RedirectResponse
+    {
+        // Scoped to the current user's own tokens: anyone else's id answers 404.
+        $request->user()->tokens()->findOrFail($token)->delete();
+
+        return back()->with('success', 'Token revoked.');
+    }
+
+    public function destroyAppTokens(Request $request): RedirectResponse
+    {
+        $request->user()->tokens()->delete();
+
+        return back()->with('success', 'All desktop app tokens revoked.');
     }
 }
