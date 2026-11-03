@@ -1,0 +1,52 @@
+appId: com.hlsr2studio.desktop
+productName: HLS R2 Studio
+directories:
+  output: release
+  buildResources: build
+# Only the electron-vite build output and package.json are packaged (inside app.asar).
+files:
+  - out/main/**
+  - out/preload/**
+  - out/renderer/**
+  - package.json
+asar: true
+# Hardening fuses flipped on the packaged executable (see docs/PACKAGING.md).
+# grantFileProtocolExtraPrivileges is intentionally left at Electron's default: the renderer is
+# loaded with loadFile (file://) and disabling it risks a blank window.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
+  enableCookieEncryption: true
+# ffmpeg/ffprobe and the license files live OUTSIDE app.asar (an .exe cannot be spawned from an
+# asar archive). They are produced by `npm run fetch:ffmpeg` and `npm run gen:notices`
+# (run automatically by `npm run predist:win`). The app resolves them from process.resourcesPath.
+extraResources:
+  - from: resources/bin
+    to: bin
+    filter:
+      - ffmpeg.exe
+      - ffprobe.exe
+      - FFMPEG-VERSION.txt
+  - from: LICENSES
+    to: LICENSES
+    filter:
+      - '**/*'
+      - '!.gitkeep'
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  # The installer is intentionally unsigned (see docs/PACKAGING.md).
+nsis:
+  oneClick: true
+  perMachine: false
+  allowElevation: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  artifactName: HLS-R2-Studio-Setup-${version}.exe
+# No auto-update: do not publish anywhere.
+publish: null

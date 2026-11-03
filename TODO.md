@@ -25,3 +25,7 @@ Items below are deferred and are not part of the current milestone (no sync of q
 ## Desktop app: auto-update
 
 - [ ] Add auto-update for the Windows app (e.g. electron-updater with a generic provider); needs a place to host update files (GitHub Releases or an R2 public bucket). Until then, users reinstall manually (the installer upgrades in place and keeps settings).
+
+## Desktop app: GPL source offer for external distribution
+
+- [ ] Before distributing the installer outside the owning organization: attach the complete corresponding source to each GitHub Release (FFmpeg source AND the source of the statically linked GPL/LGPL libraries such as libx264, libx265, libvpx, libmp3lame, plus the build scripts of the gyan.dev essentials build), or provide a working contact address and keep the sources available for 3 years. See `desktop-app/docs/PACKAGING.md`.
