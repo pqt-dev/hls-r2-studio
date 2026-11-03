@@ -25,3 +25,9 @@ _ide_helper.php
 Homestead.json
 Homestead.yaml
 Thumbs.db
+/desktop-app/node_modules
+/desktop-app/out
+/desktop-app/dist
+/desktop-app/release
+/desktop-app/resources/bin/*.exe
+/desktop-app/*.log

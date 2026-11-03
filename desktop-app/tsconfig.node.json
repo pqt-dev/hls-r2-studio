@@ -1,0 +1,29 @@
+{
+    "compilerOptions": {
+        "composite": true,
+        "target": "ES2023",
+        "lib": ["ES2023"],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "types": ["node"],
+        "strict": true,
+        "noUncheckedIndexedAccess": true,
+        "noImplicitOverride": true,
+        "noFallthroughCasesInSwitch": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "isolatedModules": true,
+        "verbatimModuleSyntax": true,
+        "forceConsistentCasingInFileNames": true,
+        "noEmit": true
+    },
+    "include": [
+        "electron.vite.config.ts",
+        "vitest.config.mts",
+        "scripts/*.ts",
+        "src/main/**/*",
+        "src/preload/**/*",
+        "src/renderer/*.test.ts",
+        "src/shared/**/*"
+    ]
+}

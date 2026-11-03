@@ -1,0 +1,350 @@
+[
+    {
+        "input": "Tiếng Việt có dấu",
+        "expected": "tieng-viet-co-dau"
+    },
+    {
+        "input": "Hướng dẫn sử dụng phần mềm",
+        "expected": "huong-dan-su-dung-phan-mem"
+    },
+    {
+        "input": "Đường đi đến trường",
+        "expected": "duong-di-den-truong"
+    },
+    {
+        "input": "ĐƯỜNG ĐI ĐẾN TRƯỜNG",
+        "expected": "duong-di-den-truong"
+    },
+    {
+        "input": "đồng hồ đeo tay",
+        "expected": "dong-ho-deo-tay"
+    },
+    {
+        "input": "Nguyễn Văn Ánh - Bài giảng số 1",
+        "expected": "nguyen-van-anh-bai-giang-so-1"
+    },
+    {
+        "input": "Phở bò Hà Nội ngon tuyệt",
+        "expected": "pho-bo-ha-noi-ngon-tuyet"
+    },
+    {
+        "input": "quả bưởi ơi, quả bưởi",
+        "expected": "qua-buoi-oi-qua-buoi"
+    },
+    {
+        "input": "ẮẰẲẴẶ ắằẳẵặ ẤẦẨẪẬ ấầẩẫậ",
+        "expected": "aaaaa-aaaaa-aaaaa-aaaaa"
+    },
+    {
+        "input": "ẸẺẼẾỀỂỄỆ ẹẻẽếềểễệ",
+        "expected": "eeeeeeee-eeeeeeee"
+    },
+    {
+        "input": "ỈĨỊ ỉĩị ỌỎỐỒỔỖỘỚỜỞỠỢ ọỏốồổỗộớờởỡợ",
+        "expected": "iii-iii-oooooooooooo-oooooooooooo"
+    },
+    {
+        "input": "ỤỦỨỪỬỮỰ ụủứừửữự ỲỴỶỸ ỳỵỷỹ",
+        "expected": "uuuuuuu-uuuuuuu-yyyy-yyyy"
+    },
+    {
+        "input": "Video quay ở Đà Lạt 2024",
+        "expected": "video-quay-o-da-lat-2024"
+    },
+    {
+        "input": "MY VIDEO FILE",
+        "expected": "my-video-file"
+    },
+    {
+        "input": "CamelCaseFileName",
+        "expected": "camelcasefilename"
+    },
+    {
+        "input": "Mixed CASE and lower",
+        "expected": "mixed-case-and-lower"
+    },
+    {
+        "input": "Party time 🎉🎉 2024",
+        "expected": "party-time-2024"
+    },
+    {
+        "input": "🔥🔥🔥",
+        "expected": ""
+    },
+    {
+        "input": "Holiday ☀️ beach 🏖️ day",
+        "expected": "holiday-beach-day"
+    },
+    {
+        "input": "smile 😀 and cry 😭",
+        "expected": "smile-and-cry"
+    },
+    {
+        "input": "many    spaces   here",
+        "expected": "many-spaces-here"
+    },
+    {
+        "input": "tab\tseparated\tname",
+        "expected": "tab-separated-name"
+    },
+    {
+        "input": "  leading and trailing  ",
+        "expected": "leading-and-trailing"
+    },
+    {
+        "input": "new\nline name",
+        "expected": "new-line-name"
+    },
+    {
+        "input": "!!!???",
+        "expected": ""
+    },
+    {
+        "input": "###***$$$",
+        "expected": ""
+    },
+    {
+        "input": "---",
+        "expected": ""
+    },
+    {
+        "input": "___",
+        "expected": ""
+    },
+    {
+        "input": "...",
+        "expected": ""
+    },
+    {
+        "input": "   ",
+        "expected": ""
+    },
+    {
+        "input": "",
+        "expected": ""
+    },
+    {
+        "input": "very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name very long file name ",
+        "expected": "very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name-very-long-file-name"
+    },
+    {
+        "input": "ĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐĐ",
+        "expected": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+    },
+    {
+        "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expected": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    {
+        "input": "a.b.c.d.e",
+        "expected": "abcde"
+    },
+    {
+        "input": "many...dots...here",
+        "expected": "manydotshere"
+    },
+    {
+        "input": "version 1.2.3 final",
+        "expected": "version-123-final"
+    },
+    {
+        "input": "snake_case_name",
+        "expected": "snake-case-name"
+    },
+    {
+        "input": "under__score__double",
+        "expected": "under-score-double"
+    },
+    {
+        "input": "dash-ed-name",
+        "expected": "dash-ed-name"
+    },
+    {
+        "input": "mix_of-dash_and underscore",
+        "expected": "mix-of-dash-and-underscore"
+    },
+    {
+        "input": "_leading_and_trailing_",
+        "expected": "leading-and-trailing"
+    },
+    {
+        "input": "--leading--and--trailing--",
+        "expected": "leading-and-trailing"
+    },
+    {
+        "input": "user@example",
+        "expected": "user-at-example"
+    },
+    {
+        "input": "meet @ 5pm",
+        "expected": "meet-at-5pm"
+    },
+    {
+        "input": "@@",
+        "expected": "at-at"
+    },
+    {
+        "input": "a@b@c",
+        "expected": "a-at-b-at-c"
+    },
+    {
+        "input": "20240131",
+        "expected": "20240131"
+    },
+    {
+        "input": "1234567890",
+        "expected": "1234567890"
+    },
+    {
+        "input": "007",
+        "expected": "007"
+    },
+    {
+        "input": "IMG 0001",
+        "expected": "img-0001"
+    },
+    {
+        "input": "café résumé",
+        "expected": "cafe-resume"
+    },
+    {
+        "input": "Über Straße",
+        "expected": "uber-strasse"
+    },
+    {
+        "input": "niño año",
+        "expected": "nino-ano"
+    },
+    {
+        "input": "Æsop og Ølen",
+        "expected": "aesop-og-olen"
+    },
+    {
+        "input": "Crème brûlée à la façon",
+        "expected": "creme-brulee-a-la-facon"
+    },
+    {
+        "input": "Łódź Wrocław Żółć",
+        "expected": "lodz-wroclaw-zolc"
+    },
+    {
+        "input": "Åse Öre Ääkkönen",
+        "expected": "ase-ore-aakkonen"
+    },
+    {
+        "input": "Ĳsselmeer œuvre Œuvre",
+        "expected": "ijsselmeer-oeuvre-oeuvre"
+    },
+    {
+        "input": "ß ẞ þ Þ ð Ð",
+        "expected": "ss-ss-th-th-d-d"
+    },
+    {
+        "input": "ĂÂÊÔƠƯ ăâêôơư",
+        "expected": "aaeoou-aaeoou"
+    },
+    {
+        "input": "Škoda Žižek Čapek",
+        "expected": "skoda-zizek-capek"
+    },
+    {
+        "input": "Video (1)",
+        "expected": "video-1"
+    },
+    {
+        "input": "Clip [HD] {final}",
+        "expected": "clip-hd-final"
+    },
+    {
+        "input": "Tom & Jerry",
+        "expected": "tom-jerry"
+    },
+    {
+        "input": "Tom&Jerry",
+        "expected": "tomjerry"
+    },
+    {
+        "input": "Report (copy) [2] & more",
+        "expected": "report-copy-2-more"
+    },
+    {
+        "input": "It's a 'quoted' \"name\"",
+        "expected": "its-a-quoted-name"
+    },
+    {
+        "input": "file #1 - 50% off!",
+        "expected": "file-1-50-off"
+    },
+    {
+        "input": "a+b=c",
+        "expected": "abc"
+    },
+    {
+        "input": "100% (best) [take 2] & final",
+        "expected": "100-best-take-2-final"
+    },
+    {
+        "input": "C - Users - Video",
+        "expected": "c-users-video"
+    },
+    {
+        "input": "a/b",
+        "expected": "ab"
+    },
+    {
+        "input": "a\\b",
+        "expected": "ab"
+    },
+    {
+        "input": "what? why! how:",
+        "expected": "what-why-how"
+    },
+    {
+        "input": "a,b;c",
+        "expected": "abc"
+    },
+    {
+        "input": "~tilde~ ^caret^ `tick`",
+        "expected": "tilde-caret-tick"
+    },
+    {
+        "input": "(parentheses)",
+        "expected": "parentheses"
+    },
+    {
+        "input": "trailing dash -",
+        "expected": "trailing-dash"
+    },
+    {
+        "input": "- leading dash",
+        "expected": "leading-dash"
+    },
+    {
+        "input": "™ © ® trade",
+        "expected": "trade"
+    },
+    {
+        "input": "€100 £50 ¥10",
+        "expected": "eur100-ps50-yen10"
+    },
+    {
+        "input": "½ cup ¼ liter",
+        "expected": "cup-liter"
+    },
+    {
+        "input": "5° × 3 ÷ 2",
+        "expected": "5-3-2"
+    },
+    {
+        "input": "x² y³ µm",
+        "expected": "x2-y3-m"
+    },
+    {
+        "input": "«quoted» „low“ “curly”",
+        "expected": "quoted-low-curly"
+    },
+    {
+        "input": "a – b — c … d",
+        "expected": "a-b-c-d"
+    }
+]
