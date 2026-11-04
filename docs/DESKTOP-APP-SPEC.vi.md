@@ -13,18 +13,18 @@ Tách quy trình băm video khỏi site:
 
 ## 1. Các quyết định đã chốt
 
-| # | Quyết định |
-|---|---|
-| 1 | Một tài khoản admin duy nhất. `Setting` giữ dạng singleton (id=1), không thêm `user_id` ở milestone này. |
-| 2 | Site và app đều phải đăng nhập. App đăng nhập bằng username/password của tài khoản site và nhận token Sanctum (thu hồi được). |
-| 3 | Config R2 (access key id, secret, bucket, endpoint, public url) lưu trong DB (`settings`), `access_key_id` và `secret_access_key` mã hoá bằng cast `encrypted`. App lấy config qua API sau khi đăng nhập. |
-| 4 | R2 secret trong app CHỈ giữ trong bộ nhớ (không ghi xuống đĩa, không gửi sang renderer). Token đăng nhập mã hoá bằng Electron `safeStorage` (DPAPI trên Windows); bỏ chọn "Stay signed in" hoặc không có `safeStorage` thì token chỉ nằm trong RAM của phiên. |
-| 5 | Video mới có `public_id` ngẫu nhiên 12 ký tự `[a-z0-9]`; video cũ backfill `public_id = (string) id`. Embed URL: `/embed/{public_id}`. |
-| 6 | Prefix R2: `{Y}/{m}/{d}/{slug}-{public_id}/` (giữ rule cũ, chỉ thay `{id}` bằng `{public_id}`). Ngày theo UTC (khớp `config('app.timezone')=UTC` hiện tại). |
-| 7 | App tự sinh `public_id`, không gọi API trước khi upload. Chỉ MỘT lần gọi cuối (`register`) sau khi upload R2 thành công; site chỉ lưu video ở trạng thái `ready` → không có row treo. |
-| 8 | Công nghệ app: Electron + TypeScript, đóng gói bằng electron-builder (NSIS). |
-| 9 | Queue, progress, trạng thái job chỉ lưu local ở app. |
-| 10 | Snippet WordPress (WPCode) phải đổi regex id thành `^[a-z0-9]{1,32}$` (id số cũ vẫn khớp). |
+| #   | Quyết định                                                                                                                                                                                                                                                    |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Một tài khoản admin duy nhất. `Setting` giữ dạng singleton (id=1), không thêm `user_id` ở milestone này.                                                                                                                                                      |
+| 2   | Site và app đều phải đăng nhập. App đăng nhập bằng username/password của tài khoản site và nhận token Sanctum (thu hồi được).                                                                                                                                 |
+| 3   | Config R2 (access key id, secret, bucket, endpoint, public url) lưu trong DB (`settings`), `access_key_id` và `secret_access_key` mã hoá bằng cast `encrypted`. App lấy config qua API sau khi đăng nhập.                                                     |
+| 4   | R2 secret trong app CHỈ giữ trong bộ nhớ (không ghi xuống đĩa, không gửi sang renderer). Token đăng nhập mã hoá bằng Electron `safeStorage` (DPAPI trên Windows); bỏ chọn "Stay signed in" hoặc không có `safeStorage` thì token chỉ nằm trong RAM của phiên. |
+| 5   | Video mới có `public_id` ngẫu nhiên 12 ký tự `[a-z0-9]`; video cũ backfill `public_id = (string) id`. Embed URL: `/embed/{public_id}`.                                                                                                                        |
+| 6   | Prefix R2: `{Y}/{m}/{d}/{slug}-{public_id}/` (giữ rule cũ, chỉ thay `{id}` bằng `{public_id}`). Ngày theo UTC (khớp `config('app.timezone')=UTC` hiện tại).                                                                                                   |
+| 7   | App tự sinh `public_id`, không gọi API trước khi upload. Chỉ MỘT lần gọi cuối (`register`) sau khi upload R2 thành công; site chỉ lưu video ở trạng thái `ready` → không có row treo.                                                                         |
+| 8   | Công nghệ app: Electron + TypeScript, đóng gói bằng electron-builder (NSIS).                                                                                                                                                                                  |
+| 9   | Queue, progress, trạng thái job chỉ lưu local ở app.                                                                                                                                                                                                          |
+| 10  | Snippet WordPress (WPCode) phải đổi regex id thành `^[a-z0-9]{1,32}$` (id số cũ vẫn khớp).                                                                                                                                                                    |
 
 ## 2. Kiến trúc và luồng
 
@@ -83,6 +83,7 @@ Migration mới (không sửa migration cũ):
 Tất cả response JSON; request JSON; mọi response kèm `Cache-Control: no-store` (mục 3.4). Mã lỗi nghiệp vụ nằm ở field `error` của body.
 
 **POST /api/app/login**
+
 - Body: `username` (required string), `password` (required string), `device_name` (required string, max 100; app gửi hostname máy, cắt còn 100 ký tự, rỗng thì `Desktop app`).
 - 200: `{ "token": "<plain token>", "user": { "username": "..." } }`. Token tạo với tên = `device_name`.
 - 422: thiếu field hoặc sai thông tin (lỗi validation chuẩn của Laravel, message chung). 429: vượt rate limit (kèm `Retry-After`).
@@ -90,37 +91,47 @@ Tất cả response JSON; request JSON; mọi response kèm `Cache-Control: no-s
 **POST /api/app/logout** (auth) → 204, thu hồi token hiện tại.
 
 **GET /api/app/config** (auth) → 200:
+
 ```json
 {
-  "r2": { "access_key_id": "...", "secret_access_key": "...", "bucket": "...", "endpoint": "https://<acct>.r2.cloudflarestorage.com", "url": "https://cdn.example.com" },
-  "transcode": { "resolution": "720", "segment_seconds": 6, "fps": null }
+    "r2": {
+        "access_key_id": "...",
+        "secret_access_key": "...",
+        "bucket": "...",
+        "endpoint": "https://<acct>.r2.cloudflarestorage.com",
+        "url": "https://cdn.example.com"
+    },
+    "transcode": { "resolution": "720", "segment_seconds": 6, "fps": null }
 }
 ```
+
 - `resolution` là chuỗi, `segment_seconds` int, `fps` int hoặc null.
 - Nếu một trong 5 giá trị R2 trống: 409 `{ "error": "r2_not_configured" }` (app coi đây là trạng thái bình thường: hiện banner, job ở Waiting).
 - Cũng dùng để app kiểm tra token còn hiệu lực khi khởi động. Phía app MUST từ chối config có `endpoint`/`url` không phải https (http chỉ cho localhost ở bản dev) hoặc chứa credentials trong URL, vì R2 credentials được gửi tới `endpoint`.
 
 **POST /api/app/videos** (auth) — đăng ký video đã upload xong:
+
 - Body (validate chặt):
-  - `public_id`: `required|regex:/^[a-z0-9]{12}$/D`
-  - `title`: `required|string|max:255`
-  - `original_filename`: `required|string|max:255`; `original_size_bytes`: `required|integer|min:1`
-  - `disk_prefix`: `required|string|max:255` và khớp `/^\d{4}\/\d{2}\/\d{2}\/[a-z0-9-]+-{public_id}\/$/D` (phải kết thúc bằng `-{public_id}/` và khớp `public_id` gửi lên)
-  - `playlist_path`: `max:255`, bằng `disk_prefix.'playlist.m3u8'`; `thumbnail_path`: nullable, `max:255`, bằng `disk_prefix.'thumbnail.jpg'`
-  - `storyboards`: nullable object, chỉ nhận key `3x3|4x4|5x5`, mỗi mục đúng một key `{ "path": disk_prefix.'storyboard_NxN.jpg' }` (path ≤ 255)
-  - `duration`: nullable numeric ≥ 0; `output_width`, `output_height`: nullable int 1..65535; `output_fps`: nullable numeric 0..999.99; `output_bitrate_kbps`: nullable int 0..4294967295; `output_codec`: nullable string max 20
-  - Giới hạn 255 khớp cột `varchar(255)`; app MUST kiểm tra trước khi upload (mục 4.4).
+    - `public_id`: `required|regex:/^[a-z0-9]{12}$/D`
+    - `title`: `required|string|max:255`
+    - `original_filename`: `required|string|max:255`; `original_size_bytes`: `required|integer|min:1`
+    - `disk_prefix`: `required|string|max:255` và khớp `/^\d{4}\/\d{2}\/\d{2}\/[a-z0-9-]+-{public_id}\/$/D` (phải kết thúc bằng `-{public_id}/` và khớp `public_id` gửi lên)
+    - `playlist_path`: `max:255`, bằng `disk_prefix.'playlist.m3u8'`; `thumbnail_path`: nullable, `max:255`, bằng `disk_prefix.'thumbnail.jpg'`
+    - `storyboards`: nullable object, chỉ nhận key `3x3|4x4|5x5`, mỗi mục đúng một key `{ "path": disk_prefix.'storyboard_NxN.jpg' }` (path ≤ 255)
+    - `duration`: nullable numeric ≥ 0; `output_width`, `output_height`: nullable int 1..65535; `output_fps`: nullable numeric 0..999.99; `output_bitrate_kbps`: nullable int 0..4294967295; `output_codec`: nullable string max 20
+    - Giới hạn 255 khớp cột `varchar(255)`; app MUST kiểm tra trước khi upload (mục 4.4).
 - Hành vi (theo thứ tự):
-  1. Idempotency TRƯỚC validation đầy đủ: nếu `public_id` hợp lệ (12 ký tự) và đã có video → không validate thêm, không gọi R2: cùng `disk_prefix` → 200 trả lại video hiện có (app gọi lại sau lỗi mạng không tạo trùng, kể cả khi các field khác khác đi); `disk_prefix` khác hoặc thiếu → 409 `{ "error": "public_id_conflict" }`.
-  2. Validate các field ở trên (lỗi → 422 dạng validation chuẩn của Laravel).
-  3. Kiểm tra `playlist_path` tồn tại trên R2 bằng `r2Disk()->exists()`. R2 lỗi (exception) → 503 `{ "error": "storage_unavailable" }` (không lộ chi tiết); không có file → 422 `{ "error": "playlist_not_found" }`.
-  4. Tạo `Video` với `status=ready`, `stage=ready`, `progress=100`. Nếu đụng unique `public_id` do request song song: đọc lại, cùng `disk_prefix` → 200, khác → 409.
+    1. Idempotency TRƯỚC validation đầy đủ: nếu `public_id` hợp lệ (12 ký tự) và đã có video → không validate thêm, không gọi R2: cùng `disk_prefix` → 200 trả lại video hiện có (app gọi lại sau lỗi mạng không tạo trùng, kể cả khi các field khác khác đi); `disk_prefix` khác hoặc thiếu → 409 `{ "error": "public_id_conflict" }`.
+    2. Validate các field ở trên (lỗi → 422 dạng validation chuẩn của Laravel).
+    3. Kiểm tra `playlist_path` tồn tại trên R2 bằng `r2Disk()->exists()`. R2 lỗi (exception) → 503 `{ "error": "storage_unavailable" }` (không lộ chi tiết); không có file → 422 `{ "error": "playlist_not_found" }`.
+    4. Tạo `Video` với `status=ready`, `stage=ready`, `progress=100`. Nếu đụng unique `public_id` do request song song: đọc lại, cùng `disk_prefix` → 200, khác → 409.
 - 201 (hoặc 200 khi lặp): `{ "id": 123, "public_id": "ab12cd34ef56", "embed_url": "https://<site>/embed/ab12cd34ef56" }`.
 - Mã `error` của endpoint này: `playlist_not_found` (422), `public_id_conflict` (409), `storage_unavailable` (503); của config: `r2_not_configured` (409).
 
 ### 3.6 Report: sửa `resolveVideoIdFromPageUrl`
 
 `Api\ReportController::resolveVideoIdFromPageUrl` hiện yêu cầu segment cuối `ctype_digit` rồi `Video::whereKey((int))` → hỏng với id mới (report của video mới sẽ có `video_id = null`).
+
 - Đổi: segment cuối khớp `^[a-z0-9]{1,32}$` → `Video::where('public_id', $x)->value('id')` (trả `?int` id số cho FK `reports.video_id`). Id số cũ vẫn chạy nhờ backfill.
 - Phần còn lại của report (gộp theo `page_url`, `report_count`, submissions) không đổi.
 - Rà các view Reports có link tới video/embed; cập nhật test của hàm này.
@@ -140,6 +151,7 @@ Tất cả response JSON; request JSON; mọi response kèm `Cache-Control: no-s
 ### 3.9 Dọn dẹp site (Phase C, chỉ làm sau khi app đã dùng ổn)
 
 Xoá (theo khảo sát code hiện tại; rà lại bằng grep trước khi xoá):
+
 - Routes: `/upload`, `/uploads/init`, `/uploads/{uploadId}/chunk`, `/uploads/{uploadId}/complete`, `/videos/in-progress-count`, `/videos/status`, `/videos/{video}/status-log`, `/activity-log` (GET/POST).
 - `VideoController`: `create`, `initUpload`, `uploadChunk`, `completeUpload`, `status`, `inProgressCount`, `statusLog` + helper/constant liên quan upload; `ActivityLogController`.
 - Jobs: `TranscodeVideoJob`, `MergeUploadChunksJob`, `Jobs/Concerns/FailsVideo`.
@@ -172,7 +184,7 @@ Xoá (theo khảo sát code hiện tại; rà lại bằng grep trước khi xo�
 
 ### 4.2 Installer và ffmpeg
 
-- `electron-builder` target NSIS x64, `oneClick: true`, cài theo user (`perMachine: false`, `allowElevation: false`, không đòi quyền admin), shortcut Start Menu/Desktop. Một file `HLS-R2-Studio-Setup-<version>.exe`; người dùng không phải cài thêm runtime hay ffmpeg. `publish: null` (không auto-update).
+- `electron-builder` target NSIS x64, installer dạng wizard (`oneClick: false`, `allowToChangeInstallationDirectory: true`: người dùng chọn thư mục cài), mặc định cài theo user (`perMachine: false`, `allowElevation: false`, không đòi quyền admin; thư mục mặc định `%LOCALAPPDATA%\Programs`), shortcut Start Menu/Desktop tạo tự động (không có checkbox). Một file `HLS-R2-Studio-Setup-<version>.exe`; người dùng không phải cài thêm runtime hay ffmpeg. `publish: null` (không auto-update).
 - `ffmpeg.exe` và `ffprobe.exe` nằm ngoài `app.asar` (`extraResources` → `resources/bin/`); bản đóng gói gọi bằng đường dẫn tuyệt đối từ `process.resourcesPath`, KHÔNG dùng PATH (chỉ bản dev mới dùng `FFMPEG_PATH`/`FFPROBE_PATH` hoặc PATH).
 - ffmpeg được ghim: gyan.dev "essentials" 9.0.2 (Windows x64, static, GPL v3, lấy qua mirror GitHub release). `ffmpeg.lock.json` ghim URL, SHA-256 của archive và của từng file giải nén. `scripts/fetch-ffmpeg.mjs` (chạy ở `predist:win` và CI) MUST kiểm SHA-256 archive TRƯỚC khi mở, chỉ giải nén `ffmpeg.exe`, `ffprobe.exe`, `LICENSE`, `README.txt` (chặn `..`, đường dẫn tuyệt đối, ký tự ổ đĩa/backslash), kiểm lại hash từng file, rồi xoá file tạm nếu lỗi. Không bao giờ thực thi binary tải về trong script. Quy trình nâng version: `desktop-app/docs/PACKAGING.md`.
 - Khi khởi động app MUST tự kiểm tra ffmpeg (chạy nền, job chờ cho đến khi xong): chạy `ffmpeg -hide_banner` với `-version`, `-encoders`, `-filters`, `-muxers`; xác nhận có encoder `libx264`, `aac`, muxer `hls`, filter `scale`, `thumbnail`, `signalstats`, `edgedetect`, `hstack`, `tile`, `crop`, `fps`, `movie`. Thiếu thì hiện banner lỗi liệt kê phần thiếu và chặn xử lý (job ở Waiting).
@@ -188,9 +200,10 @@ Cửa sổ mặc định 1100x720, tối thiểu 760x520; chỉ cho một instan
 
 1. **Đăng nhập**: URL site (https; chỉ cho phép `http://localhost` ở bản dev), username, password, checkbox "Stay signed in" (mặc định bật; tắt = token chỉ trong RAM, mất khi thoát app). Lỗi hiển thị bằng tiếng Anh, không lộ chi tiết (429 hiện số giây chờ). Sau đăng nhập gọi `GET /api/app/config`. Khi khởi động, nếu có token lưu sẵn thì tự kiểm tra bằng cùng lời gọi đó.
 2. **Màn hình chính**: thanh trên (username, host site, chip "Offline" khi mất kết nối) và 3 tab **Queue / Settings / About** (điều hướng được bằng phím mũi tên).
-   - **Queue**: banner trạng thái (video tools lỗi, không kết nối site + nút Reload config, site chưa cấu hình R2, có video cần đăng nhập lại để register); vùng kéo-thả / nút "Add videos" (nhiều file: mp4, mov, mkv, avi, webm; file trùng đường dẫn với job chưa kết thúc bị từ chối kèm lý do). Mỗi hàng: tên file, dung lượng, trạng thái (Waiting, Transcoding, Thumbnail, Storyboard, Uploading, Registering, Done, Failed, Cancelled, Interrupted, Register failed, Sign-in needed), thanh progress tổng, thời gian, và nút Cancel (hỏi xác nhận khi đang chạy) / Retry / Retry register / Remove; job Done có Copy embed URL / Copy shortcode (`[hls_embed_vl id="<public_id>"]`) / Open on site (chỉ mở URL https cùng host với site đang đăng nhập). Job Failed, Register failed và Interrupted có **View details** (modal: file, trạng thái, thông báo lỗi, bước lỗi, mã thoát, ~200 dòng cuối stderr của ffmpeg đã che đường dẫn cá nhân, nút Copy). Có nút "Clear finished" (hỏi xác nhận) và dòng đếm running/waiting/done/failed.
-   - **Settings**: card Site (URL; đổi sang site khác sẽ đăng xuất và hỏi xác nhận; bị từ chối khi còn job đang chạy hoặc còn job đã upload chờ register), card Processing (thư mục tạm, mặc định `%TEMP%\hls-r2-studio`, nhập tay hoặc "Choose folder…" mở hộp thoại thư mục; số job song song 1-2, mặc định 1), card Account (nút "Reload config", nút "Sign out", hỏi xác nhận nếu còn job chạy). Không cho đổi thư mục tạm khi còn job chạy.
-   - **About**: phiên bản app, platform, phiên bản ffmpeg (hoặc danh sách tính năng thiếu), nút **Open logs folder**, nút **Open licenses** (mở `THIRD-PARTY-NOTICES.txt`), thông báo giấy phép FFmpeg (GPL).
+    - **Queue**: banner trạng thái (video tools lỗi, không kết nối site + nút Reload config, site chưa cấu hình R2, có video cần đăng nhập lại để register); vùng kéo-thả / nút "Add videos" (nhiều file: mp4, mov, mkv, avi, webm; file trùng đường dẫn với job chưa kết thúc bị từ chối kèm lý do). Mỗi hàng: tên file, dung lượng, trạng thái (Waiting, Transcoding, Thumbnail, Storyboard, Uploading, Registering, Done, Failed, Cancelled, Interrupted, Register failed, Sign-in needed, Upload paused), thanh progress tổng, thời gian, và nút Cancel (hỏi xác nhận khi đang chạy) / Retry / Retry register / Resume / Start over / Remove (Start over và Remove trên job Upload paused luôn hỏi xác nhận vì sẽ bỏ dữ liệu đã lưu); job Done có Copy embed URL / Copy shortcode (`[hls_embed_vl id="<public_id>"]`) / Open on site (chỉ mở URL https cùng host với site đang đăng nhập). Job Failed, Register failed, Interrupted và Upload paused có **View details** (modal: file, trạng thái, thông báo lỗi, bước lỗi, mã thoát, ~200 dòng cuối stderr của ffmpeg đã che đường dẫn cá nhân, nút Copy). Có nút "Clear finished" (hỏi xác nhận) và dòng đếm running/waiting/done/failed.
+    - **Settings**: card Site (URL; đổi sang site khác sẽ đăng xuất và hỏi xác nhận; bị từ chối khi còn job đang chạy hoặc còn job đã upload chờ register), card Processing (thư mục tạm, mặc định `%TEMP%\hls-r2-studio`, nhập tay hoặc "Choose folder…" mở hộp thoại thư mục; số job song song 1-2, mặc định 1), card Account (nút "Reload config", nút "Sign out", hỏi xác nhận nếu còn job chạy). Không cho đổi thư mục tạm khi còn job chạy.
+    - **About**: phiên bản app, platform, phiên bản ffmpeg (hoặc danh sách tính năng thiếu), nút **Open logs folder**, nút **Open licenses** (mở `THIRD-PARTY-NOTICES.txt`), thông báo giấy phép FFmpeg (GPL).
+
 - Nhiều file thêm cùng lúc: sắp file nhỏ trước trong lô đó; các lô sau xếp nối tiếp (FIFO). Đóng cửa sổ/thoát khi còn job đang chạy: hỏi "Quit and cancel them?"; đồng ý thì huỷ job (dọn R2/thư mục tạm), ghi store rồi thoát (chờ tối đa 15 s). Không thu nhỏ xuống tray (MAY, chưa làm).
 
 ### 4.4 Pipeline chi tiết (port đúng từ code PHP hiện tại)
@@ -198,22 +211,26 @@ Cửa sổ mặc định 1100x720, tối thiểu 760x520; chỉ cho một instan
 Tất cả tiến trình con chạy bằng `spawn` với mảng args (không shell, `windowsHide`), `cwd = thư mục tạm của job`, tên file đầu ra dùng đường dẫn tương đối ASCII đơn giản (tránh lỗi escape ký tự `:`/`\` của filter lavfi `movie=`; code chỉ nhận tên khớp `[A-Za-z0-9._-]+` cho `movie=`). Sau khi spawn, hạ độ ưu tiên tiến trình xuống `BELOW_NORMAL` (`os.setPriority`, best-effort; tương đương `nice`). Mọi lệnh ĐỌC file nguồn (ffprobe duration/fps, transcode, trích frame thumbnail, trích ứng viên storyboard) MUST thêm input option `-format_whitelist mov,mp4,m4a,3gp,3g2,mj2,matroska,webm,avi` (allow-list demuxer cho đúng 5 container được phép), để file đổi đuôi (vd playlist HLS/concat đặt tên `.mp4`) không khiến ffmpeg đọc file khác hoặc URL.
 
 **Bước 0 – chuẩn bị**
+
 - Kiểm tra file input tồn tại, là file thường, không rỗng, đuôi hợp lệ (mp4, mov, mkv, avi, webm); kiểm tra ổ chứa thư mục tạm còn trống ≥ `size × 1.5 + 1 GiB`, thiếu thì fail sớm.
 - `public_id` (12 ký tự `[a-z0-9]`, `crypto.randomInt`) do hàng đợi sinh khi job bắt đầu (job Retry luôn nhận `public_id` mới).
 - Tạo thư mục tạm `<tmpRoot>/<public_id>/` (xoá nếu đã tồn tại).
 
 **Bước 1 – prefix** (`{Y}/{m}/{d}/{slug}-{public_id}/`)
+
 - `Y/m/d` theo UTC tại thời điểm bắt đầu job.
 - `slug`: tương đương `Str::slug(pathinfo($filename, PATHINFO_FILENAME))` của Laravel: bỏ đuôi, chuyển ASCII bằng bảng sinh sẵn từ `Str::ascii` của PHP (`scripts/gen-ascii-table.php`; xử lý tiếng Việt, `đ→d`, Latin, Hy Lạp, Cyrillic...), lowercase, ký tự không phải chữ/số → `-`, gộp và trim `-`; rỗng → `video`. Hạn chế đã biết: chữ CJK, Ả Rập, Do Thái, Thái... không có trong bảng nên bị bỏ (PHP sẽ phiên âm), slug có thể ngắn hơn hoặc thành `video`; kết quả vẫn luôn khớp `[a-z0-9-]+`.
 - Slug LUÔN bị cắt tối đa 100 ký tự (không chỉ khi key dài) và bỏ `-` cuối, để mọi path đăng ký (prefix + tên file dài nhất `storyboard_5x5.jpg`) ≤ 255 ký tự khớp `varchar(255)` của site. Độ dài MUST được kiểm tra ngay (trước transcode/upload); không hợp lệ thì job Failed "file name too long".
 - Test tương đương bắt buộc: bảng ≥ 30 mẫu (tiếng Việt có dấu, `Đ`, emoji, nhiều khoảng trắng, chữ hoa, chỉ ký hiệu, tên rất dài, nhiều dấu chấm) với kết quả sinh từ PHP (`Str::slug`) làm "golden" (`scripts/gen-slug-golden.php` → `slug-golden.json`).
 
 **Bước 2 – probe**
+
 - `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 <input>` (timeout 60 s; exit ≠ 0 → fail job; không phải số hoặc ≤ 0 → duration = null và vẫn tiếp tục).
 - `ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of default=noprint_wrappers=1:nokey=1 <input>` → fps nguồn (`num/den`; không dùng được thì 0). CHỈ chạy khi `transcode.fps` của config là null (giống job PHP); nếu config có fps thì dùng thẳng giá trị đó cho GOP. Exit ≠ 0 → fail job.
 - Cả hai lệnh đều có `-format_whitelist` (xem đầu mục 4.4).
 
 **Bước 3 – transcode HLS**
+
 ```
 ffmpeg -y -format_whitelist <demuxers> -i <input>
   -vf "scale='min(<maxWidth>,iw)':-2"
@@ -226,6 +243,7 @@ ffmpeg -y -format_whitelist <demuxers> -i <input>
   -progress pipe:1 -nostats
   playlist.m3u8
 ```
+
 - `maxWidth`: `480→854`, `720→1280`, `1080→1920`, giá trị khác → 1280. Không upscale, chiều cao chẵn.
 - `gop = max(1, round(outputFps × segment_seconds))`, `outputFps` = `transcode.fps` hoặc fps nguồn.
 - Không thêm bitrate cap, `-pix_fmt`, `-profile`, `-movflags`, `-hls_flags`, `-map` (giữ đúng hành vi hiện tại). Segment là MPEG-TS `.ts`.
@@ -234,18 +252,20 @@ ffmpeg -y -format_whitelist <demuxers> -i <input>
 - Sau khi xong MUST có `playlist.m3u8` và `segment_000.ts` (thiếu thì fail). Rồi: `ffprobe -v error -select_streams v:0 -show_entries stream=width,height,r_frame_rate,bit_rate,codec_name -of json segment_000.ts` (timeout 60 s; đọc output của ffmpeg nên không cần `-format_whitelist`) → `output_width`, `output_height`, `output_fps` (làm tròn 2 chữ số), `output_bitrate_kbps` = `round(bit_rate/1000)` (thiếu `bit_rate` thì `round(bytes_segment×8/1000/segment_seconds)`), `output_codec`. Lỗi ffprobe → bỏ các trường đó (null), không fail job.
 
 **Bước 4 – thumbnail** (`thumbnail.jpg`, không bắt buộc; lỗi chỉ log cảnh báo)
+
 - Trích frame ứng viên: `ffmpeg -y -ss <ts> -i <input> -vf thumbnail=24 -frames:v 1 thumb_candidate_N.jpg` (timeout 60 s mỗi lệnh).
 - `duration < 3 s`: trích 1 frame tại `duration/2` thẳng ra `thumbnail.jpg`.
 - Ngược lại: ts = `duration × 0.25, 0.5, 0.75`, mỗi giá trị kẹp trong `[0, duration-0.5]`; chỉ thử thêm `0.1`, `0.9` khi chưa đủ 3 ứng viên đạt lọc.
 - Chấm điểm bằng ffprobe (chạy với `cwd` = thư mục tạm, `movie=<tên-file-tương-đối>`):
-  - `ffprobe -v error -f lavfi -i "movie=<img>,signalstats" -show_entries frame_tags=lavfi.signalstats.SATAVG -of default=noprint_wrappers=1:nokey=1`
-  - `ffprobe -v error -f lavfi -i "movie=<img>,edgedetect,signalstats" -show_entries frame_tags=lavfi.signalstats.YAVG -of default=noprint_wrappers=1:nokey=1`
-  - Loại ứng viên nếu saturation là null hoặc < 5.0, hoặc detail khác null và < 3.0. Điểm xếp hạng = `saturation + 5.0 × detail`.
+    - `ffprobe -v error -f lavfi -i "movie=<img>,signalstats" -show_entries frame_tags=lavfi.signalstats.SATAVG -of default=noprint_wrappers=1:nokey=1`
+    - `ffprobe -v error -f lavfi -i "movie=<img>,edgedetect,signalstats" -show_entries frame_tags=lavfi.signalstats.YAVG -of default=noprint_wrappers=1:nokey=1`
+    - Loại ứng viên nếu saturation là null hoặc < 5.0, hoặc detail khác null và < 3.0. Điểm xếp hạng = `saturation + 5.0 × detail`.
 - Ngang (`output_width > output_height`): cần ≥ 1 ứng viên giữ lại; tạo ảnh 1080×1080 bằng `smartCropToCanvas(frame, 1080, 1080)`.
 - Dọc/vuông: cần 3 ứng viên (bù từ nhóm bị loại nếu thiếu); mỗi frame crop 360×1080 bằng `smartCropToCanvas`, sắp theo timestamp, ghép: `ffmpeg -y -i c0 -i c1 -i c2 -filter_complex "[0:v][1:v][2:v]hstack=inputs=3[v]" -map "[v]" -frames:v 1 thumbnail.jpg` (kết quả 1080×1080). Không đủ 3 → quay về ảnh đơn.
 - `smartCropToCanvas(W,H)`: (1) `-vf scale=W:H:force_original_aspect_ratio=increase -frames:v 1`; (2) thử 3 offset cắt tại `maxOffset×i/2` (i=0,1,2) dọc trục dư, chấm bằng detail, giữ offset điểm cao nhất; (3) cắt chính thức `-vf crop=W:H:x:y -frames:v 1`; dọn file trung gian.
 
 **Bước 5 – storyboard** (lỗi KHÔNG làm fail video; bỏ qua nếu duration null/≤0)
+
 - `STORYBOARD_GRID_SIZES = [3,4,5]`, tile 160×160 (hằng số trong app, không đọc từ config site), `CANDIDATES_PER_SLOT = 3`, tổng ứng viên `3×5×5 = 75`.
 - Trích một lượt: `ffmpeg -y -i <input> -vf "fps=75/<duration>,crop='min(iw\,ih)':'min(iw\,ih)',scale=160:160" -frames:v 75 -start_number 0 candidate_%04d.jpg`; timeout `max(60, ceil(duration × 2))`. Ứng viên N có timestamp `N × duration / 75`.
 - Chấm điểm từng ứng viên bằng hai lệnh ffprobe ở bước 4 (4 ứng viên song song; timeout 60 s mỗi lệnh).
@@ -253,29 +273,33 @@ ffmpeg -y -format_whitelist <demuxers> -i <input>
 - `storyboards` gửi lên site: `{"3x3":{"path":"<prefix>storyboard_3x3.jpg"},...}` chỉ gồm các lưới có file; không có lưới nào thì `null`. KHÔNG có VTT/JSON/sprite metadata.
 
 **Bước 6 – upload R2**
+
 - Dùng `@aws-sdk/client-s3`: `region: "auto"`, `endpoint` từ config (MUST là https; http chỉ cho localhost ở bản dev), `forcePathStyle: true`, credentials từ config (RAM), `requestChecksumCalculation`/`responseChecksumValidation: WHEN_REQUIRED` (R2 không nhận trailer CRC32 mặc định của SDK mới trên upload dạng stream). Tạo một S3 client cho mỗi lần chạy job và `destroy()` khi xong (kể cả khi lỗi/cancel).
 - File upload: các file cấp 1 trong thư mục tạm khớp `segment_NNN.ts`, `playlist.m3u8`, `thumbnail.jpg`, `storyboard_{3x3,4x4,5x5}.jpg`. Key = `<prefix> + <tên file>` (phẳng). Không upload `candidate_*`, `tile_*`, `thumb_candidate_*`.
 - Song song 5 file (`UPLOAD_CONCURRENCY = 5`), mỗi file một `PutObject` (stream + `ContentLength`, không multipart). `playlist.m3u8` MUST upload SAU CÙNG, chỉ khi mọi file khác đã xong.
 - `ContentType` đặt tường minh: `.m3u8 → application/vnd.apple.mpegurl`, `.ts → video/mp2t`, `.jpg → image/jpeg`. KHÔNG đặt `CacheControl` (giữ hành vi hiện tại) và KHÔNG gửi `ACL` (quyền public của R2 được cấu hình ở bucket/custom domain, không theo từng object); việc upload + truy cập file thật trên R2 chưa kiểm chứng (xem mục 6, 8).
-- Retry: `withRetry` tối đa 3 lần cho MỖI file (chờ 1 s trước lần 2, 2 s trước lần 3). SDK KHÔNG được tự retry upload (client upload đặt `maxAttempts = 1`) vì body stream không phát lại được; client dùng cho cleanup (List/Delete) giữ `maxAttempts = 3`. Còn file lỗi sau đó → fail job ("Uploading to R2 failed...").
+- Retry: `withRetry` tối đa 3 lần cho MỖI file (chờ 1 s trước lần 2, 2 s trước lần 3). SDK KHÔNG được tự retry upload (client upload đặt `maxAttempts = 1`) vì body stream không phát lại được; client dùng cho cleanup (List/Delete) giữ `maxAttempts = 3`. Còn file lỗi sau đó → fail job ("Uploading to R2 failed..."). Riêng lỗi mạng (reset, timeout, DNS, HTTP 408/429/5xx) không dùng hạn mức 3 lần mà chờ 2, 5, 10, 20, 30, rồi 60 s giữa các lần thử, tối đa 30 phút liên tục không có file nào upload thành công. Trong lúc chờ, job vẫn ở `uploading` nhưng UI hiện "Waiting for network…" + "Retrying automatically" (chỉ trong RAM, không lưu). Hết 30 phút → job `upload_interrupted` ("Upload paused"): giữ nguyên object R2 và thư mục tạm; nút **Resume** (`jobs:resume`) chỉ upload các object còn thiếu (so size qua ListObjectsV2, playlist cuối) rồi register, KHÔNG transcode lại; **Start over** chạy lại từ đầu với `public_id` mới; **Remove** xoá thư mục tạm và prefix R2 (chỉ khi request register chưa từng được bắt đầu).
 - Progress upload = số file đã xong / tổng số file.
 
 **Bước 7 – register**
+
 - Trước khi gọi, app MUST validate payload bằng bản sao các luật của site (mục 3.5, gồm giới hạn 255); lỗi → job Failed (đã upload thì dọn R2). Hàng đợi MUST flush store xuống đĩa SAU khi chuyển sang `registering` và TRƯỚC request register đầu tiên (`onBeforeRegister`), để nếu app chết giữa chừng thì job không bị lưu ở `uploading` trong khi video có thể đã được đăng ký (Retry sẽ coi R2 là rác).
 - Gọi `POST /api/app/videos` (mục 3.5) với metadata đã thu thập; `title` = tên file bỏ đuôi. Request timeout 30 s, không follow redirect.
 - Phân loại lỗi (chính xác theo code):
-  - Lỗi mạng/timeout, 5xx, 429: thử lại tối đa 5 lần với backoff 1, 2, 4, 8, 16 s (429 có `Retry-After` hợp lệ thì dùng giá trị đó, tối đa 60 s). Hết lần thử → job `register_failed`, GIỮ file trên R2, payload lưu local để Retry register (không upload lại). An toàn vì API idempotent.
-  - 401 → job `needs_sign_in`, GIỮ file trên R2; không retry ngay. Sau khi đăng nhập lại (cùng site) app tự gọi lại register.
-  - CHỈ `422 playlist_not_found` và `409 public_id_conflict` là kết luận dứt khoát → job Failed và XOÁ prefix trên R2.
-  - Mọi 4xx khác (kể cả 409/422 với mã khác): `register_failed`, GIỮ file, không retry tự động; người dùng bấm Retry register sau khi xử lý nguyên nhân.
+    - Lỗi mạng/timeout, 5xx, 429: thử lại tối đa 5 lần với backoff 1, 2, 4, 8, 16 s (429 có `Retry-After` hợp lệ thì dùng giá trị đó, tối đa 60 s). Hết lần thử → job `register_failed`, GIỮ file trên R2, payload lưu local để Retry register (không upload lại). An toàn vì API idempotent.
+    - 401 → job `needs_sign_in`, GIỮ file trên R2; không retry ngay. Sau khi đăng nhập lại (cùng site) app tự gọi lại register.
+    - CHỈ `422 playlist_not_found` và `409 public_id_conflict` là kết luận dứt khoát → job Failed và XOÁ prefix trên R2.
+    - Mọi 4xx khác (kể cả 409/422 với mã khác): `register_failed`, GIỮ file, không retry tự động; người dùng bấm Retry register sau khi xử lý nguyên nhân.
 - Thành công: job Done, lưu `{id, public_id, embed_url}` vào store local, xoá thư mục tạm.
 - Cancel liên quan register: (a) bấm Cancel khi chưa gửi request nào → Cancelled và dọn R2 như cancel thường; (b) Cancel trong lúc chờ backoff giữa các lần thử → app KHÔNG gửi thêm request, job thành `register_failed` ("Registering was interrupted"), GIỮ file (request trước đó có thể đã tới site); request đang bay không bị huỷ giữa chừng; (c) Cancel một lần Retry register đang chạy → job quay lại trạng thái trước đó (`register_failed`/`needs_sign_in`); (d) Cancel job đang `register_failed`/`needs_sign_in` → Cancelled, file R2 KHÔNG bị xoá (site có thể đã đăng ký video).
 
 **Cleanup khi lỗi/Cancel**
+
 - Fail/Cancel trong pipeline: kill cây ffmpeg (`taskkill /PID <pid> /T /F` bằng đường dẫn tuyệt đối tới `System32\taskkill.exe`); nếu đã bắt đầu upload thì xoá toàn bộ prefix trên R2 (`ListObjectsV2` + `DeleteObjects`, best-effort, lỗi chỉ log; từ chối xoá nếu prefix không khớp định dạng hợp lệ); xoá thư mục tạm; job chuyển Failed/Cancelled với message tiếng Anh (có phần chi tiết rút gọn, che đường dẫn cá nhân).
-- Các loại lỗi pipeline (`PipelineError.kind`): `failed`, `cancelled`, `register_failed`, `needs_sign_in`; chỉ `failed` có cờ `definitive` (xoá R2 sau lỗi register) khi site trả đúng hai mã ở trên.
+- Các loại lỗi pipeline (`PipelineError.kind`): `failed`, `cancelled`, `register_failed`, `needs_sign_in`, `upload_interrupted` (giữ R2 + thư mục tạm để Resume); chỉ `failed` có cờ `definitive` (xoá R2 sau lỗi register) khi site trả đúng hai mã ở trên.
 - Ngoại lệ: lỗi sau khi playlist đã upload nhưng register không dứt khoát (xem trên) → KHÔNG xoá R2; job ở `register_failed`/`needs_sign_in` ("Retry register").
 - Retry job `failed` ở bước `uploading`: xoá prefix cũ (best-effort) rồi chạy lại với `public_id` mới. Retry job `interrupted` (app tắt/crash lúc đang chạy) KHÔNG BAO GIỜ xoá prefix cũ, vì bước đã lưu có thể chậm hơn một request register đã tới site; prefix chỉ được ghi log ("may be orphaned"), có thể để lại object mồ côi trên R2 (hạn chế đã biết, mục 8).
+- Hàng đợi MUST ghi bền (flush) `{prefix, publicId, tmpDir, registerPayload}` ngay trước PutObject đầu tiên (`onBeforeUpload`) và đặt `registerStarted` (flush) trước request register đầu tiên. Resume: job chuyển `waiting` (mode resume) qua vòng chạy thường nên tôn trọng `maxConcurrent`; nếu thư mục tạm đã mất (hoặc đổi thư mục tạm) thì xoá prefix R2 cũ CHỈ KHI `registerStarted` chưa đặt rồi chạy lại từ đầu với `public_id` mới. Remove/Start over job `upload_interrupted` cũng chỉ xoá R2 khi `registerStarted` chưa đặt, cùng origin và có config; thư mục tạm luôn bị xoá. "Clear finished" KHÔNG đụng tới job `upload_interrupted`; sau khi đăng nhập lại app KHÔNG tự Resume.
 - Job gắn với site đã upload (`siteOrigin`): sau khi đổi site, job `register_failed`/`needs_sign_in` giữ nguyên với thông báo nêu host gốc; không bao giờ register hay xoá R2 cho site khác. Cleanup R2 cũng bị bỏ qua nếu origin hiện tại khác origin của job.
 
 **Mô hình progress (chỉ hiển thị local, không cần khớp site)**: trọng số mặc định Transcoding 70%, Thumbnail 3%, Storyboard 7%, Upload 18%, Register 2%; không bao giờ giảm.
@@ -283,26 +307,30 @@ ffmpeg -y -format_whitelist <demuxers> -i <input>
 ### 4.5 Lưu trữ local và bảo mật
 
 **Store và phiên làm việc**
+
 - Store: một file JSON `store.json` trong `app.getPath('userData')`, ghi nguyên tử (ghi file tạm rồi rename), ghi dồn (debounce 200 ms) và tuần tự. Lưu danh sách job (id, đường dẫn file nguồn, kích thước, trạng thái, `public_id`, `prefix`, `siteOrigin`, payload register để retry, thông điệp lỗi + `errorDetail`, thời gian, `registered`), cài đặt (URL site, thư mục tạm, số job song song, username đã đăng nhập). Không lưu progress từng giây (chỉ giữ trong RAM); trạng thái chỉ ghi khi chuyển bước.
 - Khi nạp: MUST kiểm tra schema (`schemaVersion`) và hình dạng từng job. File hỏng, sai hình dạng, schema mới hơn hoặc không migrate được → copy sang `store.json.bak` rồi dùng dữ liệu mặc định (không crash). Lỗi ném ra trong lúc khởi động → ghi log, hiện hộp thoại lỗi native "HLS R2 Studio could not start" rồi thoát hẳn (không để tiến trình ẩn giữ single-instance lock).
-- Khởi động lại: job đang ở bước chạy dở → chuyển `Interrupted` (kèm `errorDetail` nêu bước dở), xoá thư mục tạm của job, có nút Retry (chạy lại từ đầu với `public_id` mới; xem mục 4.4 về prefix cũ). Lịch sử Done giữ tối đa 200 mục.
+- Khởi động lại: job đang chạy dở đã có payload + thư mục tạm còn trên đĩa → `Upload paused` ("The app was closed during upload. Resume to continue.", giữ thư mục tạm, không xoá R2); job `waiting` mode resume → `Upload paused`; các job chạy dở còn lại → chuyển `Interrupted` (kèm `errorDetail` nêu bước dở), xoá thư mục tạm của job, có nút Retry (chạy lại từ đầu với `public_id` mới; xem mục 4.4 về prefix cũ). Lịch sử Done giữ tối đa 200 mục.
 - Job gắn với origin của site lúc bắt đầu (`siteOrigin`); xem cuối mục 4.4.
 - Session epoch: mỗi lần sign-out, 401, đổi URL site tăng một bộ đếm đồng bộ; kết quả bất đồng bộ (login, tải config) bắt đầu ở epoch cũ bị bỏ, để một câu trả lời đến muộn không "hồi sinh" phiên đã đăng xuất (token vừa được cấp trong tình huống đó bị thu hồi). Hai login đồng thời: lần thứ hai bị bỏ qua. Đổi sang site khác MUST đăng xuất trước (thu hồi token cũ) để token không bao giờ tới host khác.
-- Thư mục tạm: MUST là đường dẫn tuyệt đối trên ổ cục bộ; từ chối UNC/mạng (`\\server\share`, `//server/share`) và device path (`\\.\`, `\\?\`, kể cả `\\?\UNC\`); phải tạo được và ghi được; không cho đổi khi còn job chạy.
+- Thư mục tạm: MUST là đường dẫn tuyệt đối trên ổ cục bộ; từ chối UNC/mạng (`\\server\share`, `//server/share`) và device path (`\\.\`, `\\?\`, kể cả `\\?\UNC\`); phải tạo được và ghi được; không cho đổi khi còn job chạy hoặc còn job `upload_interrupted` (cần file tạm để Resume; cũng không cho đổi site URL).
 - Số job song song 1-2 (kiểm tra ở cả UI, settings service và hàng đợi).
 
 **Token và bí mật**
+
 - Token: `safeStorage.encryptString` → file `token.bin` trong `userData` (ghi nguyên tử, mode 0600). Nếu `isEncryptionAvailable()` là false, mã hoá lỗi, hoặc người dùng bỏ chọn "Stay signed in" thì KHÔNG ghi token xuống đĩa (chỉ giữ trong RAM của phiên, file cũ bị xoá). Sign out: gọi `POST /api/app/logout` (lỗi mạng vẫn xoá token cục bộ), xoá token.
 - R2 secret/access key: chỉ trong RAM của main process, không ghi file/log, không gửi sang renderer (renderer chỉ thấy `{ r2Configured, transcode }`). Config bị xoá khi sign-out/401/đổi site.
 - Mọi lời gọi site qua HTTPS (bắt buộc; `http://localhost`/`127.0.0.1` chỉ ở bản dev; URL có user/password bị từ chối; URL được chuẩn hoá về origin), kiểm tra chứng chỉ mặc định, timeout 30 s. App KHÔNG BAO GIỜ follow redirect (`redirect: manual`; 3xx coi là lỗi) để Bearer token không tới host khác. Body response tối đa 1 MB (đọc từng chunk, vượt thì huỷ). Bất kỳ 401 nào của lời gọi có xác thực → xoá token + config và về màn hình đăng nhập ("Your session has expired. Sign in again.").
 
 **Electron hardening**
+
 - Renderer: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`; preload chỉ expose `window.hlsApi` hẹp (mọi kênh đặt tên trong `shared/ipc.ts`); CSP chặt (`default-src 'self'`, không nội dung từ xa; chèn qua meta lúc build và qua response header của session; bản dev nới vừa đủ cho Vite HMR); `setWindowOpenHandler` luôn từ chối; `will-navigate` chặn mọi URL ngoài app; `setPermissionRequestHandler` và `setPermissionCheckHandler` từ chối mọi quyền.
 - IPC: MUST validate payload mọi kênh ở main (kiểu, độ dài, key lạ, id job theo regex, số lượng đường dẫn ≤ 1000); chỉ chấp nhận lời gọi từ frame chính của cửa sổ app (kiểm `sender`, `senderFrame` và URL thuộc app), còn lại ném `Forbidden`. Kênh hành động trả `{ ok } | { ok: false, error }` với thông báo tiếng Anh an toàn. Dialog chọn file/thư mục do main mở; kéo-thả chỉ truyền chuỗi đường dẫn (qua `webUtils.getPathForFile` ở preload).
 - URL dev server (`ELECTRON_RENDERER_URL`) bị bỏ qua hoàn toàn khi app đã đóng gói (cả allow-list điều hướng và sender guard).
 - Mở link ngoài bằng `shell.openExternal` chỉ với URL https không chứa credentials; "Open on site" còn yêu cầu cùng host với site đang đăng nhập.
 
 **Log**
+
 - Ghi file xoay vòng trong `userData/logs` (`app.log`, tối đa 5 file x 1 MB, mức `info`); MUST che token (kể cả dạng Sanctum), secret, header Authorization, giá trị của key nhạy cảm, và thư mục home của người dùng (thay bằng `~`). Stderr của ffmpeg luôn được thu vào bộ đệm vòng (200 dòng, mỗi dòng cắt 2000 ký tự, đã che); khi job lỗi, phần đuôi này, bước lỗi và mã thoát được che thêm đường dẫn nguồn/thư mục tạm (`<source>`, `<job-dir>`, `<tmp-root>`) rồi lưu vào store local (`errorDetail`) để hiển thị ở View details.
 
 ### 4.6 Test cho app
@@ -343,6 +371,7 @@ App hiển thị/sửa/xoá video; site hiển thị job state của app và rea
 ## 8. Điểm chờ xác nhận / rủi ro đã biết
 
 Đã chốt (không còn là điểm chờ):
+
 - Ảnh custom (`storeImage`/`destroyImage`) giữ trên site, dùng `r2Disk()` của site (2026-11-03).
 - Trang Logs xoá hẳn ở Phase C (2026-11-03).
 - Installer KHÔNG ký số, chấp nhận cảnh báo SmartScreen; có thể mua certificate (OV/EV hoặc dịch vụ ký cloud) sau, cần cấu hình electron-builder và secret trong CI.
@@ -350,15 +379,17 @@ App hiển thị/sửa/xoá video; site hiển thị job state của app và rea
 - App không gửi `ACL` (quyết định giữ; còn cần kiểm chứng bằng R2 thật ở Phase B, xem dưới).
 
 Còn mở:
+
 1. Auto-update chưa làm (`TODO.md`).
 2. GPL cho bản phát hành ra ngoài tổ chức (`TODO.md`): bản ffmpeg gyan.dev "essentials" liên kết tĩnh nhiều thư viện GPL/LGPL (libx264, libx265, libvpx, libmp3lame...). Trước khi phát hành ra ngoài MUST đính kèm source đầy đủ (FFmpeg + các thư viện đó + build script) vào mỗi GitHub Release, hoặc có địa chỉ liên hệ hoạt động và giữ source 3 năm. File notices hiện chỉ có link source FFmpeg và lời đề nghị liên hệ, chưa đủ cho phát hành ngoài. Dùng nội bộ thì chưa bắt buộc.
 3. Hạn chế đã biết của app (từ `desktop-app/README.md`):
-   - Tiến trình ffmpeg/ffprobe mồ côi: app dừng ffmpeg bằng kill cả cây tiến trình, nhưng nếu main process chết cứng thì ffmpeg có thể chạy tiếp đến khi xong (chưa dùng Windows Job Object).
-   - Object R2 mồ côi: (a) Cancel job `register_failed`/`needs_sign_in` giữ nguyên file trên R2 (site có thể đã đăng ký); (b) Retry job `interrupted` không xoá prefix cũ. Cả hai phải dọn tay hoặc làm công cụ dọn sau (liên quan mục "stale-job" trong `TODO.md`).
-   - Đổi site khi còn job đã upload chờ register bị từ chối; sau khi đổi, job cũ chỉ hoàn tất khi đăng nhập lại đúng site đó.
-   - Chỉ `playlist_not_found` và `public_id_conflict` là kết luận dứt khoát; mọi 409/422 khác giữ file và payload để Retry.
-   - Slug không phiên âm được CJK/Ả Rập/Do Thái/Thái... (khác `Str::slug` của PHP) và luôn cắt tối đa 100 ký tự.
-   - Thư mục tạm không được là UNC/device path; file nguồn chỉ đọc qua allow-list demuxer mp4/mov/mkv/webm/avi.
+    - Tiến trình ffmpeg/ffprobe mồ côi: app dừng ffmpeg bằng kill cả cây tiến trình, nhưng nếu main process chết cứng thì ffmpeg có thể chạy tiếp đến khi xong (chưa dùng Windows Job Object).
+    - File tạm của upload bị tạm dừng (`upload_interrupted`) nằm trên đĩa đến khi Resume/Start over/Remove (không có TTL); Resume cần cùng site và cùng thư mục tạm. Nếu app chết lúc đang register thì Resume sẽ register lại; vì cùng `public_id` và cùng `disk_prefix` nên site trả lại video đã có (idempotent, mục 3.5).
+    - Object R2 mồ côi: (a) Cancel job `register_failed`/`needs_sign_in` giữ nguyên file trên R2 (site có thể đã đăng ký); (b) Retry job `interrupted` không xoá prefix cũ. Cả hai phải dọn tay hoặc làm công cụ dọn sau (liên quan mục "stale-job" trong `TODO.md`).
+    - Đổi site khi còn job đã upload chờ register bị từ chối; sau khi đổi, job cũ chỉ hoàn tất khi đăng nhập lại đúng site đó.
+    - Chỉ `playlist_not_found` và `public_id_conflict` là kết luận dứt khoát; mọi 409/422 khác giữ file và payload để Retry.
+    - Slug không phiên âm được CJK/Ả Rập/Do Thái/Thái... (khác `Str::slug` của PHP) và luôn cắt tối đa 100 ký tự.
+    - Thư mục tạm không được là UNC/device path; file nguồn chỉ đọc qua allow-list demuxer mp4/mov/mkv/webm/avi.
 4. Chưa kiểm chứng (chỉ làm được trên Windows/R2 thật): build NSIS và `extraResources`; Fuses (`grantFileProtocolExtraPrivileges` cố ý để mặc định); upload không `ACL` + truy cập public qua custom domain; `safeStorage`/DPAPI thực tế; `os.setPriority` và `taskkill` trên Windows; hành vi gỡ cài đặt với `%APPDATA%`.
 5. Build provenance (`actions/attest-build-provenance`) chưa bật vì chỉ có với repo public hoặc GitHub Enterprise Cloud; nên tạo tag ruleset cho `desktop-v*` để chỉ người tin cậy phát hành.
 
