@@ -6,86 +6,77 @@ import { classifyTmpRoot, createSettingsService } from './settingsService';
 function setup(
     opts: {
         busy?: boolean;
-        attention?: boolean;
         paused?: boolean;
         ensureDir?: (p: string) => Promise<void>;
     } = {},
 ) {
     const store = createMemoryStore('/tmp/hls');
-    store.update((d) => {
-        d.settings.siteUrl = 'https://old.example.com';
-    });
-    const changeSiteUrl = vi.fn((url: string) =>
-        Promise.resolve(
-            url.startsWith('https://')
-                ? { ok: true as const, siteUrl: url }
-                : { ok: false as const, error: 'The site URL must start with https://.' },
-        ),
-    );
     const ensureDir = vi.fn(opts.ensureDir ?? (() => Promise.resolve()));
     const onChanged = vi.fn();
     const service = createSettingsService({
         store,
-        auth: { changeSiteUrl },
+        getSiteUrl: () => 'https://built-in.example.com',
         hasActiveJobs: () => opts.busy ?? false,
-        hasAttentionJobs: () => opts.attention ?? false,
         hasPausedUploads: () => opts.paused ?? false,
         ensureDir,
         onChanged,
     });
 
-    return { service, store, changeSiteUrl, ensureDir, onChanged };
+    return { service, store, ensureDir, onChanged };
 }
 
 describe('settingsService with paused uploads', () => {
-    it('refuses a different temp folder and a different site URL', async () => {
+    it('refuses a different temp folder', async () => {
         const t = setup({ paused: true });
         const tmp = await t.service.set({ tmpRoot: '/data/other' });
-        const site = await t.service.set({ siteUrl: 'https://new.example.com' });
 
         expect(tmp).toMatchObject({ ok: false, error: expect.stringContaining('paused') });
         expect(tmp).toMatchObject({ error: expect.stringContaining('temporary folder') });
-        expect(site).toMatchObject({ ok: false, error: expect.stringContaining('site URL') });
         expect(t.ensureDir).not.toHaveBeenCalled();
-        expect(t.changeSiteUrl).not.toHaveBeenCalled();
         expect(t.service.get().tmpRoot).toBe('/tmp/hls');
     });
 
     it('still allows unchanged values and unrelated settings', async () => {
         const t = setup({ paused: true });
-        const result = await t.service.set({
-            tmpRoot: '/tmp/hls',
-            siteUrl: 'https://old.example.com/',
-            maxConcurrent: 2,
-        });
+        const result = await t.service.set({ tmpRoot: '/tmp/hls', maxConcurrent: 2 });
 
         expect(result).toMatchObject({ ok: true, settings: { maxConcurrent: 2 } });
     });
 });
 
 describe('settingsService', () => {
-    it('returns the stored settings', () => {
+    it('returns the built-in site URL (read-only) with the stored settings', () => {
         expect(setup().service.get()).toEqual({
-            siteUrl: 'https://old.example.com',
+            siteUrl: 'https://built-in.example.com',
             tmpRoot: '/tmp/hls',
             maxConcurrent: 1,
         });
     });
 
+    it('never takes the site URL from the stored settings or from a patch', async () => {
+        const t = setup();
+        t.store.update((d) => {
+            d.settings.siteUrl = 'https://old.example.com';
+        });
+        const patch = { siteUrl: 'https://evil.example.com', maxConcurrent: 2 };
+        const result = await t.service.set(patch);
+
+        expect(result).toMatchObject({
+            ok: true,
+            settings: { siteUrl: 'https://built-in.example.com' },
+        });
+        expect(t.store.get().settings.siteUrl).toBe('https://old.example.com');
+    });
+
     it('applies valid changes', async () => {
         const t = setup();
-        const result = await t.service.set({
-            tmpRoot: '/data/tmp',
-            maxConcurrent: 2,
-            siteUrl: 'https://new.example.com',
-        });
+        const result = await t.service.set({ tmpRoot: '/data/tmp', maxConcurrent: 2 });
 
         expect(result).toMatchObject({
             ok: true,
             settings: { tmpRoot: normalize('/data/tmp'), maxConcurrent: 2 },
         });
         expect(t.ensureDir).toHaveBeenCalledWith(normalize('/data/tmp'));
-        expect(t.changeSiteUrl).toHaveBeenCalledWith('https://new.example.com');
         expect(t.onChanged).toHaveBeenCalled();
     });
 
@@ -111,40 +102,12 @@ describe('settingsService', () => {
         expect(bad.store.get().settings.tmpRoot).toBe('/tmp/hls');
     });
 
-    it('is all-or-nothing when the site URL is rejected', async () => {
-        const t = setup();
-        const result = await t.service.set({ siteUrl: 'http://insecure.example.com' });
-
-        expect(result).toEqual({ ok: false, error: 'The site URL must start with https://.' });
-    });
-
-    it('refuses to move the temp folder or switch site while jobs are running', async () => {
+    it('refuses to move the temp folder while jobs are running', async () => {
         const t = setup({ busy: true });
 
         expect((await t.service.set({ tmpRoot: '/other' })).ok).toBe(false);
-        expect((await t.service.set({ siteUrl: 'https://new.example.com' })).ok).toBe(false);
         // Unchanged values and the parallel job count remain allowed.
-        expect(
-            (await t.service.set({ tmpRoot: '/tmp/hls', siteUrl: 'https://old.example.com/' })).ok,
-        ).toBe(true);
-        expect((await t.service.set({ maxConcurrent: 2 })).ok).toBe(true);
-    });
-});
-
-describe('site URL change with unregistered jobs', () => {
-    it('is refused while jobs wait for registration, with a clear message', async () => {
-        const t = setup({ attention: true });
-        const result = await t.service.set({ siteUrl: 'https://new.example.com' });
-
-        expect(result.ok).toBe(false);
-        expect(result.ok ? '' : result.error).toMatch(/Finish or cancel/);
-        expect(t.changeSiteUrl).not.toHaveBeenCalled();
-    });
-
-    it('still accepts the unchanged URL and other settings', async () => {
-        const t = setup({ attention: true });
-
-        expect((await t.service.set({ siteUrl: 'https://old.example.com/' })).ok).toBe(true);
+        expect((await t.service.set({ tmpRoot: '/tmp/hls' })).ok).toBe(true);
         expect((await t.service.set({ maxConcurrent: 2 })).ok).toBe(true);
     });
 });

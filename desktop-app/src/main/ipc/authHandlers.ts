@@ -19,12 +19,7 @@ import {
 export interface AuthHandlerDeps {
     auth: {
         getState(): AuthState;
-        login(
-            siteUrl: string,
-            username: string,
-            password: string,
-            staySignedIn?: boolean,
-        ): Promise<AuthState>;
+        login(username: string, password: string, staySignedIn?: boolean): Promise<AuthState>;
         logout(): Promise<AuthState>;
         reloadConfig(): Promise<AuthState>;
     };
@@ -38,11 +33,9 @@ export interface AuthHandlerDeps {
 
 /** Shape check of `settings:set`. Value rules (https, writable folder) live in the service. */
 export function parseSettingsPatch(args: readonly unknown[]): SettingsPatch {
-    const object = expectSingleObject(args, 'settings', ['siteUrl', 'tmpRoot', 'maxConcurrent']);
+    const object = expectSingleObject(args, 'settings', ['tmpRoot', 'maxConcurrent']);
     const patch: SettingsPatch = {};
 
-    if (object['siteUrl'] !== undefined)
-        patch.siteUrl = expectString(object['siteUrl'], 'siteUrl', 2048);
     if (object['tmpRoot'] !== undefined)
         patch.tmpRoot = expectString(object['tmpRoot'], 'tmpRoot', 4096);
     if (object['maxConcurrent'] !== undefined) {
@@ -52,21 +45,15 @@ export function parseSettingsPatch(args: readonly unknown[]): SettingsPatch {
     return patch;
 }
 
+/** The site is fixed at build time: the renderer cannot send (or even name) a server here. */
 export function parseLogin(args: readonly unknown[]): {
-    siteUrl: string;
     username: string;
     password: string;
     staySignedIn: boolean;
 } {
-    const object = expectSingleObject(args, 'login', [
-        'siteUrl',
-        'username',
-        'password',
-        'staySignedIn',
-    ]);
+    const object = expectSingleObject(args, 'login', ['username', 'password', 'staySignedIn']);
 
     return {
-        siteUrl: expectString(object['siteUrl'], 'siteUrl', 2048),
         username: expectString(object['username'], 'username', 256),
         password: expectString(object['password'], 'password', 1024),
         staySignedIn:
@@ -84,9 +71,9 @@ export function createAuthHandlers(deps: AuthHandlerDeps): Record<string, IpcHan
             return deps.auth.getState();
         },
         [IpcChannels.authLogin]: (args) => {
-            const { siteUrl, username, password, staySignedIn } = parseLogin(args);
+            const { username, password, staySignedIn } = parseLogin(args);
 
-            return deps.auth.login(siteUrl, username, password, staySignedIn);
+            return deps.auth.login(username, password, staySignedIn);
         },
         [IpcChannels.authLogout]: (args) => {
             expectNoArgs(args);

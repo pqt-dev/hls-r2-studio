@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest';
-import { normalizeSiteUrl, SiteUrlError } from './siteUrl';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+    getBuiltInSiteUrl,
+    normalizeBuiltInSiteUrl,
+    normalizeSiteUrl,
+    SiteUrlError,
+} from './siteUrl';
 
 describe('normalizeSiteUrl', () => {
     it('accepts https and returns the origin only', () => {
@@ -26,5 +31,64 @@ describe('normalizeSiteUrl', () => {
         expect(normalizeSiteUrl('http://localhost:8000/x', true)).toBe('http://localhost:8000');
         expect(normalizeSiteUrl('http://127.0.0.1', true)).toBe('http://127.0.0.1');
         expect(() => normalizeSiteUrl('http://localhost.evil.com', true)).toThrow(SiteUrlError);
+    });
+});
+
+describe('normalizeBuiltInSiteUrl', () => {
+    it('normalizes a valid https URL to its origin', () => {
+        expect(normalizeBuiltInSiteUrl(' https://Admin.Example.com/x?y=1 ', false)).toBe(
+            'https://admin.example.com',
+        );
+    });
+
+    it('returns null for missing, empty and invalid values instead of throwing', () => {
+        for (const bad of [
+            undefined,
+            '',
+            '  ',
+            'not a url',
+            'http://admin.example.com',
+            'https://user:pw@admin.example.com',
+        ]) {
+            expect(normalizeBuiltInSiteUrl(bad, false)).toBeNull();
+        }
+    });
+
+    it('allows http://localhost only when insecure localhost is allowed', () => {
+        expect(normalizeBuiltInSiteUrl('http://localhost:8000', true)).toBe(
+            'http://localhost:8000',
+        );
+        expect(normalizeBuiltInSiteUrl('http://localhost:8000', false)).toBeNull();
+    });
+});
+
+describe('getBuiltInSiteUrl', () => {
+    afterEach(() => {
+        vi.unstubAllGlobals();
+    });
+
+    it('falls back to the runtime env var when there is no build-time define', () => {
+        expect(getBuiltInSiteUrl(false, { HLS_SITE_URL: 'https://env.example.com/' })).toBe(
+            'https://env.example.com',
+        );
+    });
+
+    it('is null when nothing is configured or the env value is invalid', () => {
+        expect(getBuiltInSiteUrl(false, {})).toBeNull();
+        expect(getBuiltInSiteUrl(false, { HLS_SITE_URL: 'http://env.example.com' })).toBeNull();
+    });
+
+    it('prefers the build-time define over the runtime env var', () => {
+        vi.stubGlobal('__HLS_SITE_URL__', 'https://built.example.com');
+
+        expect(getBuiltInSiteUrl(false, { HLS_SITE_URL: 'https://env.example.com' })).toBe(
+            'https://built.example.com',
+        );
+    });
+
+    it('does not fall back to the env var when the build-time define is invalid', () => {
+        vi.stubGlobal('__HLS_SITE_URL__', 'http://built.example.com');
+
+        expect(getBuiltInSiteUrl(false, { HLS_SITE_URL: 'https://env.example.com' })).toBeNull();
     });
 });

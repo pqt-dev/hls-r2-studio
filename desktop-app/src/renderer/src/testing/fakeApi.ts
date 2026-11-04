@@ -132,11 +132,11 @@ export function createFakeApi(initial: Partial<FakeState> = {}): FakeApi {
         },
         auth: {
             getState: () => Promise.resolve(state.auth),
-            login: (siteUrl, username) => {
+            login: (username) => {
                 const next: AuthState = {
                     status: 'signed_in',
                     username,
-                    siteUrl,
+                    siteUrl: state.settings.siteUrl,
                     r2Configured: true,
                 };
 

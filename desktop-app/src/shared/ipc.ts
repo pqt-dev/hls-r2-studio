@@ -60,13 +60,13 @@ export interface PublicConfig {
 }
 
 export interface SettingsDto {
+    /** Read-only: the site this build is fixed to (empty when the build has none). */
     siteUrl: string;
     tmpRoot: string;
     maxConcurrent: number;
 }
 
 export interface SettingsPatch {
-    siteUrl?: string;
     tmpRoot?: string;
     maxConcurrent?: number;
 }
@@ -171,12 +171,8 @@ export interface AppApi {
 
 export interface AuthApi {
     getState(): Promise<AuthState>;
-    login(
-        siteUrl: string,
-        username: string,
-        password: string,
-        staySignedIn?: boolean,
-    ): Promise<AuthState>;
+    /** The site is fixed at build time; the renderer cannot choose it. */
+    login(username: string, password: string, staySignedIn?: boolean): Promise<AuthState>;
     logout(): Promise<AuthState>;
     reloadConfig(): Promise<AuthState>;
     onChanged(listener: (state: AuthState) => void): Unsubscribe;

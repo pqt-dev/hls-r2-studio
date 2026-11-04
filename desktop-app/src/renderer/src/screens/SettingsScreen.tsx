@@ -7,8 +7,8 @@ import { plural, siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
 
-type Section = 'site' | 'tmp' | 'parallel';
-type Confirm = 'site' | 'signout' | null;
+type Section = 'tmp' | 'parallel';
+type Confirm = 'signout' | null;
 
 export function SettingsScreen() {
     const { api, auth, settings, summary, applySettings } = useApp();
@@ -22,9 +22,7 @@ export function SettingsScreen() {
         parallelHelp: useId(),
     };
 
-    const [urlDraft, setUrlDraft] = useState(settings?.siteUrl ?? '');
     const [feedback, setFeedback] = useState<Record<Section, FeedbackMessage | null>>({
-        site: null,
         tmp: null,
         parallel: null,
     });
@@ -35,7 +33,6 @@ export function SettingsScreen() {
     if (settings === null) return <p className="muted">Settings are not available.</p>;
 
     const busyJobs = summary.running > 0;
-    const siteChanged = urlDraft.trim() !== '' && urlDraft.trim() !== settings.siteUrl;
 
     async function save(section: Section, patch: SettingsPatch, success: string): Promise<void> {
         setSaving(section);
@@ -46,7 +43,6 @@ export function SettingsScreen() {
 
             if (result.ok) {
                 applySettings(result.settings);
-                setUrlDraft(result.settings.siteUrl);
                 setFeedback((all) => ({ ...all, [section]: { kind: 'success', text: success } }));
             } else {
                 setFeedback((all) => ({
@@ -62,14 +58,6 @@ export function SettingsScreen() {
         } finally {
             setSaving(null);
         }
-    }
-
-    function changeSite(): void {
-        const next = urlDraft.trim();
-
-        // A different host invalidates the session: warn before it happens.
-        if (siteHost(next) !== siteHost(settings?.siteUrl)) setConfirm('site');
-        else void save('site', { siteUrl: next }, 'Site URL saved.');
     }
 
     async function chooseFolder(): Promise<void> {
@@ -107,38 +95,16 @@ export function SettingsScreen() {
                 <h2 id={`${ids.url}-h`}>Site</h2>
                 <div className="field">
                     <label htmlFor={ids.url}>Site URL</label>
-                    <div className="row">
-                        <input
-                            id={ids.url}
-                            type="url"
-                            autoComplete="off"
-                            spellCheck={false}
-                            value={urlDraft}
-                            disabled={busyJobs || saving === 'site'}
-                            aria-describedby={ids.urlHelp}
-                            onChange={(event) => setUrlDraft(event.target.value)}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter' && siteChanged && !busyJobs) {
-                                    event.preventDefault();
-                                    changeSite();
-                                }
-                            }}
-                        />
-                        <button
-                            type="button"
-                            className="btn"
-                            disabled={!siteChanged || busyJobs || saving === 'site'}
-                            onClick={changeSite}
-                        >
-                            Change site
-                        </button>
-                    </div>
+                    <input
+                        id={ids.url}
+                        type="text"
+                        readOnly
+                        value={settings.siteUrl}
+                        aria-describedby={ids.urlHelp}
+                    />
                     <p id={ids.urlHelp} className="help">
-                        {busyJobs
-                            ? 'The site cannot be changed while videos are being processed.'
-                            : 'Changing to a different site signs you out.'}
+                        This app is built for one site and cannot be pointed at another.
                     </p>
-                    <Feedback message={feedback.site} />
                 </div>
             </section>
 
@@ -220,20 +186,6 @@ export function SettingsScreen() {
                 </div>
             </section>
 
-            {confirm === 'site' && (
-                <ConfirmDialog
-                    title="Change the site?"
-                    message="Changing to a different site signs you out. You will need to sign in again on the new site."
-                    confirmLabel="Change site and sign out"
-                    cancelLabel="Keep current site"
-                    danger
-                    onCancel={() => setConfirm(null)}
-                    onConfirm={() => {
-                        setConfirm(null);
-                        void save('site', { siteUrl: urlDraft.trim() }, 'Site URL saved.');
-                    }}
-                />
-            )}
             {confirm === 'signout' && (
                 <ConfirmDialog
                     title="Sign out now?"

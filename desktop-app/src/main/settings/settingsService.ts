@@ -1,4 +1,4 @@
-/** Persisted user settings (spec 4.3): site URL, temp folder, parallel jobs. */
+/** Persisted user settings (spec 4.3): temp folder, parallel jobs. The site URL is read-only. */
 import { isAbsolute, normalize } from 'node:path';
 import type { SettingsDto, SettingsPatch, SettingsResult } from '../../shared/ipc';
 import type { AppStore } from '../store';
@@ -36,14 +36,9 @@ const TMP_ROOT_ERRORS: Record<TmpRootProblem, string> = {
 
 export interface SettingsServiceOptions {
     store: AppStore;
-    auth: {
-        changeSiteUrl(
-            url: string,
-        ): Promise<{ ok: true; siteUrl: string } | { ok: false; error: string }>;
-    };
+    /** The built-in site origin (fixed at build time), '' when this build has none. */
+    getSiteUrl: () => string;
     hasActiveJobs: () => boolean;
-    /** True while jobs wait for register (`register_failed` / `needs_sign_in`) on the current site. */
-    hasAttentionJobs?: () => boolean;
     /** True while an upload is paused (`upload_interrupted`): its temp files are needed to resume. */
     hasPausedUploads?: () => boolean;
     /** Override of `path.isAbsolute` (tests). */
@@ -63,9 +58,9 @@ export function createSettingsService(options: SettingsServiceOptions): Settings
     const { store } = options;
 
     function get(): SettingsDto {
-        const { siteUrl, tmpRoot, maxConcurrent } = store.get().settings;
+        const { tmpRoot, maxConcurrent } = store.get().settings;
 
-        return { siteUrl, tmpRoot, maxConcurrent };
+        return { siteUrl: options.getSiteUrl(), tmpRoot, maxConcurrent };
     }
 
     return {
@@ -123,40 +118,7 @@ export function createSettingsService(options: SettingsServiceOptions): Settings
                 }
             }
 
-            if (patch.siteUrl !== undefined && busy) {
-                const same = patch.siteUrl.trim().replace(/\/+$/, '') === current.siteUrl;
-
-                if (!same) {
-                    return {
-                        ok: false,
-                        error: 'Wait for the running jobs to finish before changing the site URL.',
-                    };
-                }
-            }
-
-            if (patch.siteUrl !== undefined && options.hasAttentionJobs?.()) {
-                const same = patch.siteUrl.trim().replace(/\/+$/, '') === current.siteUrl;
-
-                if (!same) {
-                    return {
-                        ok: false,
-                        error: 'Some videos are uploaded but not registered yet. Finish or cancel them before changing the site URL.',
-                    };
-                }
-            }
-
-            if (patch.siteUrl !== undefined && options.hasPausedUploads?.()) {
-                const same = patch.siteUrl.trim().replace(/\/+$/, '') === current.siteUrl;
-
-                if (!same) {
-                    return {
-                        ok: false,
-                        error: 'Some uploads are paused and their temporary files are needed to resume them. Resume or remove them before changing the site URL.',
-                    };
-                }
-            }
-
-            // Everything is valid: apply. The site URL goes last because it can sign out.
+            // Everything is valid: apply.
             if (tmpRoot !== undefined || patch.maxConcurrent !== undefined) {
                 store.update((draft) => {
                     if (tmpRoot !== undefined) draft.settings.tmpRoot = tmpRoot;
@@ -164,16 +126,6 @@ export function createSettingsService(options: SettingsServiceOptions): Settings
                         draft.settings.maxConcurrent = patch.maxConcurrent;
                     }
                 });
-            }
-
-            if (patch.siteUrl !== undefined) {
-                const result = await options.auth.changeSiteUrl(patch.siteUrl);
-
-                if (!result.ok) {
-                    options.onChanged();
-
-                    return { ok: false, error: result.error };
-                }
             }
 
             options.onChanged();

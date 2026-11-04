@@ -130,7 +130,7 @@ export function installMockApi(search: string = window.location.search): void {
     const mode = params.get('auth');
     const auth: AuthState =
         mode === 'signed_out'
-            ? { status: 'signed_out' }
+            ? { status: 'signed_out', siteUrl: 'https://mock.invalid' }
             : mode === 'offline'
               ? { status: 'offline', username: 'alice', siteUrl: 'https://mock.invalid' }
               : {

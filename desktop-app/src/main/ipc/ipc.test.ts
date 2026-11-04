@@ -221,12 +221,20 @@ describe('handlers: coverage and validation', () => {
         }
         await expectInvalid(() => call(IpcChannels.jobsCopy, { id: 'j1', kind: 'html' }));
         await expectInvalid(() => call(IpcChannels.jobsCopy, { id: 'j1' }));
-        await expectInvalid(() => call(IpcChannels.authLogin, { siteUrl: 'x', username: 'a' }));
-        await expectInvalid(() =>
-            call(IpcChannels.authLogin, { siteUrl: 'x', username: 'a', password: 1 }),
-        );
+        await expectInvalid(() => call(IpcChannels.authLogin, { username: 'a' }));
+        await expectInvalid(() => call(IpcChannels.authLogin, { username: 'a', password: 1 }));
         await expectInvalid(() => call(IpcChannels.settingsSet, { evil: 1 }));
-        await expectInvalid(() => call(IpcChannels.settingsSet, { siteUrl: 5 }));
+        // The renderer cannot choose the server: a site URL is an unknown field everywhere.
+        await expectInvalid(() =>
+            call(IpcChannels.settingsSet, { siteUrl: 'https://evil.example' }),
+        );
+        await expectInvalid(() =>
+            call(IpcChannels.authLogin, {
+                siteUrl: 'https://evil.example',
+                username: 'a',
+                password: 'b',
+            }),
+        );
         await expectInvalid(() => call(IpcChannels.settingsSet, { maxConcurrent: '2' }));
         await expectInvalid(() => call(IpcChannels.jobsAddPaths, { paths: 'x' }));
         await expectInvalid(() =>
@@ -284,28 +292,25 @@ describe('handlers: auth and settings', () => {
     it('forwards login credentials and returns the new state', async () => {
         const t = setup();
         const result = await t.call(IpcChannels.authLogin, {
-            siteUrl: 'https://s',
             username: 'u',
             password: 'p',
         });
 
-        expect(t.auth.login).toHaveBeenCalledWith('https://s', 'u', 'p', true);
+        expect(t.auth.login).toHaveBeenCalledWith('u', 'p', true);
         expect(result).toEqual({ status: 'signed_in' });
     });
 
     it('passes staySignedIn=false and rejects a non-boolean value', async () => {
         const t = setup();
         await t.call(IpcChannels.authLogin, {
-            siteUrl: 'https://s',
             username: 'u',
             password: 'p',
             staySignedIn: false,
         });
 
-        expect(t.auth.login).toHaveBeenCalledWith('https://s', 'u', 'p', false);
+        expect(t.auth.login).toHaveBeenCalledWith('u', 'p', false);
         await expectInvalid(() =>
             t.call(IpcChannels.authLogin, {
-                siteUrl: 'https://s',
                 username: 'u',
                 password: 'p',
                 staySignedIn: 'no',

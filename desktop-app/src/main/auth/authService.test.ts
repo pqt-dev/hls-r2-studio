@@ -26,7 +26,10 @@ function setup(
         login?: AuthClient['login'];
         logout?: AuthClient['logout'];
         getConfig?: () => Promise<AppConfig>;
+        /** Site URL stored by an earlier session. */
         siteUrl?: string;
+        /** The built-in site of this build (null = not configured). Default https://s.example.com. */
+        builtIn?: string | null;
         token?: string;
     } = {},
 ) {
@@ -51,6 +54,7 @@ function setup(
         store,
         config,
         hostname: () => 'MY-PC',
+        siteUrl: opts.builtIn === undefined ? 'https://s.example.com' : opts.builtIn,
         allowInsecureLocalhost: false,
         logger,
     });
@@ -70,8 +74,8 @@ describe('deviceNameOf', () => {
 
 describe('login', () => {
     it('signs in, saves the token and the site URL, then loads the config', async () => {
-        const t = setup();
-        const state = await t.auth.login('https://Site.example.com/path', ' admin ', 'pw');
+        const t = setup({ builtIn: 'https://site.example.com' });
+        const state = await t.auth.login(' admin ', 'pw');
 
         expect(state).toEqual({
             status: 'signed_in',
@@ -96,13 +100,13 @@ describe('login', () => {
                     new SiteApiError({ message: 'x', status: 409, code: 'r2_not_configured' }),
                 ),
         });
-        const state = await t.auth.login('https://s.example.com', 'a', 'b');
+        const state = await t.auth.login('a', 'b');
 
         expect(state.status).toBe('signed_in');
         expect(state.r2Configured).toBe(false);
     });
 
-    it('maps failures to safe messages and restores the previous URL', async () => {
+    it('maps failures to safe messages and restores the previously stored URL', async () => {
         const cases: [unknown, string][] = [
             [new SiteApiError({ message: 'x', status: 422 }), 'Incorrect username or password.'],
             [
@@ -120,7 +124,7 @@ describe('login', () => {
                 login: () => Promise.reject(error),
                 siteUrl: 'https://old.example.com',
             });
-            const state = await t.auth.login('https://new.example.com', 'a', 'b');
+            const state = await t.auth.login('a', 'b');
 
             expect(state).toMatchObject({ status: 'signed_out', error: message });
             expect(t.vault.get()).toBeNull();
@@ -128,14 +132,10 @@ describe('login', () => {
         }
     });
 
-    it('rejects an insecure URL and empty credentials without calling the site', async () => {
+    it('rejects empty credentials without calling the site', async () => {
         const t = setup();
 
-        expect(await t.auth.login('http://site.example.com', 'a', 'b')).toMatchObject({
-            status: 'signed_out',
-            error: 'The site URL must start with https://.',
-        });
-        expect(await t.auth.login('https://s.example.com', '', '')).toMatchObject({
+        expect(await t.auth.login('', '')).toMatchObject({
             error: 'Enter your username and password.',
         });
         expect(t.client.login).not.toHaveBeenCalled();
@@ -145,7 +145,7 @@ describe('login', () => {
         const t = setup({
             getConfig: () => Promise.reject(new SiteApiError({ message: 'x', status: 401 })),
         });
-        const state = await t.auth.login('https://s.example.com', 'a', 'b');
+        const state = await t.auth.login('a', 'b');
 
         expect(state.status).toBe('signed_out');
         expect(t.vault.get()).toBeNull();
@@ -156,7 +156,7 @@ describe('login', () => {
         const t = setup({
             getConfig: () => Promise.reject(new SiteApiError({ message: 'down', network: true })),
         });
-        const state = await t.auth.login('https://s.example.com', 'a', 'b');
+        const state = await t.auth.login('a', 'b');
 
         expect(state.status).toBe('offline');
         expect(t.vault.get()).toBe('1|tok');
@@ -164,17 +164,49 @@ describe('login', () => {
 
     it('signs out of the previous session before logging in again', async () => {
         const t = setup();
-        await t.auth.login('https://s.example.com', 'a', 'b');
-        await t.auth.login('https://s.example.com', 'a', 'b');
+        await t.auth.login('a', 'b');
+        await t.auth.login('a', 'b');
 
         expect(t.client.logout).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('built-in site URL', () => {
+    it('login always uses the built-in site, whatever the stored URL says', async () => {
+        const t = setup({ siteUrl: 'https://old.example.com' });
+        const state = await t.auth.login('a', 'b');
+
+        expect(state).toMatchObject({ status: 'signed_in', siteUrl: 'https://s.example.com' });
+        expect(t.store.get().settings.siteUrl).toBe('https://s.example.com');
+        expect(t.auth.getSiteUrl()).toBe('https://s.example.com');
+    });
+
+    it('login ignores any extra argument a caller might pass (the URL is not a parameter)', async () => {
+        const t = setup();
+        const login = t.auth.login as (...args: unknown[]) => Promise<AuthState>;
+        const state = await login('https://evil.example.com', 'a', 'b');
+
+        // 'https://evil.example.com' is taken as the username and 'a' as the password.
+        expect(t.client.login).toHaveBeenCalledWith('https://evil.example.com', 'a', 'MY-PC');
+        expect(state.siteUrl).toBe('https://s.example.com');
+    });
+
+    it('returns a clear error instead of crashing when the build has no site URL', async () => {
+        const t = setup({ builtIn: null });
+
+        expect(await t.auth.login('a', 'b')).toEqual({
+            status: 'signed_out',
+            error: 'Site URL is not configured in this build.',
+        });
+        expect(t.client.login).not.toHaveBeenCalled();
+        expect(t.auth.getSiteUrl()).toBe('');
     });
 });
 
 describe('logout', () => {
     it('clears token, config and username even when the request fails', async () => {
         const t = setup({ logout: () => Promise.reject(new Error('offline')) });
-        await t.auth.login('https://s.example.com', 'a', 'b');
+        await t.auth.login('a', 'b');
         const signedOut = vi.fn();
         t.auth.onSignedOut(signedOut);
 
@@ -263,13 +295,76 @@ describe('restore', () => {
 
         expect((await t.auth.restore()).status).toBe('signed_out');
         expect(t.vault.get()).toBeNull();
+        expect(t.getConfig).not.toHaveBeenCalled();
+    });
+
+    it('accepts a stored URL that only differs in form from the built-in one', async () => {
+        const t = setup({ siteUrl: 'https://S.example.com/admin/' });
+        await t.vault.save('1|saved');
+
+        expect((await t.auth.restore()).status).toBe('signed_in');
+        expect(t.vault.get()).toBe('1|saved');
+    });
+
+    it('treats a token saved for a different site as signed out and drops it', async () => {
+        const t = setup({ siteUrl: 'https://old.example.com' });
+        await t.vault.save('1|saved');
+        t.store.update((d) => {
+            d.settings.username = 'admin';
+        });
+
+        const state = await t.auth.restore();
+
+        expect(state).toEqual({
+            status: 'signed_out',
+            siteUrl: 'https://s.example.com',
+            error: 'This app now connects to a fixed site. Sign in again.',
+        });
+        expect(t.vault.get()).toBeNull();
+        expect(existsSync(join(t.dir, 'token.bin'))).toBe(false);
+        expect(t.config.getConfig()).toBeNull();
+        expect(t.store.get().settings.username).toBeUndefined();
+        expect(t.store.get().settings.siteUrl).toBe('https://s.example.com');
+        // The token is never sent anywhere: no config fetch, no sign-out request to either host.
+        expect(t.getConfig).not.toHaveBeenCalled();
+        expect(t.client.logout).not.toHaveBeenCalled();
+    });
+
+    it('treats an unparseable stored URL as a different site', async () => {
+        const t = setup({ siteUrl: 'garbage' });
+        await t.vault.save('1|saved');
+
+        expect((await t.auth.restore()).status).toBe('signed_out');
+        expect(t.vault.get()).toBeNull();
+    });
+
+    it('adopts the built-in URL silently when there was no session (fresh install)', async () => {
+        const t = setup({ siteUrl: 'https://old.example.com' });
+
+        expect(await t.auth.restore()).toEqual({
+            status: 'signed_out',
+            siteUrl: 'https://s.example.com',
+        });
+        expect(t.store.get().settings.siteUrl).toBe('https://s.example.com');
+    });
+
+    it('drops a saved token when the build has no site URL', async () => {
+        const t = setup({ siteUrl: 'https://s.example.com', builtIn: null });
+        await t.vault.save('1|saved');
+
+        expect(await t.auth.restore()).toEqual({
+            status: 'signed_out',
+            error: 'Site URL is not configured in this build.',
+        });
+        expect(t.vault.get()).toBeNull();
+        expect(t.getConfig).not.toHaveBeenCalled();
     });
 });
 
 describe('handleUnauthorized', () => {
     it('clears token + config, emits signed out and notifies listeners', async () => {
         const t = setup();
-        await t.auth.login('https://s.example.com', 'a', 'b');
+        await t.auth.login('a', 'b');
         const signedOut = vi.fn();
         t.auth.onSignedOut(signedOut);
 
@@ -288,43 +383,12 @@ describe('handleUnauthorized', () => {
     });
 });
 
-describe('changeSiteUrl', () => {
-    it('keeps the session when the URL is unchanged', async () => {
-        const t = setup();
-        await t.auth.login('https://s.example.com', 'a', 'b');
-
-        expect(await t.auth.changeSiteUrl('https://s.example.com/')).toEqual({
-            ok: true,
-            siteUrl: 'https://s.example.com',
-        });
-        expect(t.auth.getState().status).toBe('signed_in');
-    });
-
-    it('signs out of the old site before switching, so the token never reaches the new host', async () => {
-        const t = setup();
-        await t.auth.login('https://s.example.com', 'a', 'b');
-
-        const result = await t.auth.changeSiteUrl('https://other.example.com');
-
-        expect(result).toEqual({ ok: true, siteUrl: 'https://other.example.com' });
-        expect(t.client.logout).toHaveBeenCalledTimes(1);
-        expect(t.vault.get()).toBeNull();
-        expect(t.auth.getState().status).toBe('signed_out');
-        expect(t.store.get().settings.siteUrl).toBe('https://other.example.com');
-    });
-
-    it('rejects an insecure URL', async () => {
-        const t = setup();
-        expect(await t.auth.changeSiteUrl('http://example.com')).toMatchObject({ ok: false });
-    });
-});
-
 describe('secrets', () => {
     it('never logs the token or the password', async () => {
         const t = setup({
             login: () => Promise.resolve({ token: '1|supersecrettoken', username: 'admin' }),
         });
-        await t.auth.login('https://s.example.com', 'admin', 'hunter2-password');
+        await t.auth.login('admin', 'hunter2-password');
 
         const text = JSON.stringify(t.logger.entries);
         expect(text).not.toContain('supersecrettoken');
@@ -335,7 +399,7 @@ describe('secrets', () => {
 describe('stay signed in', () => {
     it('true (default): token file is written and the state says persisted', async () => {
         const t = setup();
-        const state = await t.auth.login('https://s.example.com', 'a', 'b');
+        const state = await t.auth.login('a', 'b');
 
         expect(state.persisted).toBe(true);
         expect(existsSync(join(t.dir, 'token.bin'))).toBe(true);
@@ -343,7 +407,7 @@ describe('stay signed in', () => {
 
     it('false: token stays in memory only, no file, state says not persisted', async () => {
         const t = setup();
-        const state = await t.auth.login('https://s.example.com', 'a', 'b', false);
+        const state = await t.auth.login('a', 'b', false);
 
         expect(state.status).toBe('signed_in');
         expect(state.persisted).toBe(false);
@@ -353,10 +417,10 @@ describe('stay signed in', () => {
 
     it('false removes a previously persisted token file', async () => {
         const t = setup();
-        await t.auth.login('https://s.example.com', 'a', 'b', true);
+        await t.auth.login('a', 'b', true);
         expect(existsSync(join(t.dir, 'token.bin'))).toBe(true);
 
-        await t.auth.login('https://s.example.com', 'a', 'b', false);
+        await t.auth.login('a', 'b', false);
 
         expect(existsSync(join(t.dir, 'token.bin'))).toBe(false);
         expect(t.vault.get()).toBe('1|tok');
@@ -364,7 +428,7 @@ describe('stay signed in', () => {
 
     it('restore() finds no token after a memory-only session', async () => {
         const t = setup();
-        await t.auth.login('https://s.example.com', 'a', 'b', false);
+        await t.auth.login('a', 'b', false);
 
         const fresh = new TokenVault({ dir: t.dir, backend: fakeBackend() });
         expect(await fresh.load()).toBeNull();
@@ -380,7 +444,7 @@ describe('stay signed in', () => {
     it('logout clears memory and disk in both modes', async () => {
         for (const stay of [true, false]) {
             const t = setup();
-            await t.auth.login('https://s.example.com', 'a', 'b', stay);
+            await t.auth.login('a', 'b', stay);
             await t.auth.logout();
 
             expect(t.vault.get()).toBeNull();
@@ -464,22 +528,6 @@ describe('session races (in-flight config load)', () => {
         expect(t.auth.getState().status).toBe('signed_out');
     });
 
-    it('a site change while the config is loading drops the old config and session', async () => {
-        const { t, pending, restoring } = await pendingRestore();
-
-        const changed = await t.auth.changeSiteUrl('https://other.example.com');
-
-        pending.resolve(CONFIG);
-        await restoring;
-        await tick();
-
-        expect(changed).toEqual({ ok: true, siteUrl: 'https://other.example.com' });
-        expect(t.auth.getState().status).toBe('signed_out');
-        expect(t.config.getConfig()).toBeNull();
-        expect(t.vault.get()).toBeNull();
-        expect(t.states.some((s) => s.status === 'signed_in')).toBe(false);
-    });
-
     it('a 401 (handleUnauthorized) while the config is loading stays signed out', async () => {
         const { t, pending, restoring } = await pendingRestore();
 
@@ -519,7 +567,7 @@ describe('session races (in-flight config load)', () => {
     it('sign-out during login() revokes the freshly issued token and stays signed out', async () => {
         const loginPending = deferred<{ token: string; username: string }>();
         const t = setup({ login: () => loginPending.promise });
-        const logging = t.auth.login('https://s.example.com', 'a', 'b');
+        const logging = t.auth.login('a', 'b');
 
         await tick();
         await t.auth.logout();
@@ -539,8 +587,8 @@ describe('concurrent login', () => {
         const loginPending = deferred<{ token: string; username: string }>();
         const t = setup({ login: () => loginPending.promise });
 
-        const first = t.auth.login('https://s.example.com', 'a', 'b');
-        const second = t.auth.login('https://s.example.com', 'a', 'b');
+        const first = t.auth.login('a', 'b');
+        const second = t.auth.login('a', 'b');
 
         loginPending.resolve({ token: '1|only', username: 'admin' });
 
@@ -558,8 +606,8 @@ describe('concurrent login', () => {
 
         await t.vault.save('1|old');
 
-        const first = t.auth.login('https://s.example.com', 'a', 'b');
-        const second = t.auth.login('https://s.example.com', 'a', 'b');
+        const first = t.auth.login('a', 'b');
+        const second = t.auth.login('a', 'b');
 
         await tick();
         logoutPending.resolve();
@@ -571,8 +619,8 @@ describe('concurrent login', () => {
     it('allows a new login after the previous one finished', async () => {
         const t = setup();
 
-        await t.auth.login('https://s.example.com', 'a', 'b');
-        await t.auth.login('https://s.example.com', 'a', 'b');
+        await t.auth.login('a', 'b');
+        await t.auth.login('a', 'b');
 
         expect(t.client.login).toHaveBeenCalledTimes(2);
     });
@@ -580,7 +628,7 @@ describe('concurrent login', () => {
     it('revokes a token that appears (restore race) before it is overwritten', async () => {
         const loginPending = deferred<{ token: string; username: string }>();
         const t = setup({ login: () => loginPending.promise });
-        const logging = t.auth.login('https://s.example.com', 'a', 'b');
+        const logging = t.auth.login('a', 'b');
 
         await tick();
         await t.vault.save('1|restored');

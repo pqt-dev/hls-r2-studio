@@ -19,9 +19,14 @@ Prerequisites: Node.js 24 and npm. Nothing else (no ffmpeg, no Wine).
 ```
 cd desktop-app
 npm ci --ignore-scripts
-npm run dist:win
+HLS_SITE_URL=https://admin.example.com npm run dist:win
 node scripts/verify-dist.mjs
 ```
+
+`HLS_SITE_URL` is the https URL of the HLS site this installer talks to. It is baked into the app at
+build time (the login screen does not ask for it). The production build fails with a clear error when it is
+missing or not a valid `https://` URL. On PowerShell use `$env:HLS_SITE_URL = "https://admin.example.com"`
+before the command. Use your real site instead of `admin.example.com`; never commit the real value.
 
 `npm run dist:win` first runs `predist:win` (`fetch:ffmpeg` then `gen:notices`), then builds the
 app and runs `electron-builder --win nsis --x64`. Output: `release/HLS-R2-Studio-Setup-<version>.exe`;
@@ -53,7 +58,11 @@ Workflow: `.github/workflows/desktop-app-windows.yml`.
   `contents: write` only on that job). Publish the draft manually after the verification checklist.
 - The integration tests run on real Windows against the real bundled ffmpeg
   (`FFMPEG_PATH`/`FFPROBE_PATH` point to `resources/bin`).
-- No secrets are used and nothing is signed.
+- No secrets are used and nothing is signed. The site URL comes from the GitHub repository variable
+  `HLS_SITE_URL` (Settings > Secrets and variables > Actions > Variables; it is not a secret). The
+  `Build app` step receives it as env. A check step fails early with a clear message when it is empty on
+  tag and `workflow_dispatch` builds. Pull requests do not build the installer (and forks cannot read
+  variables), so the workflow uses the placeholder `https://example.invalid` there.
 - All actions are pinned by full commit SHA (with a `# vX.Y.Z` comment); `.github/dependabot.yml` opens weekly
   grouped PRs for the actions and for the `desktop-app` npm dependencies. `actions/checkout` runs with
   `persist-credentials: false`. Dependencies are installed with `npm ci --ignore-scripts`.
@@ -204,7 +213,8 @@ On a clean Windows VM without Node.js or ffmpeg:
    b. Custom folder: re-install choosing another folder (e.g. `D:\Apps`); the directory page appears, the app is
    installed there (with the `HLS R2 Studio` subfolder), the shortcuts point to it, and the app runs from it.
 3. Launch the app; the startup ffmpeg self-check passes.
-4. Sign in with the site URL, username and password (the site issues the token).
+4. Sign in with username and password (the site issues the token). The login screen shows the built-in host
+   ("Signing in to ...") and has no site URL field; Settings shows it read-only.
 5. Process one real video (landscape and ideally portrait); output uploads to R2 and registers on the site.
 6. About shows the ffmpeg version (9.0.2) and the third-party notices.
 7. `resources\bin\ffmpeg.exe`, `resources\bin\ffprobe.exe`, `resources\LICENSES\THIRD-PARTY-NOTICES.txt`

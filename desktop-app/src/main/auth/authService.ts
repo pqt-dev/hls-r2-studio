@@ -2,7 +2,7 @@
 import type { AuthState } from '../../shared/ipc';
 import type { AppStore } from '../store';
 import { SiteApiError } from '../api/siteClient';
-import { normalizeSiteUrl, SiteUrlError } from '../api/siteUrl';
+import { normalizeSiteUrl, SITE_URL_NOT_CONFIGURED, SiteUrlError } from '../api/siteUrl';
 import { StaleConfigError, type ConfigService } from '../config/configService';
 import type { Logger } from '../logger';
 
@@ -31,6 +31,11 @@ export interface AuthServiceOptions {
     store: AppStore;
     config: ConfigService;
     hostname: () => string;
+    /**
+     * The one site this build talks to (normalized origin, see `getBuiltInSiteUrl`), or null when
+     * the build has none. The renderer can never choose it.
+     */
+    siteUrl: string | null;
     /** True in development builds (allows http://localhost). */
     allowInsecureLocalhost: boolean;
     logger: Logger;
@@ -44,12 +49,7 @@ export interface AuthService {
     /** Fires after the session was cleared (explicit sign-out or any 401). */
     onSignedOut(listener: () => void): () => void;
     /** `staySignedIn` (default true) = keep the token on disk; false = this session only. */
-    login(
-        siteUrl: string,
-        username: string,
-        password: string,
-        staySignedIn?: boolean,
-    ): Promise<AuthState>;
+    login(username: string, password: string, staySignedIn?: boolean): Promise<AuthState>;
     logout(): Promise<AuthState>;
     /** Startup: load the saved token and validate it by fetching the config. */
     restore(): Promise<AuthState>;
@@ -57,10 +57,7 @@ export interface AuthService {
     reloadConfig(): Promise<AuthState>;
     /** Clears token + config and signs out. Wired to every 401 of the site client. */
     handleUnauthorized(): void;
-    /** Changes the site URL; a different site invalidates the current session. */
-    changeSiteUrl(
-        siteUrl: string,
-    ): Promise<{ ok: true; siteUrl: string } | { ok: false; error: string }>;
+    /** The built-in site origin, or '' when this build has none. */
     getSiteUrl(): string;
 }
 
@@ -119,11 +116,23 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
     }
 
     const settings = () => store.get().settings;
+    const builtInSiteUrl = options.siteUrl;
 
     function siteUrlOrUndefined(): string | undefined {
-        const url = settings().siteUrl;
+        return builtInSiteUrl ?? undefined;
+    }
 
-        return url === '' ? undefined : url;
+    /** True when the site stored by an older session is the built-in site (normalized compare). */
+    function storedSiteIsBuiltIn(): boolean {
+        const stored = settings().siteUrl;
+
+        if (builtInSiteUrl === null || stored === '') return false;
+
+        try {
+            return normalizeSiteUrl(stored, options.allowInsecureLocalhost) === builtInSiteUrl;
+        } catch {
+            return false;
+        }
     }
 
     function setState(next: AuthState): AuthState {
@@ -234,16 +243,16 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
             return () => signedOutListeners.delete(listener);
         },
 
-        getSiteUrl: () => settings().siteUrl,
+        getSiteUrl: () => builtInSiteUrl ?? '',
 
-        async login(rawSiteUrl, username, password, staySignedIn = true) {
+        async login(username, password, staySignedIn = true) {
             // Guard FIRST and synchronously: two simultaneous calls must not issue two tokens.
             if (loginInFlight || state.status === 'signing_in') return state;
 
             loginInFlight = true;
 
             try {
-                return await performLogin(rawSiteUrl, username, password, staySignedIn);
+                return await performLogin(username, password, staySignedIn);
             } finally {
                 loginInFlight = false;
             }
@@ -275,11 +284,34 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
             const token = await vault.load();
             const siteUrl = siteUrlOrUndefined();
 
-            if (token === null || siteUrl === undefined) {
+            if (siteUrl === undefined) {
+                // Nowhere to send a token to: never keep one around.
                 if (token !== null) await clearSession();
 
-                return signedOut();
+                return signedOut(SITE_URL_NOT_CONFIGURED);
             }
+
+            if (!storedSiteIsBuiltIn()) {
+                // Saved by a version that let the user pick the site (or for another site): the
+                // token must never be sent to the built-in host, so sign in again.
+                const hadSession = token !== null;
+
+                if (hadSession) await clearSession();
+
+                if (hadSession || settings().username !== undefined) setUsername(undefined);
+
+                store.update((draft) => {
+                    draft.settings.siteUrl = siteUrl;
+                });
+
+                return signedOut(
+                    hadSession
+                        ? 'This app now connects to a fixed site. Sign in again.'
+                        : undefined,
+                );
+            }
+
+            if (token === null) return signedOut();
 
             // A token found on disk was saved with "stay signed in".
             persisted = true;
@@ -305,59 +337,18 @@ export function createAuthService(options: AuthServiceOptions): AuthService {
             signedOut('Your session has expired. Sign in again.');
             notifySignedOut();
         },
-
-        async changeSiteUrl(raw) {
-            let origin: string;
-
-            try {
-                origin = normalizeSiteUrl(raw, options.allowInsecureLocalhost);
-            } catch (error) {
-                return { ok: false, error: loginErrorMessage(error) };
-            }
-
-            const current = settings().siteUrl;
-
-            if (origin === current) return { ok: true, siteUrl: origin };
-
-            // Everything fetched for the old site is void, also while a request is pending.
-            invalidateSession();
-
-            // The token belongs to the old site: it must never be sent to another host.
-            if (vault.get() !== null) {
-                await client.logout().catch(() => undefined);
-                await clearSession();
-                setUsername(undefined);
-                store.update((draft) => {
-                    draft.settings.siteUrl = origin;
-                });
-                signedOut();
-                notifySignedOut();
-
-                return { ok: true, siteUrl: origin };
-            }
-
-            store.update((draft) => {
-                draft.settings.siteUrl = origin;
-            });
-            signedOut();
-
-            return { ok: true, siteUrl: origin };
-        },
     };
 
     async function performLogin(
-        rawSiteUrl: string,
         username: string,
         password: string,
         staySignedIn: boolean,
     ): Promise<AuthState> {
-        let origin: string;
-
-        try {
-            origin = normalizeSiteUrl(rawSiteUrl, options.allowInsecureLocalhost);
-        } catch (error) {
-            return setState({ ...signedOutBase(), error: loginErrorMessage(error) });
+        if (builtInSiteUrl === null) {
+            return setState({ ...signedOutBase(), error: SITE_URL_NOT_CONFIGURED });
         }
+
+        const origin = builtInSiteUrl;
 
         if (username.trim() === '' || password === '') {
             return setState({ ...signedOutBase(), error: 'Enter your username and password.' });

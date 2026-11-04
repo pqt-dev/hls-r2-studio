@@ -39,3 +39,40 @@ export function normalizeSiteUrl(raw: string, allowInsecureLocalhost: boolean): 
 
     throw new SiteUrlError('The site URL must start with https://.');
 }
+
+/** Shown when this build has no (valid) built-in site URL, e.g. `electron-vite dev` without env. */
+export const SITE_URL_NOT_CONFIGURED = 'Site URL is not configured in this build.';
+
+/**
+ * Build-time constant injected by `electron-vite build` (see electron.vite.config.ts). It does
+ * not exist at all in vitest or `electron-vite dev`, so it is only ever read through `typeof`.
+ */
+declare const __HLS_SITE_URL__: string | undefined;
+
+/** Normalizes a raw built-in site URL; null when it is missing or not valid. */
+export function normalizeBuiltInSiteUrl(
+    raw: string | undefined,
+    allowInsecureLocalhost: boolean,
+): string | null {
+    if (raw === undefined || raw.trim() === '') return null;
+
+    try {
+        return normalizeSiteUrl(raw, allowInsecureLocalhost);
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * The ONE place that says which site this app talks to. The value is fixed when the app is built
+ * (`HLS_SITE_URL`); without the build-time define (dev, tests) the runtime env var is used.
+ * Returns null when nothing valid is configured. The renderer can never influence this.
+ */
+export function getBuiltInSiteUrl(
+    allowInsecureLocalhost: boolean,
+    env: Record<string, string | undefined> = process.env,
+): string | null {
+    const raw = typeof __HLS_SITE_URL__ === 'string' ? __HLS_SITE_URL__ : env['HLS_SITE_URL'];
+
+    return normalizeBuiltInSiteUrl(raw, allowInsecureLocalhost);
+}

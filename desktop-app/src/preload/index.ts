@@ -59,9 +59,8 @@ const api: RendererApi = {
     },
     auth: {
         getState: () => invoke<AuthState>(IpcChannels.authGetState),
-        login: (siteUrl, username, password, staySignedIn) =>
+        login: (username, password, staySignedIn) =>
             invoke<AuthState>(IpcChannels.authLogin, {
-                siteUrl,
                 username,
                 password,
                 ...(staySignedIn === undefined ? {} : { staySignedIn }),

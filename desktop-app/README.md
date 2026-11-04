@@ -10,23 +10,43 @@ fully separate Node project (own `package.json`, own lockfile). See
 - Node.js 24 LTS (what CI uses; 22.12 or newer 22.x also satisfies the toolchain `engines`) and npm
 - No ffmpeg needed for development of pure logic; the real binaries are bundled at packaging time
 
+## Site URL (fixed at build time)
+
+The app talks to exactly one site, and its URL is baked in when the app is built from the
+`HLS_SITE_URL` environment variable. The login screen has no site field; it only shows the host
+("Signing in to ..."), and the renderer has no way to choose or change the server.
+
+- Production build: `HLS_SITE_URL=https://admin.example.com npm run build` (also needed for
+  `npm run pack` / `npm run dist:win`, which run the build). The value must be an `https://` URL; it
+  is normalized to its origin. The build FAILS with a clear error if the variable is missing or
+  invalid. Replace `admin.example.com` with the real site; the real URL is not stored in the repo.
+- CI: set the GitHub repository variable `HLS_SITE_URL` (Settings > Secrets and variables >
+  Actions > Variables). See `docs/PACKAGING.md`.
+- Dev (`npm run dev`) and tests do not need it at build time. To sign in during development, set
+  it at runtime: `HLS_SITE_URL=http://localhost:8000 npm run dev` (`http://localhost` is accepted in
+  dev builds only). Without it the app starts but sign-in shows "Site URL is not configured in
+  this build."
+- Upgrading from a version where the user typed the site URL: if the saved site differs from the
+  built-in one, the saved token is dropped and the user signs in again. A saved token is never sent
+  to a host other than the built-in one.
+
 ## Commands
 
 Run everything from `desktop-app/`.
 
-| Command              | What it does                                          |
-| -------------------- | ----------------------------------------------------- |
-| `npm install`        | Install dependencies                                  |
-| `npm run dev`        | Start Electron with the Vite dev server (HMR)         |
-| `npm run build`      | Build main, preload and renderer into `out/`          |
-| `npm run typecheck`  | Type-check node (main/preload/shared) and web code    |
-| `npm run lint`       | ESLint (flat config, typescript-eslint)               |
-| `npm run format`     | Prettier                                              |
-| `npm test`           | Vitest, single run (unit + integration)               |
-| `npm run smoke`      | Real pipeline on one file (see "Pipeline smoke test") |
-| `npm run test:watch` | Vitest watch mode                                     |
-| `npm run pack`       | Build + unpacked app via electron-builder (`--dir`)   |
-| `npm run dist:win`   | Build + NSIS x64 installer via electron-builder       |
+| Command              | What it does                                                        |
+| -------------------- | ------------------------------------------------------------------- |
+| `npm install`        | Install dependencies                                                |
+| `npm run dev`        | Start Electron with the Vite dev server (HMR)                       |
+| `npm run build`      | Build main, preload and renderer into `out/` (needs `HLS_SITE_URL`) |
+| `npm run typecheck`  | Type-check node (main/preload/shared) and web code                  |
+| `npm run lint`       | ESLint (flat config, typescript-eslint)                             |
+| `npm run format`     | Prettier                                                            |
+| `npm test`           | Vitest, single run (unit + integration)                             |
+| `npm run smoke`      | Real pipeline on one file (see "Pipeline smoke test")               |
+| `npm run test:watch` | Vitest watch mode                                                   |
+| `npm run pack`       | Build + unpacked app via electron-builder (`--dir`)                 |
+| `npm run dist:win`   | Build + NSIS x64 installer via electron-builder                     |
 
 Note: `.npmrc` sets `ignore-scripts=true`, so `npm install` does NOT download Electron's binary
 (not needed for `build`, `typecheck`, `lint`, `test`, `pack`). Before `npm run dev`, run
@@ -45,7 +65,7 @@ desktop-app/
       auth/                 sign-in state machine (login, logout, restore, 401 handling)
       config/               site config held in RAM only (R2 secret never leaves main)
       queue/                job queue, state machine, persistence, recovery
-      settings/             site URL, temp folder, parallel jobs
+      settings/             temp folder, parallel jobs (site URL is read-only)
       lifecycle/            close/quit confirmation flow
       pipeline/ ffmpeg/     processing pipeline and ffmpeg runner
       store/                JSON store (atomic writes, schemaVersion, migrate)
@@ -105,17 +125,17 @@ index.ts (wiring, the only place that builds everything)
 Modules (all Electron-free except `index.ts`, `window.ts`, `ipc/register.ts`,
 `ipc/electronAdapters.ts`, `ipc/senderGuard.ts` (types only) and `preload/index.ts`):
 
-| Module                                                 | Role                                                                                                 |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `api/siteUrl.ts`                                       | Normalizes the site URL to an origin; https only (`http://localhost` in dev builds)                  |
-| `api/siteClient.ts`                                    | `login`, `logout`, `getConfig`, `register`; 30 s timeout, `redirect: 'manual'`, typed `SiteApiError` |
-| `auth/authService.ts`                                  | `AuthState` machine, token in `TokenVault`, restore at startup, 401 handling, site switch            |
-| `config/configService.ts`                              | Latest `AppConfig` in RAM; the renderer only sees `{ r2Configured, transcode }`                      |
-| `queue/jobQueue.ts`                                    | Job state machine, scheduling, throttled events, retry/cancel/recovery                               |
-| `queue/jobDto.ts`, `jobStates.ts`, `fileValidation.ts` | DTO mapping, state groups, path validation                                                           |
-| `settings/settingsService.ts`                          | Validated settings changes                                                                           |
-| `ipc/*`                                                | Typed handlers (one validator per payload), push events, sender guard, Electron adapters             |
-| `lifecycle/quitCoordinator.ts`                         | Confirm close/quit while jobs run, abort, flush the store, quit                                      |
+| Module                                                 | Role                                                                                                                                   |
+| ------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `api/siteUrl.ts`                                       | Normalizes the site URL to an origin; https only (`http://localhost` in dev builds); `getBuiltInSiteUrl()` returns the build-time site |
+| `api/siteClient.ts`                                    | `login`, `logout`, `getConfig`, `register`; 30 s timeout, `redirect: 'manual'`, typed `SiteApiError`                                   |
+| `auth/authService.ts`                                  | `AuthState` machine, token in `TokenVault`, restore at startup, 401 handling, site switch                                              |
+| `config/configService.ts`                              | Latest `AppConfig` in RAM; the renderer only sees `{ r2Configured, transcode }`                                                        |
+| `queue/jobQueue.ts`                                    | Job state machine, scheduling, throttled events, retry/cancel/recovery                                                                 |
+| `queue/jobDto.ts`, `jobStates.ts`, `fileValidation.ts` | DTO mapping, state groups, path validation                                                                                             |
+| `settings/settingsService.ts`                          | Validated settings changes                                                                                                             |
+| `ipc/*`                                                | Typed handlers (one validator per payload), push events, sender guard, Electron adapters                                               |
+| `lifecycle/quitCoordinator.ts`                         | Confirm close/quit while jobs run, abort, flush the store, quit                                                                        |
 
 Data flow of one job: `jobs:add-files` / `jobs:add-paths` -> `queue.addFiles` (validates, stats,
 dedupes, smallest first) -> run loop (`maxConcurrent` 1..2; waits while signed out, offline, no
@@ -137,11 +157,11 @@ with a safe English message; invalid payload shapes are rejected as errors.
 | `app:open-notices`        | invoke         | none (opens `LICENSES/THIRD-PARTY-NOTICES.txt`)                               | `ActionResult`        |
 | `diagnostics:get`         | invoke         | none                                                                          | `DiagnosticsDto`      |
 | `auth:get-state`          | invoke         | none                                                                          | `AuthState`           |
-| `auth:login`              | invoke         | `{ siteUrl, username, password, staySignedIn? }` (default `true`)             | `AuthState`           |
+| `auth:login`              | invoke         | `{ username, password, staySignedIn? }` (default `true`; no site URL)         | `AuthState`           |
 | `auth:logout`             | invoke         | none                                                                          | `AuthState`           |
 | `auth:reload-config`      | invoke         | none                                                                          | `AuthState`           |
 | `settings:get`            | invoke         | none                                                                          | `SettingsDto`         |
-| `settings:set`            | invoke         | `{ siteUrl?, tmpRoot?, maxConcurrent? }`                                      | `SettingsResult`      |
+| `settings:set`            | invoke         | `{ tmpRoot?, maxConcurrent? }` (the site URL is read-only)                    | `SettingsResult`      |
 | `settings:pick-directory` | invoke         | none (main opens the native folder dialog)                                    | `PickDirectoryResult` |
 | `jobs:list`               | invoke         | none                                                                          | `JobDto[]`            |
 | `jobs:add-files`          | invoke         | none (main opens the file dialog)                                             | `AddFilesResult`      |
@@ -229,7 +249,7 @@ errors (403, 400, ...) keep the 3-attempt rule and clean up as before.
 - Jobs are bound to the site they were uploaded for. After switching sites, `needs_sign_in` /
   `register_failed` jobs stay as they are (with a message naming the original host) until you
   sign in to that site again or cancel them; nothing is registered or deleted on another site.
-  Changing the site URL in Settings is refused while such jobs exist.
+  This only happens to jobs created by a build with a different built-in site URL.
 - Only the server error codes `playlist_not_found` and `public_id_conflict` are treated as a
   definitive rejection (the R2 files are then deleted). Any other HTTP 409/422 keeps the files
   and the payload so the user can retry.
@@ -245,7 +265,7 @@ errors (403, 400, ...) keep the 3-attempt rule and clean up as before.
 
 - Secrets (API token, R2 credentials) stay in main: they are never logged, stored in the JSON
   store or sent to the renderer. The site client never follows redirects, so the Bearer token
-  cannot reach another host; changing the site URL signs out first.
+  cannot reach another host, and the site URL is fixed at build time (a saved token for a different site is dropped at startup).
 - Renderer: `contextIsolation`, `sandbox`, no Node integration, strict CSP, no navigation or new
   windows. Only the main process talks to the network.
 - API token is encrypted with Electron `safeStorage` and never written in plain text. Logs redact

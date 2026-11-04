@@ -35,6 +35,27 @@ describe('createAppStore', () => {
     });
 });
 
+describe('store written before the site URL became a build-time constant', () => {
+    it('loads unchanged (no schema bump): the stored siteUrl/username stay for the sign-in check', async () => {
+        const old = {
+            schemaVersion: 1,
+            settings: {
+                siteUrl: 'https://picked-by-user.example.com',
+                tmpRoot: '/tmp/old',
+                maxConcurrent: 2,
+                username: 'alice',
+            },
+            jobs: [],
+        };
+
+        writeFileSync(join(dir, STORE_FILE_NAME), JSON.stringify(old), 'utf8');
+
+        const store = createAppStore({ dir, defaultTmpRoot: '/tmp/hls' });
+
+        expect(await store.load()).toEqual(old);
+    });
+});
+
 const SETTINGS = { siteUrl: '', tmpRoot: '/tmp/x', maxConcurrent: 1 };
 const JOB = {
     id: 'j1',

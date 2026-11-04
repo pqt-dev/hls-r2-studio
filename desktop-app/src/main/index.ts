@@ -7,6 +7,7 @@ import { app, dialog, safeStorage, session } from 'electron';
 import type { BrowserWindow } from 'electron';
 import type { DiagnosticsDto, FfmpegDiagnostics } from '../shared/ipc';
 import { createSiteClient } from './api/siteClient';
+import { getBuiltInSiteUrl } from './api/siteUrl';
 import { createAuthService, type AuthService } from './auth/authService';
 import { createConfigService } from './config/configService';
 import { resolveBinaries } from './ffmpeg/binaries';
@@ -84,6 +85,11 @@ async function bootstrap(): Promise<void> {
 
     await store.load();
 
+    // The site is fixed at build time (HLS_SITE_URL); nothing at runtime can change it.
+    const siteUrl = getBuiltInSiteUrl(dev);
+
+    if (siteUrl === null) logger.error('No valid built-in site URL; sign-in is disabled');
+
     const tokenVault = new TokenVault({
         dir: userData,
         backend: createSafeStorageBackend(safeStorage),
@@ -95,7 +101,7 @@ async function bootstrap(): Promise<void> {
     const siteClient = createSiteClient({
         // Node/Undici fetch of the main process; redirects are never followed by the client.
         fetch: (input, init) => fetch(input, init),
-        getBaseUrl: () => store.get().settings.siteUrl,
+        getBaseUrl: () => siteUrl ?? '',
         getToken: () => tokenVault.get(),
         userAgent: `HLS-R2-Studio/${version} (${platform()})`,
         allowInsecureLocalhost: dev,
@@ -110,6 +116,7 @@ async function bootstrap(): Promise<void> {
         store,
         config,
         hostname,
+        siteUrl,
         allowInsecureLocalhost: dev,
         logger,
     });
@@ -165,9 +172,8 @@ async function bootstrap(): Promise<void> {
 
     const settings = createSettingsService({
         store,
-        auth,
+        getSiteUrl: () => siteUrl ?? '',
         hasActiveJobs: () => queue.hasActiveJobs(),
-        hasAttentionJobs: () => queue.hasAttentionJobs(),
         hasPausedUploads: () => queue.hasPausedUploads(),
         ensureDir: async (path) => {
             await mkdir(path, { recursive: true });

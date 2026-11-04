@@ -5,11 +5,16 @@ import { push, renderApp } from '../testing/renderApp';
 const signedOut = { status: 'signed_out' } as const;
 
 describe('Login screen', () => {
-    it('shows the login form when signed out, with the site URL prefilled', async () => {
+    it('shows the login form when signed out, with the fixed site shown read-only', async () => {
         await renderApp({ auth: signedOut });
 
         expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
-        expect(screen.getByLabelText('Site URL')).toHaveValue('https://site.example.com');
+        // No site URL input: the site is fixed when the app is built.
+        expect(screen.queryByLabelText('Site URL')).not.toBeInTheDocument();
+        expect(screen.getAllByRole('textbox')).toHaveLength(1);
+        expect(screen.getByText('Signing in to', { exact: false })).toHaveTextContent(
+            'Signing in to site.example.com',
+        );
         expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
         expect(screen.getByLabelText('Stay signed in')).toBeChecked();
         expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
@@ -23,7 +28,7 @@ describe('Login screen', () => {
         await user.type(screen.getByLabelText('Password'), 'secret');
         await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
-        expect(login).toHaveBeenCalledWith('https://site.example.com', 'alice', 'secret', true);
+        expect(login).toHaveBeenCalledWith('alice', 'secret', true);
         expect(await screen.findByRole('tablist')).toBeInTheDocument();
     });
 
@@ -36,7 +41,7 @@ describe('Login screen', () => {
         await user.click(screen.getByLabelText('Stay signed in'));
         await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
-        expect(login).toHaveBeenCalledWith('https://site.example.com', 'alice', 'secret', false);
+        expect(login).toHaveBeenCalledWith('alice', 'secret', false);
     });
 
     it('submits with Enter and shows the returned error inline', async () => {
@@ -53,32 +58,6 @@ describe('Login screen', () => {
         // The password is not kept after a failed attempt.
         expect(screen.getByLabelText('Password')).toHaveValue('');
         expect(screen.getByLabelText('Username')).toHaveValue('alice');
-    });
-
-    it('rejects a site URL that is not https before calling the main process', async () => {
-        const { fake, user } = await renderApp({ auth: signedOut });
-        const login = vi.spyOn(fake.api.auth, 'login');
-
-        await user.clear(screen.getByLabelText('Site URL'));
-        await user.type(screen.getByLabelText('Site URL'), 'http://example.com');
-        await user.type(screen.getByLabelText('Username'), 'alice');
-        await user.type(screen.getByLabelText('Password'), 'secret');
-        await user.click(screen.getByRole('button', { name: 'Sign in' }));
-
-        expect(login).not.toHaveBeenCalled();
-        expect(screen.getByRole('alert')).toHaveTextContent('starting with https://');
-    });
-
-    it('lets http://localhost through so the main process can decide', async () => {
-        const { fake, user } = await renderApp({ auth: signedOut });
-        const login = vi.spyOn(fake.api.auth, 'login');
-
-        await user.clear(screen.getByLabelText('Site URL'));
-        await user.type(screen.getByLabelText('Site URL'), 'http://localhost:8000');
-        await user.type(screen.getByLabelText('Username'), 'alice');
-        await user.type(screen.getByLabelText('Password'), 'secret{Enter}');
-
-        expect(login).toHaveBeenCalledWith('http://localhost:8000', 'alice', 'secret', true);
     });
 
     it('shows a loading state and disables the form while signing in', async () => {

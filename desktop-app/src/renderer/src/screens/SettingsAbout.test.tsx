@@ -36,23 +36,24 @@ describe('Settings screen', () => {
         await openTab(user, 'Settings');
 
         expect(screen.getByLabelText('Site URL')).toHaveValue('https://site.example.com');
+        // The site is fixed when the app is built: it can be read but not edited or changed.
+        expect(screen.getByLabelText('Site URL')).toHaveAttribute('readonly');
+        expect(screen.queryByRole('button', { name: 'Change site' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Temporary folder')).toHaveValue('C:\\Temp\\hls-r2-studio');
         expect(screen.getByLabelText('Temporary folder')).toHaveAttribute('readonly');
         expect(screen.getByLabelText('Parallel jobs')).toHaveValue('1');
         expect(screen.getByText(/much more CPU/)).toBeInTheDocument();
     });
 
-    it('disables the site URL and folder while jobs run, and explains why', async () => {
+    it('disables the folder while jobs run, and explains why', async () => {
         const { fake, user } = await renderApp();
 
         await openTab(user, 'Settings');
         push(() => fake.emitSummary(makeSummary({ running: 1 })));
 
-        expect(screen.getByLabelText('Site URL')).toBeDisabled();
-        expect(screen.getByRole('button', { name: 'Change site' })).toBeDisabled();
         expect(screen.getByRole('button', { name: /Choose folder/ })).toBeDisabled();
         expect(
-            screen.getByText('The site cannot be changed while videos are being processed.'),
+            screen.getByText('The folder cannot be changed while videos are being processed.'),
         ).toBeInTheDocument();
     });
 
@@ -103,37 +104,6 @@ describe('Settings screen', () => {
         expect(set).toHaveBeenCalledWith({ maxConcurrent: 2 });
         expect(await screen.findByText('Parallel jobs saved.')).toBeInTheDocument();
         expect(screen.getByLabelText('Parallel jobs')).toHaveValue('2');
-    });
-
-    it('warns before switching to another host and signs out through the main process', async () => {
-        const { fake, user } = await renderApp();
-        const set = vi.spyOn(fake.api.settings, 'set');
-
-        await openTab(user, 'Settings');
-        await user.clear(screen.getByLabelText('Site URL'));
-        await user.type(screen.getByLabelText('Site URL'), 'https://other.example.org');
-        await user.click(screen.getByRole('button', { name: 'Change site' }));
-
-        const dialog = screen.getByRole('alertdialog', { name: 'Change the site?' });
-
-        expect(dialog).toHaveTextContent('signs you out');
-        expect(set).not.toHaveBeenCalled();
-
-        await user.click(within(dialog).getByRole('button', { name: 'Change site and sign out' }));
-        expect(set).toHaveBeenCalledWith({ siteUrl: 'https://other.example.org' });
-    });
-
-    it('saves a same-host URL change without a warning', async () => {
-        const { fake, user } = await renderApp();
-        const set = vi.spyOn(fake.api.settings, 'set');
-
-        await openTab(user, 'Settings');
-        await user.clear(screen.getByLabelText('Site URL'));
-        await user.type(screen.getByLabelText('Site URL'), 'https://site.example.com/');
-        await user.click(screen.getByRole('button', { name: 'Change site' }));
-
-        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
-        expect(set).toHaveBeenCalledWith({ siteUrl: 'https://site.example.com/' });
     });
 
     it('signs out immediately when no job is running', async () => {
