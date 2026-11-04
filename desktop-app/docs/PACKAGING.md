@@ -1,6 +1,6 @@
 # Packaging the Windows installer
 
-The installer is a single NSIS `.exe` (per-user, no admin prompt) that contains the app, Electron,
+The installer is a single NSIS `.exe` (assisted wizard, per-user by default, no admin prompt) that contains the app, Electron,
 `ffmpeg.exe`, `ffprobe.exe` and the legal notices. The target machine needs nothing else.
 
 ## IMPORTANT: where things are validated
@@ -158,6 +158,33 @@ OV/EV code-signing certificate (EV or a cloud signing service gives immediate re
 over time), then configuring electron-builder (`win.signtoolOptions` / Azure Trusted Signing) with
 secrets in CI. Not implemented.
 
+## Installer wizard (assisted NSIS)
+
+`electron-builder.yml` uses `nsis.oneClick: false`, `perMachine: false`, `allowElevation: false`,
+`allowToChangeInstallationDirectory: true`, `runAfterFinish: true` (key names verified against
+`node_modules/app-builder-lib/scheme.json`). Pages the user sees, in order:
+
+1. Welcome and license pages: NOT shown (no license/EULA file is configured and no custom welcome page).
+2. Install mode page ("only for me" / "anyone who uses this computer"): with `perMachine: false` electron-builder
+   includes this page. Because `allowElevation: false`, the "all users" option is disabled ("must run as
+   admin") for a normal user, so the install stays per-user with no UAC prompt. It is only selectable if the
+   installer is started as administrator; that is unsupported for this app.
+3. Directory page: default is `%LOCALAPPDATA%\Programs\HLS R2 Studio`; the user can browse to another folder.
+   If the chosen path does not already contain the app folder name, the installer appends `\HLS R2 Studio`
+   to it.
+4. Install progress page.
+5. Finish page with a "Run HLS R2 Studio" checkbox (`runAfterFinish: true`).
+
+Shortcuts: the Start Menu and Desktop shortcuts (named after the product name) are created automatically
+(`createStartMenuShortcut`/`createDesktopShortcut`). There is NO shortcut checkbox in the wizard; offering one needs a
+custom NSIS page (`nsis.include` script). Possible follow-up, NOT done.
+
+Upgrade in place and the wizard: the installer reads the previous install location from the registry
+(same `appId`). When it detects an existing install it skips the directory page and installs over the existing
+folder, so a custom folder is kept on upgrade. The uninstaller removes the install folder and shortcuts and
+keeps `%APPDATA%` user data (`deleteAppDataOnUninstall` is deliberately unset; it applies to one-click only).
+All of this is from reading the electron-builder NSIS templates and was NOT run on Windows.
+
 ## Upgrade in place
 
 Installing a newer `HLS-R2-Studio-Setup-<version>.exe` over an existing install upgrades it in place
@@ -170,17 +197,23 @@ default). There is no auto-update (`publish: null`); distribute new installers m
 On a clean Windows VM without Node.js or ffmpeg:
 
 1. Check the installer hash against `SHA256SUMS.txt`.
-2. Run the installer: SmartScreen "Run anyway", no admin prompt; Start Menu and Desktop shortcuts exist.
+2. Run the installer: SmartScreen "Run anyway", no admin prompt. The wizard shows the install mode page
+   ("all users" disabled), the directory page, progress, and the finish page. Start Menu and Desktop shortcuts exist
+   (created automatically, no checkbox).
+   a. Default folder: the directory page proposes `%LOCALAPPDATA%\Programs\HLS R2 Studio`.
+   b. Custom folder: re-install choosing another folder (e.g. `D:\Apps`); the directory page appears, the app is
+   installed there (with the `HLS R2 Studio` subfolder), the shortcuts point to it, and the app runs from it.
 3. Launch the app; the startup ffmpeg self-check passes.
 4. Sign in with the site URL, username and password (the site issues the token).
 5. Process one real video (landscape and ideally portrait); output uploads to R2 and registers on the site.
 6. About shows the ffmpeg version (9.0.2) and the third-party notices.
 7. `resources\bin\ffmpeg.exe`, `resources\bin\ffprobe.exe`, `resources\LICENSES\THIRD-PARTY-NOTICES.txt`
-   exist under the install folder (`%LOCALAPPDATA%\Programs\...`).
-8. Install the next version over this one: settings and sign-in survive.
-9. Uninstall: the app and shortcuts are removed; check how user data in `%APPDATA%` is handled
-   (it is kept by default for oneClick installers; confirm and document the behavior of the build). The token
-   vault and store under `%APPDATA%` are expected to REMAIN after uninstall; note this in the release notes.
+   exist under the chosen install folder (default `%LOCALAPPDATA%\Programs\...`).
+8. Install the next version over this one: the directory page is skipped, the same folder (also a custom one) is
+   reused, settings and sign-in survive.
+9. Uninstall (also for the custom folder install): the install folder (including the custom one) and shortcuts are
+   removed. User data in `%APPDATA%` is expected to REMAIN (token vault and store; `deleteAppDataOnUninstall`
+   is unset); confirm and note this in the release notes.
 10. First run after enabling the fuses: the app window renders (not blank) and the app does not crash on
     start with ASAR integrity validation enabled; `ELECTRON_RUN_AS_NODE=1` has no effect on the exe.
 11. `resources\bin\ffmpeg.exe` / `ffprobe.exe` hashes equal `ffmpeg.lock.json` (verify-dist checks this in CI),

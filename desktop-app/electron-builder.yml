@@ -42,9 +42,14 @@ win:
         - x64
   # The installer is intentionally unsigned (see docs/PACKAGING.md).
 nsis:
-  oneClick: true
+  # Assisted (wizard) installer so the user can choose the installation folder (see docs/PACKAGING.md).
+  oneClick: false
+  # Per-user by default (%LOCALAPPDATA%\Programs, no admin prompt). allowElevation: false keeps the
+  # "all users" choice disabled unless the installer is started as administrator.
   perMachine: false
   allowElevation: false
+  allowToChangeInstallationDirectory: true
+  runAfterFinish: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
   artifactName: HLS-R2-Studio-Setup-${version}.exe
