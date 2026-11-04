@@ -592,7 +592,8 @@ select:disabled {
     border-left-color: var(--err-fg);
 }
 
-.job-attention {
+.job-attention,
+.job-paused {
     border-left-color: var(--warn-fg);
 }
 
@@ -690,7 +691,8 @@ select:disabled {
     color: var(--err-fg);
 }
 
-.chip-attention {
+.chip-attention,
+.chip-paused {
     background: var(--warn-bg);
     color: var(--warn-fg);
 }

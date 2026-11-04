@@ -2,7 +2,13 @@
 import { basename } from 'node:path';
 import type { JobDto } from '../../shared/ipc';
 import type { JobRecord } from '../../shared/types';
-import { isAttentionState, isFinalState, RETRYABLE_STATES, STAGE_KEYS } from './jobStates';
+import {
+    isAttentionState,
+    isFinalState,
+    isPausedUpload,
+    RETRYABLE_STATES,
+    STAGE_KEYS,
+} from './jobStates';
 
 export interface JobRuntimeInfo {
     /** A pipeline or register call is in flight for this job. */
@@ -11,6 +17,10 @@ export interface JobRuntimeInfo {
     /** Latest overall progress (RAM only), or null when unknown. */
     progress: number | null;
     waitingReason: string | null;
+    /** The upload is retrying because the network is down (RAM only). */
+    waitingForNetwork: boolean;
+    /** Epoch ms the current outage started, or null. */
+    networkWaitSince: number | null;
 }
 
 export const NO_RUNTIME: JobRuntimeInfo = {
@@ -18,6 +28,8 @@ export const NO_RUNTIME: JobRuntimeInfo = {
     cancelRequested: false,
     progress: null,
     waitingReason: null,
+    waitingForNetwork: false,
+    networkWaitSince: null,
 };
 
 /** Progress shown for jobs that have no live value (e.g. after a restart). */
@@ -30,6 +42,7 @@ function fallbackProgress(job: JobRecord): number {
 
 export function toJobDto(job: JobRecord, runtime: JobRuntimeInfo = NO_RUNTIME): JobDto {
     const running = runtime.running;
+    const waitingForNetwork = running && job.state === 'uploading' && runtime.waitingForNetwork;
     const progress = job.state === 'done' ? 100 : (runtime.progress ?? fallbackProgress(job));
 
     return {
@@ -40,6 +53,10 @@ export function toJobDto(job: JobRecord, runtime: JobRuntimeInfo = NO_RUNTIME): 
         stageKey: STAGE_KEYS[job.state],
         progress: Math.max(0, Math.min(100, Math.round(progress))),
         waitingReason: job.state === 'waiting' && !running ? runtime.waitingReason : null,
+        waitingForNetwork,
+        ...(waitingForNetwork && runtime.networkWaitSince !== null
+            ? { networkWaitSince: new Date(runtime.networkWaitSince).toISOString() }
+            : {}),
         errorMessage: job.errorMessage,
         errorDetail: job.errorDetail,
         publicId: job.state === 'done' ? (job.registered?.public_id ?? job.publicId) : job.publicId,
@@ -51,8 +68,9 @@ export function toJobDto(job: JobRecord, runtime: JobRuntimeInfo = NO_RUNTIME): 
         canCancel:
             !runtime.cancelRequested &&
             (running || job.state === 'waiting' || isAttentionState(job.state)),
-        canRetry: !running && RETRYABLE_STATES.includes(job.state),
+        canRetry: !running && (RETRYABLE_STATES.includes(job.state) || isPausedUpload(job.state)),
+        canResume: !running && isPausedUpload(job.state) && Boolean(job.registerPayload),
         canRetryRegister: !running && isAttentionState(job.state) && Boolean(job.registerPayload),
-        canRemove: !running && isFinalState(job.state),
+        canRemove: !running && (isFinalState(job.state) || isPausedUpload(job.state)),
     };
 }

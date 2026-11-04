@@ -15,13 +15,19 @@ import { createDefaultDeps } from './defaultDeps';
 import type { PipelineDeps } from './deps';
 import { PipelineError } from './errors';
 import { RegisterRequestError } from './registerClient';
-import { retryRegister, runPipeline, type PipelineHooks } from './runPipeline';
+import { resumeUpload } from './resumeUpload';
+import {
+    retryRegister,
+    runPipeline,
+    type BeforeUploadInfo,
+    type PipelineHooks,
+} from './runPipeline';
 import type { StepEnv } from './steps/env';
 import { probeDuration, probeFps } from './steps/probe';
 import { createR2Client } from './steps/s3Client';
 import { transcodeToHls } from './steps/transcode';
 import { FakeRegister, NOOP_LOGGER, makeTempDir, type RegisterBehavior } from './testing/fakes';
-import { FakeS3Server, type RecordedRequest } from './testing/fakeS3Server';
+import { FakeS3Server, type FakeS3ServerOptions } from './testing/fakeS3Server';
 
 const binaries: Binaries = resolveBinaries({
     platform: process.platform,
@@ -133,7 +139,7 @@ const created: Env[] = [];
 
 async function setup(
     options: {
-        failWhen?: (request: RecordedRequest, serial: number) => number | undefined;
+        failWhen?: FakeS3ServerOptions['failWhen'];
         register?: RegisterBehavior;
     } = {},
 ): Promise<Env> {
@@ -511,14 +517,14 @@ describe.skipIf(!available)(`pipeline integration (real ffmpeg, fake S3)${SUITE_
         expect(env.register.payloads).toHaveLength(0);
     }, 120_000);
 
-    it('a persistent HTTP 500 on the 3rd uploaded file fails the job and cleans the prefix', async () => {
+    it('a persistent HTTP 403 on the 3rd uploaded file fails the job and cleans the prefix', async () => {
         const seen: string[] = [];
         const env = await setup({
             failWhen: (request) => {
                 if (request.type !== 'put') return undefined;
                 if (!seen.includes(request.key)) seen.push(request.key);
 
-                return seen.indexOf(request.key) === 2 ? 500 : undefined;
+                return seen.indexOf(request.key) === 2 ? 403 : undefined;
             },
         });
         const error = await failureOf(
@@ -609,6 +615,165 @@ describe.skipIf(!available)(`pipeline integration (real ffmpeg, fake S3)${SUITE_
         expect(second.payloads).toEqual([payload]);
         expect(env.server.puts).toHaveLength(putsBefore);
         expect(env.server.objects.has(payload?.playlist_path ?? '')).toBe(true);
+    }, 120_000);
+});
+
+describe.skipIf(!available)(`network drops during the upload${SUITE_NOTE}`, () => {
+    /** Counts every process the pipeline spawns, and the transcode runs among them. */
+    function countProcesses(env: Env): {
+        all: () => number;
+        transcodes: () => number;
+        reset: () => void;
+    } {
+        let all = 0;
+        let transcodes = 0;
+        const inner = env.deps.run;
+
+        env.deps.run = (input) => {
+            all++;
+            if (input.args.at(-1) === 'playlist.m3u8') transcodes++;
+
+            return inner(input);
+        };
+
+        return {
+            all: () => all,
+            transcodes: () => transcodes,
+            reset: () => {
+                all = 0;
+                transcodes = 0;
+            },
+        };
+    }
+
+    /** A clock that only moves when the pipeline "sleeps", so a 30 minute outage is instant. */
+    function fakeClock(env: Env): void {
+        let now = 1_700_000_000_000;
+
+        env.deps.sleep = async (ms) => {
+            env.sleeps.push(ms);
+            now += ms;
+        };
+        env.deps.uploadTuning = { now: () => now, jitter: () => 0 };
+    }
+
+    it('a transient outage (dropped sockets, then 503s) finishes the job without transcoding again', async () => {
+        let puts = 0;
+        const env = await setup({
+            failWhen: (request) => {
+                if (request.type !== 'put') return undefined;
+
+                puts++;
+
+                if (puts <= 4) return 'destroy';
+                if (puts <= 7) return 503;
+
+                return undefined;
+            },
+        });
+        const counter = countProcesses(env);
+        const waits: number[] = [];
+        let restored = 0;
+
+        fakeClock(env);
+        env.hooks.onNetworkWait = (info) => waits.push(info.nextRetryInMs);
+        env.hooks.onNetworkRestored = () => restored++;
+
+        const result = await runPipeline({
+            job: job(sources.noAudio, 'Không có tiếng.mkv'),
+            config: config(env.server),
+            deps: env.deps,
+            hooks: env.hooks,
+        });
+
+        expect(result.registered.public_id).toBe(PUBLIC_ID);
+        expect(counter.transcodes()).toBe(1);
+        expect(env.sleeps.length).toBeGreaterThanOrEqual(7);
+        expect(
+            env.sleeps.every((ms) => [2000, 5000, 10000, 20000, 30000, 60000].includes(ms)),
+        ).toBe(true);
+        expect(waits.length).toBeGreaterThan(0);
+        expect(restored).toBeGreaterThanOrEqual(1);
+        expect(env.server.requests.some((r) => r.type === 'delete')).toBe(false);
+        const names = [...env.server.objects.keys()].map((k) => k.slice(result.prefix.length));
+
+        expect(names).toEqual(
+            expect.arrayContaining(['playlist.m3u8', 'thumbnail.jpg', 'storyboard_3x3.jpg']),
+        );
+        expect(env.register.payloads).toEqual([result.payload]);
+        expect(await exists(join(env.tmpRoot, PUBLIC_ID))).toBe(false);
+    }, 120_000);
+
+    it('a permanent outage is upload_interrupted; resumeUpload then finishes with zero ffmpeg runs', async () => {
+        let outage = true;
+        let puts = 0;
+        const env = await setup({
+            failWhen: (request) => {
+                if (request.type !== 'put' || !outage) return undefined;
+
+                // The first 3 files get through, then the connection dies for good.
+                return ++puts <= 3 ? undefined : 'destroy';
+            },
+        });
+        const counter = countProcesses(env);
+        let beforeUpload: BeforeUploadInfo | null = null;
+
+        fakeClock(env);
+        env.hooks.onBeforeUpload = async (info) => {
+            beforeUpload = info;
+        };
+
+        const error = await failureOf(
+            runPipeline({
+                job: job(sources.noAudio, 'Không có tiếng.mkv'),
+                config: config(env.server),
+                deps: env.deps,
+                hooks: env.hooks,
+            }),
+        );
+        const tmpDir = join(env.tmpRoot, PUBLIC_ID);
+
+        expect(error.kind).toBe('upload_interrupted');
+        expect(error.resumable).toBe(true);
+        expect(error.tmpDir).toBe(tmpDir);
+        expect(error.registerPayload).toEqual(
+            (beforeUpload as BeforeUploadInfo | null)?.registerPayload,
+        );
+        expect(counter.transcodes()).toBe(1);
+        expect(env.server.objects.size).toBe(3);
+        expect(env.server.requests.some((r) => r.type === 'delete')).toBe(false);
+        expect(await exists(join(tmpDir, 'playlist.m3u8'))).toBe(true);
+        expect(env.register.payloads).toHaveLength(0);
+
+        // The network is back.
+        outage = false;
+        counter.reset();
+
+        const uploaded = new Set(env.server.objects.keys());
+        const putsBefore = env.server.puts.length;
+        const payload = error.registerPayload as NonNullable<typeof error.registerPayload>;
+        const stages: string[] = [];
+        const result = await resumeUpload({
+            job: job(sources.noAudio, 'Không có tiếng.mkv'),
+            payload,
+            tmpDir,
+            config: config(env.server),
+            deps: env.deps,
+            hooks: { ...env.hooks, onStage: (s) => stages.push(s) },
+        });
+        const resumedPuts = env.server.puts.slice(putsBefore).map((p) => p.key);
+
+        expect(counter.all()).toBe(0);
+        expect(counter.transcodes()).toBe(0);
+        expect(resumedPuts.every((key) => !uploaded.has(key))).toBe(true);
+        expect(resumedPuts.at(-1)).toBe(payload.playlist_path);
+        expect(new Set([...uploaded, ...resumedPuts])).toEqual(new Set(env.server.objects.keys()));
+        expect(env.server.objects.has(payload.playlist_path)).toBe(true);
+        expect(env.server.objects.has(payload.thumbnail_path ?? '')).toBe(true);
+        expect(stages).toEqual(['uploading', 'registering']);
+        expect(result.registered.public_id).toBe(PUBLIC_ID);
+        expect(env.register.payloads).toEqual([payload]);
+        expect(await exists(tmpDir)).toBe(false);
     }, 120_000);
 });
 

@@ -119,7 +119,8 @@ function setup(
         cancel: vi.fn(() => Promise.resolve({ ok: true as const })),
         retry: vi.fn(() => Promise.resolve({ ok: true as const })),
         retryRegister: vi.fn(() => Promise.resolve({ ok: true as const })),
-        remove: vi.fn(() => ({ ok: true as const })),
+        resume: vi.fn(() => Promise.resolve({ ok: true as const })),
+        remove: vi.fn(() => Promise.resolve({ ok: true as const })),
         clearFinished: vi.fn(() => ({ ok: true as const })),
         getJob: vi.fn(() => record),
     };
@@ -209,6 +210,7 @@ describe('handlers: coverage and validation', () => {
             IpcChannels.jobsCancel,
             IpcChannels.jobsRetry,
             IpcChannels.jobsRetryRegister,
+            IpcChannels.jobsResume,
             IpcChannels.jobsRemove,
             IpcChannels.jobsOpenEmbed,
         ]) {
@@ -358,6 +360,7 @@ describe('handlers: jobs', () => {
         await t.call(IpcChannels.jobsCancel, { id: 'j1' });
         await t.call(IpcChannels.jobsRetry, { id: 'j1' });
         await t.call(IpcChannels.jobsRetryRegister, { id: 'j1' });
+        await t.call(IpcChannels.jobsResume, { id: 'j1' });
         await t.call(IpcChannels.jobsRemove, { id: 'j1' });
         await t.call(IpcChannels.jobsClearFinished);
         await t.call(IpcChannels.jobsList);
@@ -365,6 +368,7 @@ describe('handlers: jobs', () => {
         expect(t.queue.cancel).toHaveBeenCalledWith('j1');
         expect(t.queue.retry).toHaveBeenCalledWith('j1');
         expect(t.queue.retryRegister).toHaveBeenCalledWith('j1');
+        expect(t.queue.resume).toHaveBeenCalledWith('j1');
         expect(t.queue.remove).toHaveBeenCalledWith('j1');
         expect(t.queue.clearFinished).toHaveBeenCalled();
         expect(t.queue.list).toHaveBeenCalled();

@@ -7,6 +7,7 @@ import { RegisterRequestError } from './registerClient';
 import {
     retryRegister,
     runPipeline,
+    type BeforeUploadInfo,
     type PipelineHooks,
     type PipelineResult,
     type PipelineStep,
@@ -781,3 +782,157 @@ async function buildPayload(): Promise<NonNullable<PipelineError['registerPayloa
 
     return error.registerPayload as NonNullable<PipelineError['registerPayload']>;
 }
+
+function networkError(): Error {
+    return Object.assign(new Error('read ECONNRESET'), { code: 'ECONNRESET' });
+}
+
+/** Gives the harness a fake clock that only advances when the upload step sleeps. */
+function useFakeClock(h: Harness): { now: number } {
+    const clock = { now: 1_700_000_000_000 };
+
+    h.deps.sleep = async (ms) => {
+        h.sleeps.push(ms);
+        clock.now += ms;
+    };
+    h.deps.uploadTuning = { now: () => clock.now, jitter: () => 0 };
+
+    return clock;
+}
+
+describe('runPipeline: network drops during the upload', () => {
+    it('survives a long outage without failing, re-transcoding or deleting anything', async () => {
+        const h = harness({
+            s3: {
+                failPut: (key, attempt) =>
+                    key.endsWith('segment_000.ts') && attempt <= 6 ? networkError() : undefined,
+            },
+        });
+        const waits: number[] = [];
+        let restored = 0;
+
+        useFakeClock(h);
+        h.hooks.onNetworkWait = (info) => waits.push(info.nextRetryInMs);
+        h.hooks.onNetworkRestored = () => restored++;
+
+        await expect(h.run()).resolves.toMatchObject({ kind: 'done' });
+
+        expect(h.sleeps).toEqual([2000, 5000, 10000, 20000, 30000, 60000]);
+        expect(waits.length).toBeGreaterThan(0);
+        expect(restored).toBeGreaterThanOrEqual(1);
+        expect(deletes(h)).toEqual([]);
+        expect(h.runner.calls.filter((c) => c.kind === 'transcode')).toHaveLength(1);
+    });
+
+    it('calls onBeforeUpload once, before the first PutObject, with the final register payload', async () => {
+        const h = harness();
+        const infos: BeforeUploadInfo[] = [];
+        let putsAtCall = -1;
+
+        h.hooks.onBeforeUpload = async (info) => {
+            putsAtCall = h.s3.putKeys.length;
+            infos.push(info);
+        };
+
+        const result = await h.run();
+
+        expect(infos).toHaveLength(1);
+        expect(putsAtCall).toBe(0);
+        expect(infos[0]).toEqual({
+            prefix: PREFIX,
+            publicId: PUBLIC_ID,
+            tmpDir: join(tmpRoot, PUBLIC_ID),
+            registerPayload: result.payload,
+        });
+        expect(infos[0]?.registerPayload).toEqual(h.register.payloads[0]);
+        expect(h.stages.indexOf('uploading')).toBeGreaterThanOrEqual(0);
+    });
+
+    it('a failing onBeforeUpload stops the job before anything is uploaded', async () => {
+        const h = harness();
+
+        h.hooks.onBeforeUpload = async () => {
+            throw new Error('disk full');
+        };
+
+        await failureOf(h.run());
+
+        expect(h.s3.putKeys).toEqual([]);
+        expect(h.s3.created).toBe(0);
+    });
+
+    it('upload_interrupted keeps the temp dir and the R2 objects and carries the resume data', async () => {
+        const h = harness({
+            s3: { failPut: (key) => (key.endsWith('segment_001.ts') ? networkError() : undefined) },
+        });
+        let beforeUpload: BeforeUploadInfo | null = null;
+
+        useFakeClock(h);
+        h.hooks.onBeforeUpload = async (info) => {
+            beforeUpload = info;
+        };
+
+        const error = await failureOf(h.run());
+
+        expect(error.kind).toBe('upload_interrupted');
+        expect(error.step).toBe('uploading');
+        expect(error.resumable).toBe(true);
+        expect(error.prefix).toBe(PREFIX);
+        expect(error.tmpDir).toBe(join(tmpRoot, PUBLIC_ID));
+        expect(error.registerPayload).toEqual(
+            (beforeUpload as BeforeUploadInfo | null)?.registerPayload,
+        );
+        expect(error.message).toBe(
+            'Upload stopped: the network was unavailable for 30 minutes. Resume when you are back online.',
+        );
+
+        // Nothing deleted on R2 (segment_000 stays), and the temp dir is intact.
+        expect(deletes(h)).toEqual([]);
+        expect(h.s3.objects.has(`${PREFIX}segment_000.ts`)).toBe(true);
+        expect(await exists(join(tmpRoot, PUBLIC_ID, 'playlist.m3u8'))).toBe(true);
+        expect(await exists(join(tmpRoot, PUBLIC_ID, 'segment_001.ts'))).toBe(true);
+        expect(h.register.payloads).toHaveLength(0);
+
+        // The upload client is destroyed, no cleanup client was created.
+        expect(h.s3.created).toBe(1);
+        expect(h.s3.destroyed).toBe(1);
+    });
+
+    it('cancelling while waiting for the network is a plain cancel (R2 and temp dir removed)', async () => {
+        const h = harness({ s3: { failPut: () => networkError() } });
+
+        h.deps.sleep = async (ms, signal) => {
+            h.sleeps.push(ms);
+            h.controller.abort();
+            void signal;
+        };
+
+        const error = await failureOf(h.run());
+
+        expect(error.kind).toBe('cancelled');
+        expect(error.resumable).toBe(false);
+        expect(await exists(join(tmpRoot, PUBLIC_ID))).toBe(false);
+        expect(h.s3.objects.size).toBe(0);
+    });
+
+    it('a non-network failure keeps cleaning up (403: 3 attempts, prefix and temp dir removed)', async () => {
+        const h = harness({
+            s3: {
+                failPut: (key) =>
+                    key.endsWith('segment_000.ts')
+                        ? Object.assign(new Error('denied'), {
+                              name: 'AccessDenied',
+                              $metadata: { httpStatusCode: 403 },
+                          })
+                        : undefined,
+            },
+        });
+        const error = await failureOf(h.run());
+
+        expect(error.kind).toBe('failed');
+        expect(error.resumable).toBe(false);
+        expect(h.sleeps).toEqual([1000, 2000]);
+        expect(await exists(join(tmpRoot, PUBLIC_ID))).toBe(false);
+        expect(deletes(h).length).toBeGreaterThan(0);
+    });
+});

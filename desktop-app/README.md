@@ -149,6 +149,7 @@ with a safe English message; invalid payload shapes are rejected as errors.
 | `jobs:cancel`             | invoke         | `{ id }`                                                                      | `ActionResult`        |
 | `jobs:retry`              | invoke         | `{ id }`                                                                      | `ActionResult`        |
 | `jobs:retry-register`     | invoke         | `{ id }`                                                                      | `ActionResult`        |
+| `jobs:resume`             | invoke         | `{ id }` (`upload_interrupted` only; continues without transcoding)           | `ActionResult`        |
 | `jobs:remove`             | invoke         | `{ id }`                                                                      | `ActionResult`        |
 | `jobs:clear-finished`     | invoke         | none                                                                          | `ActionResult`        |
 | `jobs:open-embed`         | invoke         | `{ id }` (https and same host as the site only)                               | `ActionResult`        |
@@ -184,8 +185,17 @@ cancelled <--- transcoding -> thumbnail -> storyboard -> uploading -> registerin
                                       | retry-register (no re-upload) -> registering
                                       | sign-in again: needs_sign_in is retried automatically
 
-app closed while a job ran -> `interrupted` at next start (temp dir removed); retry -> waiting
-final states (removable): done, failed, cancelled, interrupted
+uploading --(30 min without network)--> upload_interrupted ("Upload paused", temp dir + R2 kept)
+upload_interrupted -- resume --> waiting (mode resume) -> uploading -> registering -> done
+                   |  resume, temp files gone -> new run with a new public_id (old prefix removed
+                   |    only if the register call never started)
+                   |  start over (retry) -> waiting (new public_id), old temp dir removed
+                   +  remove -> temp dir removed (R2 prefix too unless registerStarted)
+
+app closed while a job ran -> `upload_interrupted` at next start when its payload and temp dir
+exist (kept, no R2 deletion), otherwise `interrupted` (temp dir removed); retry -> waiting
+final states (removable): done, failed, cancelled, interrupted (+ upload_interrupted by Remove,
+but "Clear finished" never removes it)
 ```
 
 Notes: a cancelled register retry returns to `register_failed`/`needs_sign_in` (files stay on R2).
@@ -194,8 +204,22 @@ Retry of a job that failed or was cancelled while uploading removes the old part
 on retry, because it may already be registered on the site; its prefix is only logged as possibly
 orphaned.
 
+Network drops while uploading (the queue shows "Waiting for network…" while the pipeline retries; the job stays `uploading`, the flag is RAM only): a file whose upload
+fails with a network error (reset, timeout, DNS, HTTP 408/429/5xx; see `upload/classifyError.ts`)
+is retried with 2, 5, 10, 20, 30, then 60 s waits instead of the 3-attempt budget. The budget is
+shared by the whole upload step: 30 minutes without any successful file upload. When it is used
+up the pipeline throws `PipelineError` kind `upload_interrupted` (`resumable`, with `prefix`,
+`registerPayload`, `tmpDir`) and keeps the R2 objects and the temp dir; `resumeUpload` then uploads
+only the missing objects (playlist last) and registers, without running ffmpeg. If the kept files
+are gone it throws `failed` with `code: 'resume_unavailable'` and deletes nothing. Other upload
+errors (403, 400, ...) keep the 3-attempt rule and clean up as before.
+
 ## Known limitations
 
+- The temp files of a paused upload (`upload_interrupted`) stay on disk until you press Resume,
+  Start over or Remove; there is no time limit. Resume needs the same site and the same temp
+  folder, so Settings refuses to change either while an upload is paused. After a crash during
+  registering, Resume registers again; the site is idempotent for the same `public_id` and prefix.
 - Cancelling a job in `register_failed` / `needs_sign_in` keeps its uploaded objects on R2 (the
   site may already have registered the video), so this case can leave orphaned R2 objects.
 - Retry of an `interrupted` job (the app was closed or crashed while it ran) NEVER deletes the

@@ -49,6 +49,7 @@ const JOB_STATES: readonly JobState[] = [
     'interrupted',
     'register_failed',
     'needs_sign_in',
+    'upload_interrupted',
 ];
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,7 +79,10 @@ function isValidJob(job: unknown): boolean {
         isNullableString(job['finishedAt']) &&
         isNullableObject(job['registered']) &&
         (job['registerPayload'] === undefined || isNullableObject(job['registerPayload'])) &&
-        (job['siteOrigin'] === undefined || isString(job['siteOrigin']))
+        (job['siteOrigin'] === undefined || isString(job['siteOrigin'])) &&
+        (job['tmpDir'] === undefined || isString(job['tmpDir'])) &&
+        (job['registerStarted'] === undefined || typeof job['registerStarted'] === 'boolean') &&
+        (job['mode'] === undefined || job['mode'] === 'resume')
     );
 }
 

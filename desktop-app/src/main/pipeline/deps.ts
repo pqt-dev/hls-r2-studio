@@ -6,6 +6,7 @@ import type { ProcessRunner } from '../ffmpeg/runner';
 import type { Logger } from '../logger';
 import type { S3ClientPurpose } from './steps/s3Client';
 import type { RegisterPayload } from './register';
+import type { UploadTuning } from './steps/upload';
 
 export interface RegisteredVideo {
     id: number;
@@ -38,6 +39,8 @@ export interface PipelineDeps {
     logger: Logger;
     /** Optional encoder thread limit (PHP `FFMPEG_THREADS`). */
     threads?: number | null;
+    /** Optional clock / jitter / stall budget of the upload network-wait policy (tests only). */
+    uploadTuning?: UploadTuning;
 }
 
 export interface PipelineJob {

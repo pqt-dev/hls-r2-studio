@@ -77,7 +77,15 @@ export function DetailsDialog({ job, onClose }: { job: JobDto; onClose: () => vo
                 )}
             </dl>
 
-            {detail !== null && (
+            {job.state === 'upload_interrupted' && (
+                <p className="muted small">
+                    The processed files are kept on disk so Resume can continue without converting
+                    the video again. They are deleted when you resume successfully, start over or
+                    remove this video.
+                </p>
+            )}
+
+            {detail !== null && job.state !== 'upload_interrupted' && (
                 <>
                     <h3 className="subheading">ffmpeg output (last lines)</h3>
                     <pre className="log" tabIndex={0} aria-label="ffmpeg output">

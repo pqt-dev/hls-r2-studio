@@ -10,6 +10,15 @@ const noop = (): void => undefined;
  */
 export type S3ClientPurpose = 'upload' | 'cleanup';
 
+/** A connection that cannot be opened within this time fails with a (network) TimeoutError. */
+export const CONNECTION_TIMEOUT_MS = 15_000;
+/**
+ * Socket inactivity timeout: a stalled connection (no bytes in either direction) fails with a
+ * TimeoutError instead of hanging forever. Unlike `requestTimeout` (total time, which only warns
+ * unless `throwOnRequestTimeout` is set) it never cuts a slow but moving upload short.
+ */
+export const SOCKET_TIMEOUT_MS = 60_000;
+
 const MAX_ATTEMPTS: Record<S3ClientPurpose, number> = { upload: 1, cleanup: 3 };
 
 /**
@@ -24,6 +33,10 @@ export function createR2Client(r2: AppConfigR2, purpose: S3ClientPurpose = 'uplo
         forcePathStyle: true,
         maxAttempts: MAX_ATTEMPTS[purpose],
         credentials: { accessKeyId: r2.access_key_id, secretAccessKey: r2.secret_access_key },
+        requestHandler: {
+            connectionTimeout: CONNECTION_TIMEOUT_MS,
+            socketTimeout: SOCKET_TIMEOUT_MS,
+        },
         requestChecksumCalculation: 'WHEN_REQUIRED',
         responseChecksumValidation: 'WHEN_REQUIRED',
         // The SDK would print to the console (e.g. "non-retryable streaming request"); errors are

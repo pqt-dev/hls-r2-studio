@@ -10,7 +10,12 @@ import { isRunning } from '../lib/jobState';
 import { finishedCount, useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
 
-type Confirm = { kind: 'cancel'; job: JobDto } | { kind: 'clear'; count: number } | null;
+type Confirm =
+    | { kind: 'cancel'; job: JobDto }
+    | { kind: 'start-over'; job: JobDto }
+    | { kind: 'remove-paused'; job: JobDto }
+    | { kind: 'clear'; count: number }
+    | null;
 
 export function QueueScreen() {
     const { api, jobs, summary } = useApp();
@@ -60,13 +65,21 @@ export function QueueScreen() {
 
                 break;
             case 'retry':
-                void run(job.id, () => api.jobs.retry(job.id));
+                // A paused upload holds saved progress: starting over discards it.
+                if (job.state === 'upload_interrupted') setConfirm({ kind: 'start-over', job });
+                else void run(job.id, () => api.jobs.retry(job.id));
+
+                break;
+            case 'resume':
+                void run(job.id, () => api.jobs.resume(job.id));
                 break;
             case 'retry-register':
                 void run(job.id, () => api.jobs.retryRegister(job.id));
                 break;
             case 'remove':
-                void run(job.id, () => api.jobs.remove(job.id));
+                if (job.state === 'upload_interrupted') setConfirm({ kind: 'remove-paused', job });
+                else void run(job.id, () => api.jobs.remove(job.id));
+
                 break;
             case 'copy-url':
                 void run(job.id, () => api.jobs.copy(job.id, 'embed-url'), 'Embed URL copied.');
@@ -127,6 +140,9 @@ export function QueueScreen() {
                 <span className="num">{summary.waiting} waiting</span>
                 <span className="num">{summary.done} done</span>
                 <span className="num">{summary.failed} failed</span>
+                {summary.attention > 0 && (
+                    <span className="num">{summary.attention} need attention</span>
+                )}
             </footer>
 
             {confirm?.kind === 'cancel' && (
@@ -142,6 +158,38 @@ export function QueueScreen() {
 
                         setConfirm(null);
                         void run(job.id, () => api.jobs.cancel(job.id));
+                    }}
+                />
+            )}
+            {confirm?.kind === 'start-over' && (
+                <ConfirmDialog
+                    title="Start over?"
+                    message={`The saved progress for ${confirm.job.fileName} will be discarded and the video will be processed again from the beginning.`}
+                    confirmLabel="Start over"
+                    cancelLabel="Keep paused"
+                    danger
+                    onCancel={() => setConfirm(null)}
+                    onConfirm={() => {
+                        const { job } = confirm;
+
+                        setConfirm(null);
+                        void run(job.id, () => api.jobs.retry(job.id));
+                    }}
+                />
+            )}
+            {confirm?.kind === 'remove-paused' && (
+                <ConfirmDialog
+                    title="Remove this video?"
+                    message={`The temporary files for ${confirm.job.fileName} will be deleted, so it can no longer be resumed.`}
+                    confirmLabel="Remove"
+                    cancelLabel="Keep"
+                    danger
+                    onCancel={() => setConfirm(null)}
+                    onConfirm={() => {
+                        const { job } = confirm;
+
+                        setConfirm(null);
+                        void run(job.id, () => api.jobs.remove(job.id));
                     }}
                 />
             )}

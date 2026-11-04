@@ -783,9 +783,9 @@ describe('remove and clearFinished', () => {
         h.runs[0]?.resolve();
         await flush();
 
-        expect(h.queue.remove('job-2').ok).toBe(false); // running
-        expect(h.queue.remove('job-3').ok).toBe(false); // waiting
-        expect(h.queue.remove('job-1').ok).toBe(true);
+        expect((await h.queue.remove('job-2')).ok).toBe(false); // running
+        expect((await h.queue.remove('job-3')).ok).toBe(false); // waiting
+        expect((await h.queue.remove('job-1')).ok).toBe(true);
         expect(h.states()).toEqual(['job-2:transcoding', 'job-3:waiting']);
     });
 
@@ -1078,5 +1078,680 @@ describe('crash window around registering', () => {
 
         expect(h.deleted).toEqual([]);
         expect(h.logger.entries.some((e) => /may be orphaned/.test(e.message))).toBe(true);
+    });
+});
+
+// ---- resumable uploads (B2) -----------------------------------------------------------------
+
+const SITE = 'https://site.example.com';
+const TMP = join('/tmp/hls', 'aaaaaaaaaaaa');
+const SITE_AUTH = { status: 'signed_in', r2Configured: true, siteUrl: SITE } as const;
+
+function pausedRecord(over: Partial<JobRecord> = {}): JobRecord {
+    return {
+        id: 'p1',
+        sourcePath: '/v/p1.mp4',
+        sizeBytes: 1,
+        state: 'upload_interrupted',
+        publicId: 'aaaaaaaaaaaa',
+        prefix: PAYLOAD.disk_prefix,
+        errorMessage: 'paused',
+        errorDetail: { step: 'uploading', exitCode: null, stderrTail: [] },
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        startedAt: '2026-01-01T00:00:00.000Z',
+        finishedAt: null,
+        registered: null,
+        registerPayload: PAYLOAD,
+        tmpDir: TMP,
+        siteOrigin: SITE,
+        ...over,
+    };
+}
+
+function pausedHarness(
+    over: Partial<JobRecord> = {},
+    opts: Parameters<typeof createHarness>[0] = {},
+) {
+    const h = createHarness({ auth: SITE_AUTH, ...opts });
+
+    h.store.update((d) => {
+        d.jobs.push(pausedRecord(over));
+    });
+
+    return h;
+}
+
+function interruptedError(): PipelineError {
+    return new PipelineError({
+        kind: 'upload_interrupted',
+        step: 'uploading',
+        message: 'Upload stopped: the network was unavailable for 30 minutes.',
+        registerPayload: PAYLOAD,
+        prefix: PAYLOAD.disk_prefix,
+        tmpDir: TMP,
+        resumable: true,
+    });
+}
+
+describe('upload persistence and pause', () => {
+    it('persists payload, tmpDir and prefix durably before the first upload', async () => {
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1 } });
+        const flushSpy = vi.spyOn(h.store, 'flush');
+
+        await h.queue.addFiles(['/v/a.mp4']);
+
+        const publicId = h.job('job-1').publicId ?? '';
+        const pending = h.runs[0]?.opts.hooks.onBeforeUpload?.({
+            prefix: PAYLOAD.disk_prefix,
+            publicId,
+            tmpDir: join('/tmp/hls', publicId),
+            registerPayload: PAYLOAD,
+        });
+
+        expect(h.job('job-1')).toMatchObject({
+            prefix: PAYLOAD.disk_prefix,
+            tmpDir: join('/tmp/hls', publicId),
+            registerPayload: PAYLOAD,
+        });
+
+        await pending;
+
+        expect(flushSpy).toHaveBeenCalledTimes(1);
+        expect(h.job('job-1').registerStarted).toBeUndefined();
+    });
+
+    it('onBeforeRegister flushes and records that the site may have registered it', async () => {
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1 } });
+        const flushSpy = vi.spyOn(h.store, 'flush');
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        await h.runs[0]?.opts.hooks.onBeforeRegister?.();
+
+        expect(flushSpy).toHaveBeenCalledTimes(1);
+        expect(h.job('job-1').registerStarted).toBe(true);
+    });
+
+    it('maps upload_interrupted to a resumable state without deleting anything', async () => {
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1 } });
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        h.runs[0]?.reject(interruptedError());
+        await flush();
+
+        expect(h.job('job-1')).toMatchObject({
+            state: 'upload_interrupted',
+            errorMessage: expect.stringContaining('network was unavailable'),
+            errorDetail: { step: 'uploading', exitCode: null, stderrTail: [] },
+            registerPayload: PAYLOAD,
+            tmpDir: TMP,
+            prefix: PAYLOAD.disk_prefix,
+            finishedAt: null,
+        });
+        expect(h.deleted).toEqual([]);
+        expect(h.removed).toEqual([]);
+
+        const dto = h.queue.list()[0];
+
+        expect(dto).toMatchObject({
+            state: 'upload_interrupted',
+            canResume: true,
+            canRetry: true,
+            canRemove: true,
+            canCancel: false,
+            waitingForNetwork: false,
+        });
+        expect(JSON.stringify(dto)).not.toContain(TMP);
+        expect(JSON.stringify(dto)).not.toContain('disk_prefix');
+        expect(h.queue.summary()).toMatchObject({ attention: 1, running: 0 });
+        expect(h.queue.hasPausedUploads()).toBe(true);
+    });
+
+    it('does not keep an unresumable upload_interrupted: it fails and removes the temp dir', async () => {
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1 } });
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        h.runs[0]?.reject(
+            new PipelineError({
+                kind: 'upload_interrupted',
+                step: 'uploading',
+                message: 'x',
+            }),
+        );
+        await flush();
+
+        expect(h.job('job-1').state).toBe('failed');
+        expect(h.removed).toEqual([join('/tmp/hls', h.job('job-1').publicId ?? '')]);
+    });
+
+    it('frees the slot of a paused upload so the next job starts', async () => {
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1, '/v/b.mp4': 2 } });
+
+        await h.queue.addFiles(['/v/a.mp4', '/v/b.mp4']);
+        h.runs[0]?.reject(interruptedError());
+        await flush();
+
+        expect(h.states()).toEqual(['job-1:upload_interrupted', 'job-2:transcoding']);
+    });
+});
+
+describe('network wait', () => {
+    it('sets and clears the runtime flags; the state stays uploading', async () => {
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1 } });
+        const since = h.state.clock - 5000;
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        h.runs[0]?.opts.hooks.onStage('uploading');
+        h.runs[0]?.opts.hooks.onNetworkWait?.({
+            since,
+            attempt: 1,
+            nextRetryInMs: 2000,
+            budgetRemainingMs: 1000,
+        });
+
+        expect(h.queue.list()[0]).toMatchObject({
+            state: 'uploading',
+            waitingForNetwork: true,
+            networkWaitSince: new Date(since).toISOString(),
+            canCancel: true,
+        });
+        // Never persisted.
+        expect(JSON.stringify(h.store.get().jobs)).not.toContain('waitingForNetwork');
+        expect(h.snapshots.at(-1)?.[0]?.waitingForNetwork).toBe(true);
+
+        h.runs[0]?.opts.hooks.onNetworkRestored?.();
+
+        expect(h.queue.list()[0]).toMatchObject({ state: 'uploading', waitingForNetwork: false });
+        expect(h.queue.list()[0]?.networkWaitSince).toBeUndefined();
+        expect(h.snapshots.at(-1)?.[0]?.waitingForNetwork).toBe(false);
+    });
+
+    it('emits the first wait immediately and throttles repeated notifications', async () => {
+        vi.useFakeTimers();
+
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1 } });
+        const info = { since: h.state.clock, attempt: 1, nextRetryInMs: 1, budgetRemainingMs: 1 };
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        h.runs[0]?.opts.hooks.onStage('uploading');
+
+        const before = h.snapshots.length;
+
+        h.runs[0]?.opts.hooks.onNetworkWait?.(info);
+        expect(h.snapshots.length).toBe(before + 1);
+
+        for (let i = 0; i < 10; i++) h.runs[0]?.opts.hooks.onNetworkWait?.(info);
+
+        // Same clock: everything else is coalesced into one trailing emit.
+        expect(h.snapshots.length).toBe(before + 1);
+        vi.advanceTimersByTime(300);
+        expect(h.snapshots.length).toBe(before + 2);
+    });
+
+    it('cancelling during the wait deletes R2 files and the temp dir like a normal cancel', async () => {
+        const h = createHarness({ auth: SITE_AUTH, files: { '/v/a.mp4': 1 } });
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        h.runs[0]?.cancelOnAbort('uploading');
+        h.runs[0]?.opts.hooks.onNetworkWait?.({
+            since: h.state.clock,
+            attempt: 1,
+            nextRetryInMs: 1,
+            budgetRemainingMs: 1,
+        });
+
+        expect(await h.queue.cancel('job-1')).toEqual({ ok: true });
+        await flush();
+
+        expect(h.job('job-1').state).toBe('cancelled');
+        expect(h.job('job-1').tmpDir).toBeUndefined();
+        expect(h.queue.list()[0]?.waitingForNetwork).toBe(false);
+    });
+});
+
+describe('resume', () => {
+    it('continues without the pipeline, with the stored payload and the kept temp dir', async () => {
+        const h = pausedHarness();
+
+        expect(await h.queue.resume('p1')).toEqual({ ok: true });
+
+        expect(h.runs).toHaveLength(0);
+        expect(h.resumeRuns).toHaveLength(1);
+        expect(h.resumeRuns[0]?.opts).toMatchObject({
+            job: { id: 'p1', publicId: 'aaaaaaaaaaaa' },
+            payload: PAYLOAD,
+            tmpDir: TMP,
+            config: CONFIG,
+        });
+        expect(h.job('p1')).toMatchObject({ state: 'uploading', errorMessage: null });
+        expect(h.job('p1').mode).toBeUndefined();
+
+        h.resumeRuns[0]?.opts.hooks.onStage('uploading');
+        h.resumeRuns[0]?.opts.hooks.onProgress(50);
+        expect(h.queue.list()[0]).toMatchObject({ state: 'uploading', progress: 50 });
+
+        await h.resumeRuns[0]?.opts.hooks.onBeforeRegister?.();
+        expect(h.job('p1').registerStarted).toBe(true);
+
+        h.resumeRuns[0]?.resolve();
+        await flush();
+
+        const job = h.job('p1');
+
+        expect(job.state).toBe('done');
+        expect(job.registered?.public_id).toBe('aaaaaaaaaaaa');
+        expect(job.registerPayload).toBeNull();
+        expect(job.tmpDir).toBeUndefined();
+        expect(job.registerStarted).toBeUndefined();
+    });
+
+    it('wires network wait hooks for a resumed upload', async () => {
+        const h = pausedHarness();
+
+        await h.queue.resume('p1');
+        h.resumeRuns[0]?.opts.hooks.onNetworkWait?.({
+            since: h.state.clock,
+            attempt: 1,
+            nextRetryInMs: 1,
+            budgetRemainingMs: 1,
+        });
+        expect(h.queue.list()[0]?.waitingForNetwork).toBe(true);
+    });
+
+    it('goes back to upload_interrupted when the network fails again', async () => {
+        const h = pausedHarness();
+
+        await h.queue.resume('p1');
+        h.resumeRuns[0]?.reject(interruptedError());
+        await flush();
+
+        expect(h.job('p1')).toMatchObject({ state: 'upload_interrupted', tmpDir: TMP });
+        expect(h.deleted).toEqual([]);
+        expect(h.removed).toEqual([]);
+    });
+
+    it('respects maxConcurrent: the resume waits for a free slot', async () => {
+        const h = pausedHarness({}, { files: { '/v/a.mp4': 1 } });
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        expect(h.runs).toHaveLength(1);
+
+        await h.queue.resume('p1');
+
+        expect(h.job('p1').state).toBe('waiting');
+        expect(h.job('p1').mode).toBe('resume');
+        expect(h.resumeRuns).toHaveLength(0);
+        expect(h.queue.list().find((j) => j.id === 'p1')?.waitingReason).toBe(
+            'Waiting for other jobs to finish.',
+        );
+
+        h.runs[0]?.resolve();
+        await flush();
+
+        expect(h.resumeRuns).toHaveLength(1);
+        expect(h.job('p1').state).toBe('uploading');
+    });
+
+    it('a running resume occupies a processing slot', async () => {
+        const h = pausedHarness({}, { files: { '/v/a.mp4': 1 } });
+
+        await h.queue.resume('p1');
+        await h.queue.addFiles(['/v/a.mp4']);
+
+        expect(h.runs).toHaveLength(0);
+        h.resumeRuns[0]?.resolve();
+        await flush();
+        expect(h.runs).toHaveLength(1);
+    });
+
+    it('register failures after a resume map like in the pipeline', async () => {
+        const h = pausedHarness();
+
+        await h.queue.resume('p1');
+        h.resumeRuns[0]?.reject(
+            new PipelineError({
+                kind: 'register_failed',
+                step: 'registering',
+                message: 'site down',
+                registerPayload: PAYLOAD,
+                prefix: PAYLOAD.disk_prefix,
+            }),
+        );
+        await flush();
+
+        expect(h.job('p1')).toMatchObject({ state: 'register_failed', registerPayload: PAYLOAD });
+        expect(h.job('p1').tmpDir).toBeUndefined();
+    });
+
+    it('a failed resume removes leftovers of the temp dir', async () => {
+        const h = pausedHarness();
+
+        await h.queue.resume('p1');
+        h.resumeRuns[0]?.reject(failedError('uploading'));
+        await flush();
+
+        expect(h.job('p1').state).toBe('failed');
+        expect(h.removed).toEqual([TMP]);
+    });
+
+    it('cancelling a resume run ends as cancelled', async () => {
+        const h = pausedHarness();
+
+        await h.queue.resume('p1');
+        h.resumeRuns[0]?.opts.hooks.signal.addEventListener('abort', () =>
+            h.resumeRuns[0]?.reject(
+                new PipelineError({ kind: 'cancelled', step: 'uploading', message: 'c' }),
+            ),
+        );
+        await h.queue.cancel('p1');
+        await flush();
+
+        expect(h.job('p1')).toMatchObject({ state: 'cancelled', registerPayload: null });
+    });
+
+    it.each([
+        ['not registered yet', undefined, 1],
+        ['registerStarted false', false, 1],
+    ])(
+        'resume_unavailable falls back to a new run and deletes the old prefix (%s)',
+        async (_n, started, deletes) => {
+            const h = pausedHarness(started === undefined ? {} : { registerStarted: started });
+
+            await h.queue.resume('p1');
+            h.resumeRuns[0]?.reject(
+                new PipelineError({
+                    kind: 'failed',
+                    step: 'uploading',
+                    message: 'gone',
+                    code: 'resume_unavailable',
+                    prefix: PAYLOAD.disk_prefix,
+                }),
+            );
+            await flush();
+            await flush();
+
+            expect(h.deleted).toHaveLength(deletes);
+            expect(h.deleted[0]?.prefix).toBe(PAYLOAD.disk_prefix);
+            expect(h.removed).toContain(TMP);
+            // A brand-new run with a NEW public id.
+            expect(h.runs).toHaveLength(1);
+            expect(h.runs[0]?.opts.job.publicId).not.toBe('aaaaaaaaaaaa');
+            expect(h.job('p1')).toMatchObject({ state: 'transcoding', registerPayload: null });
+            expect(h.job('p1').tmpDir).toBeUndefined();
+        },
+    );
+
+    it('resume_unavailable never deletes R2 files when the register call had started', async () => {
+        const h = pausedHarness({ registerStarted: true });
+
+        await h.queue.resume('p1');
+        h.resumeRuns[0]?.reject(
+            new PipelineError({
+                kind: 'failed',
+                step: 'uploading',
+                message: 'gone',
+                code: 'resume_unavailable',
+                prefix: PAYLOAD.disk_prefix,
+            }),
+        );
+        await flush();
+        await flush();
+
+        expect(h.deleted).toEqual([]);
+        expect(h.removed).toContain(TMP);
+        expect(h.runs).toHaveLength(1);
+        expect(h.job('p1').registerStarted).toBeUndefined();
+    });
+
+    it('is refused for other states, unknown ids, a missing payload and double clicks', async () => {
+        const h = pausedHarness({}, { files: { '/v/a.mp4': 1 } });
+
+        h.store.update((d) => {
+            d.jobs.push(
+                pausedRecord({ id: 'nopayload', registerPayload: null }),
+                pausedRecord({ id: 'failed', state: 'failed' }),
+            );
+        });
+
+        expect((await h.queue.resume('nope')).ok).toBe(false);
+        expect((await h.queue.resume('nopayload')).ok).toBe(false);
+        expect((await h.queue.resume('failed')).ok).toBe(false);
+        expect(await h.queue.resume('p1')).toEqual({ ok: true });
+        expect((await h.queue.resume('p1')).ok).toBe(false);
+        expect(h.resumeRuns).toHaveLength(1);
+    });
+
+    it('requires being signed in', async () => {
+        const h = pausedHarness({}, { auth: { status: 'signed_out' } });
+
+        expect(await h.queue.resume('p1')).toEqual({
+            ok: false,
+            error: 'Sign in to resume this upload.',
+        });
+        expect(h.job('p1').state).toBe('upload_interrupted');
+    });
+
+    it('refuses to resume against another site', async () => {
+        const h = pausedHarness({ siteOrigin: 'https://other.example.com' });
+        const result = await h.queue.resume('p1');
+
+        expect(result).toMatchObject({
+            ok: false,
+            error: expect.stringContaining('other.example.com'),
+        });
+        expect(h.resumeRuns).toHaveLength(0);
+        expect(h.job('p1').state).toBe('upload_interrupted');
+    });
+
+    it('a queued resume returns to the paused state when the site changed meanwhile', async () => {
+        const h = pausedHarness({}, { files: { '/v/a.mp4': 1 } });
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        await h.queue.resume('p1');
+        h.setAuth({
+            status: 'signed_in',
+            r2Configured: true,
+            siteUrl: 'https://other.example.com',
+        });
+        h.runs[0]?.resolve();
+        await flush();
+
+        expect(h.job('p1')).toMatchObject({
+            state: 'upload_interrupted',
+            errorMessage: expect.stringContaining('site.example.com'),
+        });
+        expect(h.job('p1').mode).toBeUndefined();
+        expect(h.resumeRuns).toHaveLength(0);
+    });
+
+    it('does not resume automatically after signing in again', async () => {
+        const h = pausedHarness({}, { auth: { status: 'signed_out' } });
+
+        h.setAuth(SITE_AUTH);
+        await flush();
+
+        expect(h.resumeRuns).toHaveLength(0);
+        expect(h.job('p1').state).toBe('upload_interrupted');
+    });
+
+    it('cancelling a queued resume discards the kept files like a running cancel', async () => {
+        const h = pausedHarness({}, { files: { '/v/a.mp4': 1 } });
+
+        await h.queue.addFiles(['/v/a.mp4']);
+        await h.queue.resume('p1');
+        expect(await h.queue.cancel('p1')).toEqual({ ok: true });
+
+        expect(h.job('p1')).toMatchObject({ state: 'cancelled', registerPayload: null });
+        expect(h.job('p1').mode).toBeUndefined();
+        expect(h.deleted.map((d) => d.prefix)).toEqual([PAYLOAD.disk_prefix]);
+        expect(h.removed).toEqual([TMP]);
+    });
+
+    it('cannot cancel a paused upload directly', async () => {
+        const h = pausedHarness();
+
+        expect((await h.queue.cancel('p1')).ok).toBe(false);
+    });
+});
+
+describe('start over, remove and clearFinished for paused uploads', () => {
+    it('Start over removes the temp dir and the old prefix, then runs with a NEW public id', async () => {
+        const h = pausedHarness();
+
+        expect(await h.queue.retry('p1')).toEqual({ ok: true });
+
+        expect(h.deleted.map((d) => d.prefix)).toEqual([PAYLOAD.disk_prefix]);
+        expect(h.removed).toEqual([TMP]);
+        expect(h.runs).toHaveLength(1);
+        expect(h.runs[0]?.opts.job.publicId).not.toBe('aaaaaaaaaaaa');
+        expect(h.job('p1')).toMatchObject({ state: 'transcoding', registerPayload: null });
+        expect(h.job('p1').tmpDir).toBeUndefined();
+        expect(h.resumeRuns).toHaveLength(0);
+    });
+
+    it('Start over keeps the R2 files when the register call had started', async () => {
+        const h = pausedHarness({ registerStarted: true });
+
+        await h.queue.retry('p1');
+
+        expect(h.deleted).toEqual([]);
+        expect(h.removed).toEqual([TMP]);
+        expect(h.logger.entries.some((e) => /may be orphaned/.test(e.message))).toBe(true);
+        expect(h.job('p1').registerStarted).toBeUndefined();
+    });
+
+    it('Start over still works when no config is available for the cleanup', async () => {
+        const h = pausedHarness({}, { config: null });
+
+        await h.queue.retry('p1');
+
+        expect(h.deleted).toEqual([]);
+        expect(h.removed).toEqual([TMP]);
+        expect(h.job('p1').state).toBe('waiting');
+    });
+
+    it('Remove deletes the temp dir and the R2 prefix', async () => {
+        const h = pausedHarness();
+
+        expect(await h.queue.remove('p1')).toEqual({ ok: true });
+
+        expect(h.states()).toEqual([]);
+        expect(h.removed).toEqual([TMP]);
+        expect(h.deleted.map((d) => d.prefix)).toEqual([PAYLOAD.disk_prefix]);
+    });
+
+    it('Remove keeps the R2 files when the site may have registered the video', async () => {
+        const h = pausedHarness({ registerStarted: true });
+
+        await h.queue.remove('p1');
+
+        expect(h.removed).toEqual([TMP]);
+        expect(h.deleted).toEqual([]);
+    });
+
+    it('Remove skips the R2 cleanup for another site or without a config, but still removes the dir', async () => {
+        const other = pausedHarness({ siteOrigin: 'https://other.example.com' });
+        const noConfig = pausedHarness({}, { config: null });
+
+        await other.queue.remove('p1');
+        await noConfig.queue.remove('p1');
+
+        expect(other.deleted).toEqual([]);
+        expect(other.removed).toEqual([TMP]);
+        expect(noConfig.deleted).toEqual([]);
+        expect(noConfig.removed).toEqual([TMP]);
+        expect(other.states()).toEqual([]);
+    });
+
+    it('clearFinished never touches paused uploads', async () => {
+        const h = pausedHarness();
+
+        h.store.update((d) => {
+            d.jobs.push(pausedRecord({ id: 'f', state: 'failed', tmpDir: undefined }));
+        });
+        h.queue.clearFinished();
+
+        expect(h.states()).toEqual(['p1:upload_interrupted']);
+        expect(h.removed).toEqual([]);
+        expect(h.deleted).toEqual([]);
+    });
+
+    it('keeps the source file deduplicated while the upload is paused', async () => {
+        const h = pausedHarness({}, { files: { '/v/p1.mp4': 1 } });
+        const result = await h.queue.addFiles(['/v/p1.mp4']);
+
+        expect(result.added).toBe(0);
+    });
+});
+
+describe('recovery of paused uploads', () => {
+    function running(id: string, state: JobRecord['state'], over: Partial<JobRecord> = {}) {
+        const publicId = `${id}`.padEnd(12, 'x');
+
+        return pausedRecord({
+            id,
+            state,
+            publicId,
+            tmpDir: join('/tmp/hls', publicId),
+            registerPayload: PAYLOAD,
+            errorMessage: null,
+            errorDetail: null,
+            ...over,
+        });
+    }
+
+    it('keeps uploads that have payload and temp dir, interrupts the rest', async () => {
+        const h = createHarness({
+            auth: { status: 'signed_out' },
+            files: {
+                [join('/tmp/hls', 'upxxxxxxxxxx')]: -1,
+                [join('/tmp/hls', 'rgxxxxxxxxxx')]: -1,
+            },
+        });
+
+        h.store.update((d) => {
+            d.jobs.push(
+                running('up', 'uploading'),
+                running('rg', 'registering', { registerStarted: true }),
+                running('gone', 'uploading'),
+                running('nopay', 'uploading', { registerPayload: null }),
+                running('tc', 'transcoding', { registerPayload: null, tmpDir: undefined }),
+                running('wr', 'waiting', { mode: 'resume' }),
+                running('keep', 'upload_interrupted'),
+            );
+        });
+
+        await h.queue.recover();
+
+        expect(h.states()).toEqual([
+            'up:upload_interrupted',
+            'rg:upload_interrupted',
+            'gone:interrupted',
+            'nopay:interrupted',
+            'tc:interrupted',
+            'wr:upload_interrupted',
+            'keep:upload_interrupted',
+        ]);
+        expect(h.job('up')).toMatchObject({
+            errorMessage: 'The app was closed during upload. Resume to continue.',
+            errorDetail: { step: 'uploading' },
+            registerPayload: PAYLOAD,
+            tmpDir: join('/tmp/hls', 'upxxxxxxxxxx'),
+            finishedAt: null,
+        });
+        expect(h.job('rg').registerStarted).toBe(true);
+        expect(h.job('wr').mode).toBeUndefined();
+        expect(h.job('gone').tmpDir).toBeUndefined();
+        // Kept jobs keep their temp dirs; the others are cleaned like before. Never R2.
+        expect(h.removed.sort()).toEqual(
+            [
+                join('/tmp/hls', 'gonexxxxxxxx'),
+                join('/tmp/hls', 'nopayxxxxxxx'),
+                join('/tmp/hls', 'tcxxxxxxxxxx'),
+            ].sort(),
+        );
+        expect(h.deleted).toEqual([]);
+        expect(h.queue.hasPausedUploads()).toBe(true);
+        expect(h.queue.list().find((j) => j.id === 'up')).toMatchObject({ canResume: true });
     });
 });

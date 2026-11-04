@@ -236,6 +236,10 @@ export interface FakeS3Options {
     failPut?: (key: string, attempt: number) => Error | undefined;
     /** Block the PutObject (until its abort signal fires) when this returns true. */
     blockPut?: (key: string) => boolean;
+    /** ListObjectsV2 page size (default: everything in one page). */
+    listPageSize?: number;
+    /** Called for each ListObjectsV2; return an Error to fail it. */
+    failList?: () => Error | undefined;
 }
 
 /** Records PutObject / ListObjectsV2 / DeleteObjects calls; keeps the stored keys in memory. */
@@ -295,10 +299,21 @@ export class FakeS3 {
 
             if (name === 'ListObjectsV2Command') {
                 const prefix = String(input['Prefix']);
-                const keys = [...this.objects.keys()].filter((k) => k.startsWith(prefix));
+                const listFailure = this.options.failList?.();
+                if (listFailure) throw listFailure;
+
+                const all = [...this.objects.keys()].filter((k) => k.startsWith(prefix)).sort();
+                const start = Number(input['ContinuationToken'] ?? 0);
+                const size = this.options.listPageSize ?? all.length;
+                const keys = all.slice(start, start + Math.max(1, size));
+                const truncated = start + keys.length < all.length;
                 this.requests.push({ type: 'list', keys });
 
-                return { Contents: keys.map((Key) => ({ Key })), IsTruncated: false };
+                return {
+                    Contents: keys.map((Key) => ({ Key, Size: this.objects.get(Key) })),
+                    IsTruncated: truncated,
+                    NextContinuationToken: truncated ? String(start + keys.length) : undefined,
+                };
             }
 
             if (name === 'DeleteObjectsCommand') {

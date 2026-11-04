@@ -83,6 +83,7 @@ const api: RendererApi = {
         cancel: (id) => invoke<ActionResult>(IpcChannels.jobsCancel, { id }),
         retry: (id) => invoke<ActionResult>(IpcChannels.jobsRetry, { id }),
         retryRegister: (id) => invoke<ActionResult>(IpcChannels.jobsRetryRegister, { id }),
+        resume: (id) => invoke<ActionResult>(IpcChannels.jobsResume, { id }),
         remove: (id) => invoke<ActionResult>(IpcChannels.jobsRemove, { id }),
         clearFinished: () => invoke<ActionResult>(IpcChannels.jobsClearFinished),
         openEmbed: (id) => invoke<ActionResult>(IpcChannels.jobsOpenEmbed, { id }),

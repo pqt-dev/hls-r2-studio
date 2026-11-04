@@ -2,7 +2,8 @@ import type { JobDto } from '../../../shared/ipc';
 import type { JobState } from '../../../shared/types';
 
 /** Visual/semantic group of a job state. Mirrors the groups of the main process. */
-export type StatusKind = 'waiting' | 'running' | 'done' | 'failed' | 'attention' | 'cancelled';
+export type StatusKind =
+    'waiting' | 'running' | 'done' | 'failed' | 'attention' | 'paused' | 'cancelled';
 
 const KIND: Record<JobState, StatusKind> = {
     waiting: 'waiting',
@@ -17,6 +18,7 @@ const KIND: Record<JobState, StatusKind> = {
     cancelled: 'cancelled',
     register_failed: 'attention',
     needs_sign_in: 'attention',
+    upload_interrupted: 'paused',
 };
 
 export function statusKind(state: JobState): StatusKind {
@@ -36,7 +38,12 @@ export function isFinished(state: JobState): boolean {
 
 /** States that offer the "View details" dialog. */
 export function hasDetailsView(state: JobState): boolean {
-    return state === 'failed' || state === 'register_failed' || state === 'interrupted';
+    return (
+        state === 'failed' ||
+        state === 'register_failed' ||
+        state === 'interrupted' ||
+        state === 'upload_interrupted'
+    );
 }
 
 /** Glyphs shown next to the status text so the state is never conveyed by color alone. */
@@ -46,5 +53,6 @@ export const STATUS_ICON: Record<StatusKind, string> = {
     done: '✓',
     failed: '✕',
     attention: '!',
+    paused: '‖',
     cancelled: '–',
 };

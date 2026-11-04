@@ -44,6 +44,8 @@ export interface SettingsServiceOptions {
     hasActiveJobs: () => boolean;
     /** True while jobs wait for register (`register_failed` / `needs_sign_in`) on the current site. */
     hasAttentionJobs?: () => boolean;
+    /** True while an upload is paused (`upload_interrupted`): its temp files are needed to resume. */
+    hasPausedUploads?: () => boolean;
     /** Override of `path.isAbsolute` (tests). */
     isAbsolutePath?: (path: string) => boolean;
     /** Creates the directory when needed and verifies it is a writable directory. Throws if not. */
@@ -103,6 +105,13 @@ export function createSettingsService(options: SettingsServiceOptions): Settings
                         };
                     }
 
+                    if (options.hasPausedUploads?.()) {
+                        return {
+                            ok: false,
+                            error: 'Some uploads are paused and their temporary files are needed to resume them. Resume or remove them before changing the temporary folder.',
+                        };
+                    }
+
                     try {
                         await options.ensureDir(tmpRoot);
                     } catch {
@@ -132,6 +141,17 @@ export function createSettingsService(options: SettingsServiceOptions): Settings
                     return {
                         ok: false,
                         error: 'Some videos are uploaded but not registered yet. Finish or cancel them before changing the site URL.',
+                    };
+                }
+            }
+
+            if (patch.siteUrl !== undefined && options.hasPausedUploads?.()) {
+                const same = patch.siteUrl.trim().replace(/\/+$/, '') === current.siteUrl;
+
+                if (!same) {
+                    return {
+                        ok: false,
+                        error: 'Some uploads are paused and their temporary files are needed to resume them. Resume or remove them before changing the site URL.',
                     };
                 }
             }

@@ -72,6 +72,7 @@ export const STAGE_LABELS: Record<JobState, string> = {
     interrupted: 'Interrupted',
     register_failed: 'Register failed',
     needs_sign_in: 'Sign-in needed',
+    upload_interrupted: 'Upload paused',
 };
 
 export function stageLabel(state: JobState): string {

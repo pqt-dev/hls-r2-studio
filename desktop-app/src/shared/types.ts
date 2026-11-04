@@ -13,7 +13,12 @@ export type JobState =
     /** Files are on R2 but the site register call failed; retry finishes it without re-uploading. */
     | 'register_failed'
     /** Like register_failed, but the site rejected the token; retried automatically after sign-in. */
-    | 'needs_sign_in';
+    | 'needs_sign_in'
+    /**
+     * The upload stopped (network down for the stall budget, or the app was closed during
+     * upload). The temp files are kept so `resume` can continue without transcoding again.
+     */
+    | 'upload_interrupted';
 
 /** Result of a successful `POST /api/app/videos`. */
 export interface RegisteredRecord {
@@ -53,6 +58,15 @@ export interface JobRecord {
     siteOrigin?: string;
     /** Body for POST /api/app/videos, kept so register can be retried without re-uploading. */
     registerPayload?: RegisterPayloadRecord | null;
+    /** Temp directory kept for a resumable upload (`<tmpRoot>/<publicId>`). Main process only. */
+    tmpDir?: string;
+    /**
+     * True once the pipeline was about to call the site register endpoint, so the site MAY have
+     * registered this video. R2 objects of such a job are never deleted automatically.
+     */
+    registerStarted?: boolean;
+    /** Internal: a `waiting` job with `mode: 'resume'` continues its upload instead of starting over. */
+    mode?: 'resume';
     /** Set when the job is done. */
     registered: RegisteredRecord | null;
 }

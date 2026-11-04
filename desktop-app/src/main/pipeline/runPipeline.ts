@@ -27,7 +27,7 @@ import { probeDuration, probeFps, probeOutputInfo } from './steps/probe';
 import { generateStoryboards } from './steps/storyboard';
 import { generateThumbnail } from './steps/thumbnail';
 import { transcodeToHls } from './steps/transcode';
-import { uploadDirectory } from './steps/upload';
+import { uploadDirectory, type NetworkWaitInfo } from './steps/upload';
 import { withRetry } from './upload/plan';
 
 export const ALLOWED_EXTENSIONS: readonly string[] = ['mp4', 'mov', 'mkv', 'avi', 'webm'];
@@ -52,6 +52,23 @@ export interface PipelineHooks {
      * `uploading` (a later Retry would otherwise treat its R2 files as stale).
      */
     onBeforeRegister?: () => Promise<void>;
+    /**
+     * Awaited after the `uploading` transition, once thumbnail and storyboard are done and BEFORE
+     * the first PutObject. The queue persists `registerPayload` (identical to what is registered at
+     * the end) and `tmpDir` durably here, so an `upload_interrupted` job can be resumed.
+     */
+    onBeforeUpload?: (info: BeforeUploadInfo) => Promise<void>;
+    /** The upload is waiting for the network (throttled to about one call per 5 s). */
+    onNetworkWait?: (info: NetworkWaitInfo) => void;
+    /** The first upload succeeded after `onNetworkWait` was called. */
+    onNetworkRestored?: () => void;
+}
+
+export interface BeforeUploadInfo {
+    prefix: string;
+    publicId: string;
+    tmpDir: string;
+    registerPayload: RegisterPayload;
 }
 
 export type RetryRegisterHooks = Pick<
@@ -92,6 +109,7 @@ interface RunState {
     prefix: string | null;
     client: S3Client | null;
     uploadStarted: boolean;
+    payload: RegisterPayload | null;
     step: JobState;
 }
 
@@ -102,6 +120,7 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
         prefix: null,
         client: null,
         uploadStarted: false,
+        payload: null,
         step: 'waiting',
     };
 
@@ -114,17 +133,24 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
     } catch (error) {
         const failure = classify(error, state, hooks.signal, deps.logger);
 
-        // Everything uploaded so far is useless after a failure or cancel: remove it from R2.
-        if (
-            (failure.kind === 'failed' || failure.kind === 'cancelled') &&
-            state.uploadStarted &&
-            state.client !== null &&
-            state.prefix !== null
-        ) {
-            await cleanupUploaded(options, state.prefix);
-        }
+        if (failure.kind === 'upload_interrupted') {
+            // Keep the R2 objects and the temp dir: resumeUpload needs both.
+            failure.registerPayload = state.payload ?? undefined;
+            failure.tmpDir = state.jobDir;
+            failure.resumable = state.payload !== null && state.jobDir !== null;
+        } else {
+            // Everything uploaded so far is useless after a failure or cancel: remove it from R2.
+            if (
+                (failure.kind === 'failed' || failure.kind === 'cancelled') &&
+                state.uploadStarted &&
+                state.client !== null &&
+                state.prefix !== null
+            ) {
+                await cleanupUploaded(options.config, deps, state.prefix);
+            }
 
-        await removeJobDir(state.jobDir, deps.logger);
+            await removeJobDir(state.jobDir, deps.logger);
+        }
 
         failure.prefix = state.prefix;
         failure.stderrTail = scrubPaths(failure.stderrTail, [
@@ -142,8 +168,11 @@ export async function runPipeline(options: RunPipelineOptions): Promise<Pipeline
 }
 
 /** Deletes the uploaded files with a dedicated client (cleanup calls may use SDK retries). */
-async function cleanupUploaded(options: RunPipelineOptions, prefix: string): Promise<void> {
-    const { config, deps } = options;
+export async function cleanupUploaded(
+    config: AppConfig,
+    deps: PipelineDeps,
+    prefix: string,
+): Promise<void> {
     let client: S3Client | null = null;
 
     try {
@@ -156,7 +185,7 @@ async function cleanupUploaded(options: RunPipelineOptions, prefix: string): Pro
     }
 }
 
-function destroyClient(client: S3Client | null, logger: Logger): void {
+export function destroyClient(client: S3Client | null, logger: Logger): void {
     if (client === null) return;
 
     try {
@@ -300,24 +329,7 @@ async function execute(options: RunPipelineOptions, state: RunState): Promise<Pi
     const storyboardGrids = Object.keys(storyboards ?? {}).map((key) => Number(key.split('x')[0]));
 
     // ---- step 6: upload ----
-    enter('uploading');
-    state.client = deps.createS3Client(config.r2);
-    await uploadDirectory({
-        client: state.client,
-        bucket: config.r2.bucket,
-        prefix,
-        dir: jobDir,
-        signal: hooks.signal,
-        sleep: deps.sleep,
-        logger: deps.logger,
-        onProgress: (fraction) => report('uploading', fraction),
-        onUploadStarted: () => {
-            state.uploadStarted = true;
-        },
-        onPlaylistUploaded: () => undefined,
-    });
-
-    // ---- step 7: register ----
+    // Everything the register call needs is known now; build it before the first byte is sent.
     const payload = buildRegisterPayload({
         publicId: job.publicId,
         prefix,
@@ -339,6 +351,34 @@ async function execute(options: RunPipelineOptions, state: RunState): Promise<Pi
         });
     }
 
+    state.payload = payload;
+    enter('uploading');
+    await hooks.onBeforeUpload?.({
+        prefix,
+        publicId: job.publicId,
+        tmpDir: jobDir,
+        registerPayload: payload,
+    });
+    state.client = deps.createS3Client(config.r2);
+    await uploadDirectory({
+        client: state.client,
+        bucket: config.r2.bucket,
+        prefix,
+        dir: jobDir,
+        signal: hooks.signal,
+        sleep: deps.sleep,
+        logger: deps.logger,
+        onProgress: (fraction) => report('uploading', fraction),
+        onUploadStarted: () => {
+            state.uploadStarted = true;
+        },
+        onPlaylistUploaded: () => undefined,
+        onNetworkWait: hooks.onNetworkWait,
+        onNetworkRestored: hooks.onNetworkRestored,
+        ...deps.uploadTuning,
+    });
+
+    // ---- step 7: register ----
     enter('registering');
     await hooks.onBeforeRegister?.();
 
@@ -394,7 +434,7 @@ async function checkSource(
 }
 
 /** Register with the B2 backoff (5 retries: 1, 2, 4, 8, 16 s; 429 may override with Retry-After). */
-async function registerWithRetry(
+export async function registerWithRetry(
     payload: RegisterPayload,
     deps: PipelineDeps,
     signal: AbortSignal,
@@ -473,9 +513,9 @@ async function registerWithRetry(
 }
 
 /** Maps any thrown value to a PipelineError with a safe message. */
-function classify(
+export function classify(
     error: unknown,
-    state: RunState,
+    state: Pick<RunState, 'step'>,
     signal: AbortSignal,
     logger: Logger,
 ): PipelineError {
@@ -517,7 +557,7 @@ function safeMessage(error: unknown): string {
     }
 }
 
-async function removeJobDir(jobDir: string | null, logger: Logger): Promise<void> {
+export async function removeJobDir(jobDir: string | null, logger: Logger): Promise<void> {
     if (jobDir === null) return;
 
     try {

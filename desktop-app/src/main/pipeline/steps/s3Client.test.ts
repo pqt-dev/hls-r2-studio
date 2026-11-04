@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createR2Client } from './s3Client';
+import { CONNECTION_TIMEOUT_MS, SOCKET_TIMEOUT_MS, createR2Client } from './s3Client';
 
 const R2 = {
     access_key_id: 'k',
@@ -23,4 +23,20 @@ describe('createR2Client', () => {
         expect(await client.config.maxAttempts()).toBe(3);
         client.destroy();
     });
+
+    it.each(['upload', 'cleanup'] as const)(
+        'times out a stalled connection (%s client): 15 s to connect, 60 s socket inactivity',
+        async (purpose) => {
+            const client = createR2Client(R2, purpose);
+            // The handler resolves its options lazily (on the first request).
+            const handler = client.config.requestHandler as unknown as {
+                configProvider: Promise<{ connectionTimeout?: number; socketTimeout?: number }>;
+            };
+            const configs = await handler.configProvider;
+
+            expect(configs.connectionTimeout).toBe(CONNECTION_TIMEOUT_MS);
+            expect(configs.socketTimeout).toBe(SOCKET_TIMEOUT_MS);
+            client.destroy();
+        },
+    );
 });

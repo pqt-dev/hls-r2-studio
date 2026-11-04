@@ -20,6 +20,7 @@ export const IpcChannels = {
     jobsCancel: 'jobs:cancel',
     jobsRetry: 'jobs:retry',
     jobsRetryRegister: 'jobs:retry-register',
+    jobsResume: 'jobs:resume',
     jobsRemove: 'jobs:remove',
     jobsClearFinished: 'jobs:clear-finished',
     jobsOpenEmbed: 'jobs:open-embed',
@@ -103,6 +104,10 @@ export interface JobDto {
     progress: number;
     /** Why a waiting job is not running yet (e.g. not signed in), else null. */
     waitingReason: string | null;
+    /** True while the upload retries automatically because the network is down. */
+    waitingForNetwork: boolean;
+    /** ISO time the current network outage started; set only while `waitingForNetwork`. */
+    networkWaitSince?: string;
     errorMessage: string | null;
     /** Failed/interrupted details; text already redacted. */
     errorDetail: JobErrorDetail | null;
@@ -113,7 +118,10 @@ export interface JobDto {
     startedAt: string | null;
     finishedAt: string | null;
     canCancel: boolean;
+    /** For `upload_interrupted` this means "Start over" (process the video again). */
     canRetry: boolean;
+    /** True for a paused upload that can be continued without transcoding again. */
+    canResume: boolean;
     canRetryRegister: boolean;
     canRemove: boolean;
 }
@@ -190,6 +198,8 @@ export interface JobsApi {
     cancel(id: string): Promise<ActionResult>;
     retry(id: string): Promise<ActionResult>;
     retryRegister(id: string): Promise<ActionResult>;
+    /** Continues a paused upload (`upload_interrupted`) without transcoding again. */
+    resume(id: string): Promise<ActionResult>;
     remove(id: string): Promise<ActionResult>;
     clearFinished(): Promise<ActionResult>;
     openEmbed(id: string): Promise<ActionResult>;

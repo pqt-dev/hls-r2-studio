@@ -7,6 +7,7 @@ export type JobAction =
     | 'cancel'
     | 'retry'
     | 'retry-register'
+    | 'resume'
     | 'remove'
     | 'copy-url'
     | 'copy-shortcode'
@@ -27,6 +28,13 @@ export function useNow(intervalMs = 15_000): number {
 }
 
 function timeInfo(job: JobDto, now: number): { label: string; iso: string } {
+    if (job.state === 'upload_interrupted') {
+        return {
+            label: `Paused ${formatRelativeTime(job.updatedAt, now)}`,
+            iso: job.updatedAt,
+        };
+    }
+
     if (job.finishedAt !== null) {
         return {
             label: `Finished ${formatRelativeTime(job.finishedAt, now)}`,
@@ -50,6 +58,8 @@ function noteOf(job: JobDto): string | null {
             return job.errorMessage ?? 'Uploaded. Sign in again to finish.';
         case 'register_failed':
             return job.errorMessage ?? 'Uploaded, but the site could not register the video.';
+        case 'upload_interrupted':
+            return job.errorMessage ?? 'The upload was paused. Resume to continue.';
         case 'failed':
         case 'interrupted':
         case 'cancelled':
@@ -74,13 +84,26 @@ export function JobRow({
     const running = kind === 'running';
     const time = timeInfo(job, now);
     const note = noteOf(job);
-    const stage = stageLabel(job.state);
+    const paused = job.state === 'upload_interrupted';
+    const stage = job.waitingForNetwork ? 'Waiting for network…' : stageLabel(job.state);
 
-    const button = (action: JobAction, label: string, enabled = true, danger = false) =>
+    const button = (
+        action: JobAction,
+        label: string,
+        enabled = true,
+        danger = false,
+        primary = false,
+    ) =>
         enabled ? (
             <button
                 type="button"
-                className={danger ? 'btn btn-sm btn-danger-quiet' : 'btn btn-sm'}
+                className={
+                    danger
+                        ? 'btn btn-sm btn-danger-quiet'
+                        : primary
+                          ? 'btn btn-sm btn-primary'
+                          : 'btn btn-sm'
+                }
                 disabled={pending}
                 aria-label={`${label}: ${job.fileName}`}
                 onClick={() => onAction(action, job)}
@@ -90,7 +113,11 @@ export function JobRow({
         ) : null;
 
     return (
-        <li className={`job job-${kind}`} data-state={job.state}>
+        <li
+            className={`job job-${kind}`}
+            data-state={job.state}
+            data-network-wait={job.waitingForNetwork ? 'true' : undefined}
+        >
             <div className="job-main">
                 <p className="job-name" title={job.fileName}>
                     {job.fileName}
@@ -121,16 +148,25 @@ export function JobRow({
                         <span className="num job-percent">{job.progress}%</span>
                     </div>
                 )}
+                {running && job.waitingForNetwork && (
+                    <p className="job-note">Retrying automatically</p>
+                )}
                 {note !== null && !running && (
                     <p className="job-note" title={note}>
                         {note}
                     </p>
                 )}
+                {paused && (
+                    <p className="job-note">
+                        Temporary files are kept on disk until you resume or remove this video.
+                    </p>
+                )}
             </div>
 
             <div className="job-actions">
+                {button('resume', 'Resume', job.canResume, false, true)}
                 {button('cancel', 'Cancel', job.canCancel)}
-                {button('retry', 'Retry', job.canRetry)}
+                {button('retry', paused ? 'Start over' : 'Retry', job.canRetry)}
                 {button('retry-register', 'Retry register', job.canRetryRegister)}
                 {job.state === 'done' && job.embedUrl !== null && (
                     <>

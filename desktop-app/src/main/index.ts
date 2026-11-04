@@ -23,6 +23,7 @@ import { createFileLogger, type Logger } from './logger';
 import { handleStartupFailure } from './lifecycle/startupFailure';
 import { createDefaultDeps } from './pipeline/defaultDeps';
 import { generatePublicId } from './pipeline/publicId';
+import { resumeUpload } from './pipeline/resumeUpload';
 import { retryRegister, runPipeline } from './pipeline/runPipeline';
 import { deleteR2Prefix } from './pipeline/steps/cleanup';
 import { JobQueue } from './queue/jobQueue';
@@ -127,6 +128,7 @@ async function bootstrap(): Promise<void> {
         store,
         runPipelineFn: runPipeline,
         retryRegisterFn: retryRegister,
+        resumeUploadFn: resumeUpload,
         deletePrefixFn: deleteR2Prefix,
         // Fresh deps per run so a changed temp folder applies to the next job.
         getDeps: () =>
@@ -166,6 +168,7 @@ async function bootstrap(): Promise<void> {
         auth,
         hasActiveJobs: () => queue.hasActiveJobs(),
         hasAttentionJobs: () => queue.hasAttentionJobs(),
+        hasPausedUploads: () => queue.hasPausedUploads(),
         ensureDir: async (path) => {
             await mkdir(path, { recursive: true });
             await access(path, constants.W_OK);

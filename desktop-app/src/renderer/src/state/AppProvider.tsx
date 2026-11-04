@@ -44,7 +44,12 @@ export function summarize(jobs: readonly JobDto[]): QueueSummary {
     return {
         running: count(isRunning),
         waiting: count((job) => job.state === 'waiting'),
-        attention: count((job) => job.state === 'register_failed' || job.state === 'needs_sign_in'),
+        attention: count(
+            (job) =>
+                job.state === 'register_failed' ||
+                job.state === 'needs_sign_in' ||
+                job.state === 'upload_interrupted',
+        ),
         done: count((job) => job.state === 'done'),
         failed: count((job) => job.state === 'failed' || job.state === 'interrupted'),
         total: jobs.length,

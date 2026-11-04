@@ -57,9 +57,10 @@ describe('labels and helpers', () => {
     it('has an English label for every job state', () => {
         const states = Object.keys(STAGE_LABELS) as JobState[];
 
-        expect(states).toHaveLength(12);
+        expect(states).toHaveLength(13);
         expect(stageLabel('transcoding')).toBe('Transcoding');
         expect(stageLabel('needs_sign_in')).toBe('Sign-in needed');
+        expect(stageLabel('upload_interrupted')).toBe('Upload paused');
 
         for (const state of states) {
             expect(STAGE_LABELS[state]).toMatch(/^[A-Z][A-Za-z -]+$/);

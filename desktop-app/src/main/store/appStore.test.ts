@@ -64,6 +64,19 @@ describe('isValidAppData', () => {
         ).toBe(true);
     });
 
+    it('accepts upload_interrupted jobs with the new optional fields', () => {
+        const paused = {
+            ...JOB,
+            state: 'upload_interrupted',
+            tmpDir: '/tmp/hls/aaaaaaaaaaaa',
+            registerStarted: false,
+            mode: 'resume',
+            registerPayload: { public_id: 'aaaaaaaaaaaa' },
+        };
+
+        expect(isValidAppData({ schemaVersion: 1, settings: SETTINGS, jobs: [paused] })).toBe(true);
+    });
+
     it.each([
         ['non-object', 5],
         ['missing jobs', { schemaVersion: 1, settings: SETTINGS }],
@@ -74,6 +87,12 @@ describe('isValidAppData', () => {
             'bad settings type',
             { schemaVersion: 1, settings: { ...SETTINGS, maxConcurrent: '1' }, jobs: [] },
         ],
+        ['bad tmpDir', { schemaVersion: 1, settings: SETTINGS, jobs: [{ ...JOB, tmpDir: 5 }] }],
+        [
+            'bad registerStarted',
+            { schemaVersion: 1, settings: SETTINGS, jobs: [{ ...JOB, registerStarted: 'yes' }] },
+        ],
+        ['bad mode', { schemaVersion: 1, settings: SETTINGS, jobs: [{ ...JOB, mode: 'other' }] }],
         ['bad job state', { schemaVersion: 1, settings: SETTINGS, jobs: [{ ...JOB, state: 'x' }] }],
         [
             'job missing id',

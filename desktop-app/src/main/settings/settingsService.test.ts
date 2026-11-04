@@ -4,7 +4,12 @@ import { createMemoryStore } from '../testing/memoryStore';
 import { classifyTmpRoot, createSettingsService } from './settingsService';
 
 function setup(
-    opts: { busy?: boolean; attention?: boolean; ensureDir?: (p: string) => Promise<void> } = {},
+    opts: {
+        busy?: boolean;
+        attention?: boolean;
+        paused?: boolean;
+        ensureDir?: (p: string) => Promise<void>;
+    } = {},
 ) {
     const store = createMemoryStore('/tmp/hls');
     store.update((d) => {
@@ -24,12 +29,39 @@ function setup(
         auth: { changeSiteUrl },
         hasActiveJobs: () => opts.busy ?? false,
         hasAttentionJobs: () => opts.attention ?? false,
+        hasPausedUploads: () => opts.paused ?? false,
         ensureDir,
         onChanged,
     });
 
     return { service, store, changeSiteUrl, ensureDir, onChanged };
 }
+
+describe('settingsService with paused uploads', () => {
+    it('refuses a different temp folder and a different site URL', async () => {
+        const t = setup({ paused: true });
+        const tmp = await t.service.set({ tmpRoot: '/data/other' });
+        const site = await t.service.set({ siteUrl: 'https://new.example.com' });
+
+        expect(tmp).toMatchObject({ ok: false, error: expect.stringContaining('paused') });
+        expect(tmp).toMatchObject({ error: expect.stringContaining('temporary folder') });
+        expect(site).toMatchObject({ ok: false, error: expect.stringContaining('site URL') });
+        expect(t.ensureDir).not.toHaveBeenCalled();
+        expect(t.changeSiteUrl).not.toHaveBeenCalled();
+        expect(t.service.get().tmpRoot).toBe('/tmp/hls');
+    });
+
+    it('still allows unchanged values and unrelated settings', async () => {
+        const t = setup({ paused: true });
+        const result = await t.service.set({
+            tmpRoot: '/tmp/hls',
+            siteUrl: 'https://old.example.com/',
+            maxConcurrent: 2,
+        });
+
+        expect(result).toMatchObject({ ok: true, settings: { maxConcurrent: 2 } });
+    });
+});
 
 describe('settingsService', () => {
     it('returns the stored settings', () => {

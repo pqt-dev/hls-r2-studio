@@ -7,17 +7,26 @@ import type { JobRecord, JobState } from '../../shared/types';
 import type { Logger } from '../logger';
 import { redact } from '../logger';
 import type { PipelineDeps } from '../pipeline/deps';
-import { PipelineError, type PipelineErrorKind } from '../pipeline/errors';
+import { PipelineError, RESUME_UNAVAILABLE } from '../pipeline/errors';
 import { isValidPublicId } from '../pipeline/publicId';
+import type { resumeUpload } from '../pipeline/resumeUpload';
 import type { PipelineResult, retryRegister, runPipeline } from '../pipeline/runPipeline';
+import type { NetworkWaitInfo } from '../pipeline/steps/upload';
 import type { AppStore } from '../store';
 import { capHistory } from '../store';
 import { validateVideoPath, pathKey, type FileStat } from './fileValidation';
 import { toJobDto, type JobRuntimeInfo } from './jobDto';
-import { isAttentionState, isFinalState, isRunningState, RETRYABLE_STATES } from './jobStates';
+import {
+    isAttentionState,
+    isFinalState,
+    isPausedUpload,
+    isRunningState,
+    RETRYABLE_STATES,
+} from './jobStates';
 
 export type RunPipelineFn = typeof runPipeline;
 export type RetryRegisterFn = typeof retryRegister;
+export type ResumeUploadFn = typeof resumeUpload;
 export type DeletePrefixFn = (
     client: S3Client,
     bucket: string,
@@ -35,6 +44,7 @@ export interface JobQueueOptions {
     store: AppStore;
     runPipelineFn: RunPipelineFn;
     retryRegisterFn: RetryRegisterFn;
+    resumeUploadFn: ResumeUploadFn;
     deletePrefixFn: DeletePrefixFn;
     /** Fresh deps (reads the current tmpRoot); called once per run. */
     getDeps: () => PipelineDeps;
@@ -69,10 +79,16 @@ type SummaryListener = (summary: QueueSummary) => void;
 
 interface Runtime {
     controller: AbortController;
-    kind: 'pipeline' | 'register';
+    kind: 'pipeline' | 'register' | 'resume';
     /** State to return to when a register retry is cancelled. */
     previousState: JobState;
     progress: number;
+    /** Upload retries because the network is down (RAM only, never persisted). */
+    waitingForNetwork: boolean;
+    /** Epoch ms the current outage started. */
+    networkWaitSince: number | null;
+    /** Epoch ms of the next automatic attempt. */
+    nextRetryAt: number | null;
     lastEmitAt: number;
     trailing: ReturnType<typeof setTimeout> | null;
     done: Promise<void>;
@@ -80,6 +96,7 @@ interface Runtime {
 
 const INTERRUPTED_MESSAGE =
     'The app was closed while this job was running. Use Retry to start it again.';
+const RECOVERED_UPLOAD_MESSAGE = 'The app was closed during upload. Resume to continue.';
 const OK: ActionResult = { ok: true };
 
 /** Shown when a job belongs to another site than the one that is signed in. */
@@ -134,6 +151,17 @@ export class JobQueue {
         return this.jobs().some((job) => isAttentionState(job.state));
     }
 
+    /**
+     * True while any upload is paused (or about to resume): its temp files and `siteOrigin` are
+     * needed, so the temp folder and the site cannot change.
+     */
+    hasPausedUploads(): boolean {
+        return this.jobs().some(
+            (job) =>
+                isPausedUpload(job.state) || (job.state === 'waiting' && job.mode === 'resume'),
+        );
+    }
+
     summary(): QueueSummary {
         const jobs = this.jobs();
         const count = (pred: (job: JobRecord) => boolean): number => jobs.filter(pred).length;
@@ -142,7 +170,7 @@ export class JobQueue {
         return {
             running: this.runtimes.size,
             waiting,
-            attention: count((j) => isAttentionState(j.state)),
+            attention: count((j) => isAttentionState(j.state) || isPausedUpload(j.state)),
             done: count((j) => j.state === 'done'),
             failed: count((j) => j.state === 'failed' || j.state === 'interrupted'),
             total: jobs.length,
@@ -164,20 +192,61 @@ export class JobQueue {
 
     // ---- lifecycle ------------------------------------------------------------------------
 
-    /** Startup recovery: running jobs become `interrupted` and their temp dirs are removed. */
+    /**
+     * Startup recovery. A running job whose upload was prepared (payload + temp dir still on
+     * disk) becomes a resumable `upload_interrupted`; any other running job becomes
+     * `interrupted` and its temp dir is removed. R2 objects are never deleted here.
+     */
     async recover(): Promise<void> {
         const orphans: string[] = [];
+        const resumable = new Set<string>();
         const nowIso = this.iso();
+
+        for (const job of this.jobs()) {
+            if (!isRunningState(job.state) || !job.registerPayload || !job.tmpDir) continue;
+            if (!isValidPublicId(job.publicId)) continue;
+
+            try {
+                await this.opts.fs.stat(job.tmpDir);
+                resumable.add(job.id);
+            } catch {
+                // The temp files are gone: it cannot be resumed.
+            }
+        }
+
+        let paused = 0;
 
         this.opts.store.update((draft) => {
             for (const job of draft.jobs) {
+                if (job.state === 'waiting' && job.mode === 'resume') {
+                    // The app closed before the resume started: back to the paused state.
+                    delete job.mode;
+                    job.state = 'upload_interrupted';
+                    job.errorMessage = RECOVERED_UPLOAD_MESSAGE;
+                    job.errorDetail = { step: 'uploading', exitCode: null, stderrTail: [] };
+                    job.updatedAt = nowIso;
+                    paused += 1;
+                    continue;
+                }
+
                 if (!isRunningState(job.state)) continue;
+
+                if (resumable.has(job.id)) {
+                    job.errorDetail = { step: 'uploading', exitCode: null, stderrTail: [] };
+                    job.state = 'upload_interrupted';
+                    job.errorMessage = RECOVERED_UPLOAD_MESSAGE;
+                    job.finishedAt = null;
+                    job.updatedAt = nowIso;
+                    paused += 1;
+                    continue;
+                }
 
                 job.errorDetail = { step: job.state, exitCode: null, stderrTail: [] };
                 job.state = 'interrupted';
                 job.errorMessage = INTERRUPTED_MESSAGE;
                 job.finishedAt = nowIso;
                 job.updatedAt = nowIso;
+                delete job.tmpDir;
                 if (isValidPublicId(job.publicId)) orphans.push(job.publicId);
             }
         });
@@ -186,6 +255,7 @@ export class JobQueue {
 
         if (orphans.length > 0)
             this.opts.logger.info('Recovered interrupted jobs', { count: orphans.length });
+        if (paused > 0) this.opts.logger.info('Recovered paused uploads', { count: paused });
 
         this.changed();
         this.pump();
@@ -302,13 +372,25 @@ export class JobQueue {
         }
 
         if (job.state === 'waiting') {
+            const resuming = job.mode === 'resume';
+            const snapshot = { ...job };
+
             this.patch(id, (j) => {
                 j.state = 'cancelled';
                 j.errorMessage = 'The job was cancelled.';
                 j.errorDetail = null;
                 j.finishedAt = this.iso();
+
+                if (resuming) {
+                    j.registerPayload = null;
+                    delete j.mode;
+                    delete j.tmpDir;
+                }
             });
             this.changed();
+
+            // A queued resume owns kept files; cancelling discards them like a running cancel.
+            if (resuming) await this.discardPausedFiles(snapshot);
 
             return OK;
         }
@@ -331,25 +413,44 @@ export class JobQueue {
         return fail('This job cannot be cancelled.');
     }
 
-    /** Re-runs a failed/cancelled/interrupted job from scratch with a NEW public id. */
+    /**
+     * Re-runs a failed/cancelled/interrupted job from scratch with a NEW public id. For a paused
+     * upload (`upload_interrupted`) this is "Start over".
+     */
     async retry(id: string): Promise<ActionResult> {
         const job = this.getJob(id);
 
         if (!job || this.runtimes.has(id)) return fail('The job no longer exists.');
-        if (!RETRYABLE_STATES.includes(job.state)) return fail('This job cannot be retried.');
+        if (!RETRYABLE_STATES.includes(job.state) && !isPausedUpload(job.state)) {
+            return fail('This job cannot be retried.');
+        }
 
-        // Only partial uploads of failed/cancelled jobs are certainly unregistered (the pipeline
-        // already tried to delete them). An `interrupted` job was cut off at an unknown point: the
-        // persisted step may lag behind a register request that did reach the site, so its files
-        // are NEVER deleted automatically.
-        const stalePrefix =
-            job.prefix !== null &&
-            job.state !== 'interrupted' &&
-            job.errorDetail?.step === 'uploading'
-                ? job.prefix
-                : null;
-        const staleOrigin = job.siteOrigin;
-        const staleId = job.publicId;
+        await this.restartFresh(job, this.stalePrefixOf(job));
+
+        return OK;
+    }
+
+    /**
+     * The R2 prefix a restart may delete, or null. Only partial uploads of failed/cancelled jobs
+     * are certainly unregistered (the pipeline already tried to delete them). An `interrupted`
+     * job was cut off at an unknown point and a paused upload whose register call started may be
+     * registered: those files are NEVER deleted automatically.
+     */
+    private stalePrefixOf(job: JobRecord): string | null {
+        if (isPausedUpload(job.state)) {
+            const prefix = job.prefix ?? job.registerPayload?.disk_prefix ?? null;
+
+            if (job.registerStarted === true && prefix !== null) {
+                this.opts.logger.warn(
+                    'Restarting a paused upload whose register call may have reached the site; its R2 files were kept and may be orphaned.',
+                    { prefix, siteOrigin: job.siteOrigin ?? null },
+                );
+
+                return null;
+            }
+
+            return prefix;
+        }
 
         if (job.state === 'interrupted' && job.prefix !== null) {
             this.opts.logger.warn(
@@ -357,6 +458,19 @@ export class JobQueue {
                 { prefix: job.prefix, siteOrigin: job.siteOrigin ?? null },
             );
         }
+
+        return job.prefix !== null &&
+            job.state !== 'interrupted' &&
+            job.errorDetail?.step === 'uploading'
+            ? job.prefix
+            : null;
+    }
+
+    /** Resets the job to `waiting` (new public id on start) and removes the old artifacts. */
+    private async restartFresh(job: JobRecord, stalePrefix: string | null): Promise<void> {
+        const id = job.id;
+        const staleOrigin = job.siteOrigin;
+        const staleId = job.publicId;
 
         this.patch(id, (j) => {
             j.state = 'waiting';
@@ -368,12 +482,46 @@ export class JobQueue {
             j.registered = null;
             j.startedAt = null;
             j.finishedAt = null;
+            delete j.tmpDir;
+            delete j.registerStarted;
+            delete j.mode;
         });
         this.changed();
 
         if (stalePrefix !== null) await this.cleanupPrefix(stalePrefix, staleOrigin);
         if (staleId !== null) await this.removeTmpDir(staleId);
 
+        this.pump();
+    }
+
+    /**
+     * Continues a paused upload without transcoding again. The job goes through the normal run
+     * loop (it respects maxConcurrent and the start gate).
+     */
+    async resume(id: string): Promise<ActionResult> {
+        const job = this.getJob(id);
+
+        if (!job || this.runtimes.has(id)) return fail('The job no longer exists.');
+        if (!isPausedUpload(job.state) || !job.registerPayload || job.publicId === null) {
+            return fail('This upload cannot be resumed.');
+        }
+        if (this.shuttingDown) return fail('The app is closing.');
+        if (this.opts.getAuthState().status !== 'signed_in') {
+            return fail('Sign in to resume this upload.');
+        }
+
+        const foreign = this.foreignOrigin(job);
+
+        if (foreign !== null) return fail(otherSiteMessage(foreign));
+
+        this.patch(id, (j) => {
+            j.state = 'waiting';
+            j.mode = 'resume';
+            j.errorMessage = null;
+            j.errorDetail = null;
+            j.finishedAt = null;
+        });
+        this.changed();
         this.pump();
 
         return OK;
@@ -415,7 +563,7 @@ export class JobQueue {
                     signal: controller.signal,
                     onStage: (stage) => this.onStage(id, stage),
                     onProgress: (percent) => this.onProgress(id, percent),
-                    onBeforeRegister: () => this.opts.store.flush(),
+                    onBeforeRegister: () => this.markRegisterStarted(id),
                 },
             })
             .then(
@@ -430,19 +578,25 @@ export class JobQueue {
         return OK;
     }
 
-    /** Removes a finished job (done, failed, cancelled, interrupted) from the list. */
-    remove(id: string): ActionResult {
+    /**
+     * Removes a finished job (done, failed, cancelled, interrupted) or a paused upload from the
+     * list. A paused upload also loses its temp dir and (unless the site may already have
+     * registered it) its R2 objects.
+     */
+    async remove(id: string): Promise<ActionResult> {
         const job = this.getJob(id);
 
         if (!job) return fail('The job no longer exists.');
-        if (this.runtimes.has(id) || !isFinalState(job.state)) {
-            return fail('Only finished jobs can be removed.');
+        if (this.runtimes.has(id) || !(isFinalState(job.state) || isPausedUpload(job.state))) {
+            return fail('Only finished or paused jobs can be removed.');
         }
 
         this.opts.store.update((draft) => {
             draft.jobs = draft.jobs.filter((j) => j.id !== id);
         });
         this.changed();
+
+        if (isPausedUpload(job.state)) await this.discardPausedFiles(job);
 
         return OK;
     }
@@ -496,9 +650,9 @@ export class JobQueue {
         );
     }
 
-    /** Register retries are light and do not use a processing slot. */
+    /** Register retries are light and do not use a processing slot; pipeline and resume runs do. */
     private pipelineRuns(): number {
-        return [...this.runtimes.values()].filter((r) => r.kind === 'pipeline').length;
+        return [...this.runtimes.values()].filter((r) => r.kind !== 'register').length;
     }
 
     private maxConcurrent(): number {
@@ -524,6 +678,10 @@ export class JobQueue {
 
         if (config === null) return;
 
+        if (job.mode === 'resume') {
+            if (this.startResume(job, config)) return;
+        }
+
         const id = job.id;
         const origin = this.currentOrigin();
         const publicId = this.opts.generatePublicId();
@@ -540,6 +698,9 @@ export class JobQueue {
             j.registerPayload = null;
             j.startedAt = this.iso();
             j.finishedAt = null;
+            delete j.mode;
+            delete j.tmpDir;
+            delete j.registerStarted;
 
             if (origin === undefined) delete j.siteOrigin;
             else j.siteOrigin = origin;
@@ -562,7 +723,19 @@ export class JobQueue {
                     onStage: (stage) => this.onStage(id, stage),
                     onProgress: (percent) => this.onProgress(id, percent),
                     onPrefix: (prefix) => this.patch(id, (j) => void (j.prefix = prefix)),
-                    onBeforeRegister: () => this.opts.store.flush(),
+                    // Durable before the first PutObject: a crash or a network stall can then
+                    // be resumed from the persisted payload and temp dir.
+                    onBeforeUpload: async (info) => {
+                        this.patch(id, (j) => {
+                            j.prefix = info.prefix;
+                            j.tmpDir = info.tmpDir;
+                            j.registerPayload = info.registerPayload;
+                        });
+                        await this.opts.store.flush();
+                    },
+                    onNetworkWait: (info) => this.onNetworkWait(id, info),
+                    onNetworkRestored: () => this.onNetworkRestored(id),
+                    onBeforeRegister: () => this.markRegisterStarted(id),
                 },
             })
             .then(
@@ -573,6 +746,78 @@ export class JobQueue {
             .catch((error: unknown) =>
                 this.opts.logger.error('Job bookkeeping failed', { id, error }),
             );
+    }
+
+    /**
+     * Starts the resume of a `waiting` job with `mode: 'resume'`. Returns false when the job has
+     * no stored upload data (it then runs as a fresh job).
+     */
+    private startResume(job: JobRecord, config: AppConfig): boolean {
+        const payload = job.registerPayload;
+        const publicId = job.publicId;
+
+        if (!payload || publicId === null || !isValidPublicId(publicId)) {
+            this.patch(job.id, (j) => void delete j.mode);
+
+            return false;
+        }
+
+        const foreign = this.foreignOrigin(job);
+
+        if (foreign !== null) {
+            // The signed-in site changed while the resume was queued: never touch another site.
+            this.patch(job.id, (j) => {
+                j.state = 'upload_interrupted';
+                j.errorMessage = otherSiteMessage(foreign);
+                delete j.mode;
+            });
+            this.changed();
+
+            return true;
+        }
+
+        const id = job.id;
+        const deps = this.opts.getDeps();
+        const controller = new AbortController();
+        const runtime = this.newRuntime(controller, 'resume', 'upload_interrupted');
+
+        this.runtimes.set(id, runtime);
+        this.patch(id, (j) => {
+            j.state = 'uploading';
+            j.errorMessage = null;
+            j.errorDetail = null;
+            j.finishedAt = null;
+            delete j.mode;
+        });
+        this.opts.logger.info('Upload resumed', { id });
+        this.changed();
+
+        runtime.done = this.opts
+            .resumeUploadFn({
+                job: { id, publicId },
+                payload,
+                tmpDir: join(deps.tmpRoot, publicId),
+                config,
+                deps,
+                hooks: {
+                    signal: controller.signal,
+                    onStage: (stage) => this.onStage(id, stage),
+                    onProgress: (percent) => this.onProgress(id, percent),
+                    onNetworkWait: (info) => this.onNetworkWait(id, info),
+                    onNetworkRestored: () => this.onNetworkRestored(id),
+                    onBeforeRegister: () => this.markRegisterStarted(id),
+                },
+            })
+            .then(
+                (result) => this.onDone(id, result),
+                (error: unknown) => this.onFailure(id, error, runtime),
+            )
+            .finally(() => this.pump())
+            .catch((error: unknown) =>
+                this.opts.logger.error('Job bookkeeping failed', { id, error }),
+            );
+
+        return true;
     }
 
     private onAuthChanged(state: AuthState): void {
@@ -598,6 +843,11 @@ export class JobQueue {
     // ---- pipeline callbacks ---------------------------------------------------------------
 
     private onStage(id: string, stage: JobState): void {
+        const runtime = this.runtimes.get(id);
+
+        // The network wait only exists while uploading.
+        if (runtime && stage !== 'uploading') this.clearNetworkWait(runtime);
+
         this.patch(id, (j) => void (j.state = stage));
         this.changed(id);
     }
@@ -608,7 +858,11 @@ export class JobQueue {
         if (!runtime) return;
 
         runtime.progress = Math.max(runtime.progress, percent);
+        this.emitThrottled(runtime);
+    }
 
+    /** At most `1000 / throttleMs` job events per second for one job. */
+    private emitThrottled(runtime: Runtime): void {
         const now = this.opts.now().getTime();
         const wait = this.throttleMs - (now - runtime.lastEmitAt);
 
@@ -624,6 +878,43 @@ export class JobQueue {
         }
     }
 
+    private onNetworkWait(id: string, info: NetworkWaitInfo): void {
+        const runtime = this.runtimes.get(id);
+
+        if (!runtime) return;
+
+        const started = !runtime.waitingForNetwork;
+
+        runtime.waitingForNetwork = true;
+        runtime.networkWaitSince = info.since;
+        runtime.nextRetryAt = this.opts.now().getTime() + info.nextRetryInMs;
+
+        // Entering the wait is a visible state change; later notifications are only refreshes.
+        if (started) this.changed(id);
+        else this.emitThrottled(runtime);
+    }
+
+    private onNetworkRestored(id: string): void {
+        const runtime = this.runtimes.get(id);
+
+        if (!runtime || !runtime.waitingForNetwork) return;
+
+        this.clearNetworkWait(runtime);
+        this.changed(id);
+    }
+
+    private clearNetworkWait(runtime: Runtime): void {
+        runtime.waitingForNetwork = false;
+        runtime.networkWaitSince = null;
+        runtime.nextRetryAt = null;
+    }
+
+    /** Persists (durably) that the site may register this video from now on. */
+    private async markRegisterStarted(id: string): Promise<void> {
+        this.patch(id, (j) => void (j.registerStarted = true));
+        await this.opts.store.flush();
+    }
+
     private onDone(id: string, result: PipelineResult): void {
         this.releaseRuntime(id);
         this.opts.store.update((draft) => {
@@ -635,6 +926,9 @@ export class JobQueue {
                 job.prefix = result.prefix;
                 job.publicId = result.registered.public_id;
                 job.registerPayload = null;
+                delete job.tmpDir;
+                delete job.registerStarted;
+                delete job.mode;
                 job.errorMessage = null;
                 job.errorDetail = null;
                 job.finishedAt = this.iso();
@@ -676,7 +970,47 @@ export class JobQueue {
             return;
         }
 
-        const kind: PipelineErrorKind = failure.kind;
+        if (failure.kind === 'upload_interrupted') {
+            const payload = failure.registerPayload;
+
+            if (failure.resumable && payload !== undefined && failure.tmpDir !== null) {
+                // Keep everything (R2 objects, temp dir, payload): the user can resume later.
+                const tmpDir = failure.tmpDir;
+                const message = redact(failure.message);
+
+                this.patch(id, (j) => {
+                    j.state = 'upload_interrupted';
+                    j.errorMessage = message;
+                    j.errorDetail = { step: 'uploading', exitCode: null, stderrTail: [] };
+                    j.registerPayload = payload;
+                    j.tmpDir = tmpDir;
+                    j.finishedAt = null;
+                    delete j.mode;
+
+                    if (failure.prefix !== null) j.prefix = failure.prefix;
+                });
+                this.opts.logger.info('Upload paused', { id });
+                this.changed();
+
+                return;
+            }
+
+            this.opts.logger.error('Upload stopped but cannot be resumed.', { id });
+        }
+
+        if (runtime.kind === 'resume' && failure.code === RESUME_UNAVAILABLE && job) {
+            // The kept temp files are gone (or the temp folder changed): process the video again.
+            const prefix = job.prefix ?? failure.prefix ?? null;
+
+            this.opts.logger.warn('Cannot resume the upload; starting over with a new video ID.', {
+                id,
+            });
+            await this.restartFresh(job, job.registerStarted === true ? null : prefix);
+
+            return;
+        }
+
+        const kind = failure.kind === 'upload_interrupted' ? 'failed' : failure.kind;
         const stderrTail = failure.stderrTail.map((line) => redact(line));
         const message = redact(failure.message);
 
@@ -688,6 +1022,9 @@ export class JobQueue {
                 kind === 'register_failed' || kind === 'needs_sign_in'
                     ? (failure.registerPayload ?? j.registerPayload ?? null)
                     : null;
+            // The pipeline removed its temp dir on every outcome except a paused upload.
+            delete j.tmpDir;
+            delete j.mode;
 
             if (failure.prefix !== null) j.prefix = failure.prefix;
 
@@ -695,6 +1032,15 @@ export class JobQueue {
         });
         this.opts.logger.info('Job ended', { id, kind });
         this.changed();
+
+        // Resume runs and unresumable pauses can leave a temp dir the pipeline did not remove.
+        if (
+            (kind === 'failed' || kind === 'cancelled') &&
+            (runtime.kind === 'resume' || failure.kind === 'upload_interrupted') &&
+            job?.publicId
+        ) {
+            await this.removeTmpDir(job.publicId);
+        }
 
         // A definitive register rejection (known server code) during a register retry: the files
         // are useless. Any other failure keeps them.
@@ -728,6 +1074,9 @@ export class JobQueue {
             kind,
             previousState,
             progress: 0,
+            waitingForNetwork: false,
+            networkWaitSince: null,
+            nextRetryAt: null,
             lastEmitAt: this.opts.now().getTime(),
             trailing: null,
             done: Promise.resolve(),
@@ -761,6 +1110,8 @@ export class JobQueue {
             cancelRequested: runtime?.controller.signal.aborted ?? false,
             progress: runtime?.progress ?? null,
             waitingReason: reason,
+            waitingForNetwork: runtime?.waitingForNetwork ?? false,
+            networkWaitSince: runtime?.networkWaitSince ?? null,
         };
 
         return toJobDto(job, info);
@@ -860,6 +1211,24 @@ export class JobQueue {
         } finally {
             client.destroy();
         }
+    }
+
+    /** Deletes the temp dir and, when the site cannot have registered it, the R2 objects. */
+    private async discardPausedFiles(job: JobRecord): Promise<void> {
+        const prefix = job.prefix ?? job.registerPayload?.disk_prefix ?? null;
+
+        if (prefix !== null) {
+            if (job.registerStarted === true) {
+                this.opts.logger.warn(
+                    'Kept the R2 files of a paused upload: the site may have registered it.',
+                    { prefix },
+                );
+            } else {
+                await this.cleanupPrefix(prefix, job.siteOrigin);
+            }
+        }
+
+        if (job.publicId !== null) await this.removeTmpDir(job.publicId);
     }
 
     private async removeTmpDir(publicId: string): Promise<void> {

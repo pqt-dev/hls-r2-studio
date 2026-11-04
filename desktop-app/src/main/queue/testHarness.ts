@@ -6,6 +6,7 @@ import type { AuthState, JobDto } from '../../shared/ipc';
 import type { JobRecord, JobState } from '../../shared/types';
 import type { PipelineDeps } from '../pipeline/deps';
 import { cancelledError, PipelineError } from '../pipeline/errors';
+import type { ResumeUploadOptions } from '../pipeline/resumeUpload';
 import type {
     PipelineResult,
     RetryRegisterOptions,
@@ -56,6 +57,12 @@ export interface FakeRegisterRun {
     reject(error: unknown): void;
 }
 
+export interface FakeResumeRun {
+    opts: ResumeUploadOptions;
+    resolve(): void;
+    reject(error: unknown): void;
+}
+
 export function createHarness(
     overrides: Partial<JobQueueOptions> & {
         auth?: AuthState;
@@ -73,6 +80,7 @@ export function createHarness(
     const removed: string[] = [];
     const runs: FakeRun[] = [];
     const registerRuns: FakeRegisterRun[] = [];
+    const resumeRuns: FakeResumeRun[] = [];
     const deleted: { bucket: string; prefix: string }[] = [];
     const logger = recordingLogger();
     const authListeners = new Set<(s: AuthState) => void>();
@@ -126,6 +134,24 @@ export function createHarness(
                                 id: 1,
                                 public_id: opts.payload.public_id,
                                 embed_url: `https://site.example.com/embed/${opts.payload.public_id}`,
+                            },
+                            prefix: opts.payload.disk_prefix,
+                            payload: opts.payload,
+                        }),
+                    reject,
+                });
+            }),
+        resumeUploadFn: (opts) =>
+            new Promise<PipelineResult>((resolve, reject) => {
+                resumeRuns.push({
+                    opts,
+                    resolve: () =>
+                        resolve({
+                            kind: 'done',
+                            registered: {
+                                id: 1,
+                                public_id: opts.job.publicId,
+                                embed_url: `https://site.example.com/embed/${opts.job.publicId}`,
                             },
                             prefix: opts.payload.disk_prefix,
                             payload: opts.payload,
@@ -188,6 +214,7 @@ export function createHarness(
         state,
         runs,
         registerRuns,
+        resumeRuns,
         deleted,
         removed,
         logger,

@@ -20,8 +20,11 @@ export interface RecordedRequest {
 
 export interface FakeS3ServerOptions {
     bucket: string;
-    /** Return an HTTP status (e.g. 500) to fail a request instead of handling it. */
-    failWhen?: (request: RecordedRequest, serial: number) => number | undefined;
+    /**
+     * Return an HTTP status (e.g. 503) to fail a request instead of handling it, or `'destroy'` to
+     * drop the connection without any answer (a network failure).
+     */
+    failWhen?: (request: RecordedRequest, serial: number) => number | 'destroy' | undefined;
 }
 
 export class FakeS3Server {
@@ -42,7 +45,10 @@ export class FakeS3Server {
     }
 
     async start(): Promise<void> {
-        this.server = createServer((req, res) => void this.handle(req, res));
+        this.server = createServer((req, res) => {
+            // A client that aborts mid-request makes reading the body reject: ignore it.
+            this.handle(req, res).catch(() => undefined);
+        });
         await new Promise<void>((resolve) => this.server?.listen(0, '127.0.0.1', resolve));
         this.port = (this.server.address() as AddressInfo).port;
     }
@@ -85,6 +91,12 @@ export class FakeS3Server {
         this.requests.push(recorded);
 
         const failure = this.options.failWhen?.(recorded, ++this.serial);
+
+        if (failure === 'destroy') {
+            req.socket.destroy();
+
+            return;
+        }
 
         if (failure !== undefined) {
             res.writeHead(failure, { 'content-type': 'application/xml' });

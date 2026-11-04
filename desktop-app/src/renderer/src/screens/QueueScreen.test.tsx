@@ -87,6 +87,17 @@ const CASES: ReadonlyArray<{
         job: { canCancel: true, canRetryRegister: true, errorMessage: 'Site unreachable.' },
     },
     {
+        state: 'upload_interrupted',
+        stage: 'Upload paused',
+        buttons: ['Resume', 'Start over', 'View details', 'Remove'],
+        job: {
+            canResume: true,
+            canRetry: true,
+            canRemove: true,
+            errorMessage: 'Upload stopped: the network was unavailable for 30 minutes.',
+        },
+    },
+    {
         state: 'needs_sign_in',
         stage: 'Sign-in needed',
         buttons: ['Cancel', 'Retry register'],
@@ -96,6 +107,8 @@ const CASES: ReadonlyArray<{
 
 const ALL_ACTIONS = [
     'Cancel',
+    'Resume',
+    'Start over',
     'Retry',
     'Retry register',
     'Remove',
@@ -144,7 +157,182 @@ describe('Queue screen', () => {
         }
     });
 
-    it('shows file name with a tooltip, formatted size and relative time', async () => {
+    it('shows a paused upload with its message, help text and a non-color status icon', async () => {
+        await renderApp({
+            jobs: [
+                makeJob({
+                    id: 'p',
+                    state: 'upload_interrupted',
+                    canResume: true,
+                    canRetry: true,
+                    canRemove: true,
+                    errorMessage: 'The app was closed during upload. Resume to continue.',
+                }),
+            ],
+        });
+
+        const item = screen.getByRole('listitem');
+
+        expect(item).toHaveClass('job-paused');
+        expect(item.querySelector('.chip-icon')).toHaveTextContent('‖');
+        expect(within(item).getByText(/closed during upload/)).toBeInTheDocument();
+        expect(
+            within(item).getByText(/kept on disk until you resume or remove/),
+        ).toBeInTheDocument();
+        expect(screen.getByText('1 upload paused.')).toBeInTheDocument();
+        expect(within(item).queryByRole('progressbar')).not.toBeInTheDocument();
+    });
+
+    it('shows "Waiting for network" while an upload retries, keeping the progress bar', async () => {
+        const { fake } = await renderApp({
+            jobs: [
+                makeJob({
+                    state: 'uploading',
+                    progress: 72,
+                    canCancel: true,
+                    waitingForNetwork: true,
+                    networkWaitSince: '2026-01-01T10:00:00.000Z',
+                }),
+            ],
+        });
+        const item = screen.getByRole('listitem');
+
+        expect(within(item).getByText('Waiting for network…')).toBeInTheDocument();
+        expect(within(item).queryByText('Uploading')).not.toBeInTheDocument();
+        expect(within(item).getByText('Retrying automatically')).toBeInTheDocument();
+        expect(within(item).getByRole('progressbar')).toHaveValue(72);
+        expect(actionsIn(item)).toEqual(['Cancel']);
+
+        push(() =>
+            fake.emitJobs([
+                makeJob({
+                    state: 'uploading',
+                    progress: 73,
+                    canCancel: true,
+                    waitingForNetwork: false,
+                }),
+            ]),
+        );
+        expect(screen.getByText('Uploading')).toBeInTheDocument();
+        expect(screen.queryByText('Retrying automatically')).not.toBeInTheDocument();
+    });
+
+    describe('paused upload confirmations', () => {
+        const paused = () =>
+            makeJob({
+                id: 'p',
+                fileName: 'clip.mp4',
+                state: 'upload_interrupted',
+                canResume: true,
+                canRetry: true,
+                canRemove: true,
+            });
+
+        it('Resume calls the API directly without a confirmation', async () => {
+            const { fake, user } = await renderApp({ jobs: [paused()] });
+            const resume = vi.spyOn(fake.api.jobs, 'resume');
+
+            await user.click(screen.getByRole('button', { name: /^Resume:/ }));
+            expect(resume).toHaveBeenCalledWith('p');
+            expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        });
+
+        it.each([
+            {
+                button: /^Start over:/,
+                title: 'Start over?',
+                body: 'The saved progress for clip.mp4 will be discarded and the video will be processed again from the beginning.',
+                confirm: 'Start over',
+                cancel: 'Keep paused',
+                api: 'retry' as const,
+            },
+            {
+                button: /^Remove:/,
+                title: 'Remove this video?',
+                body: 'The temporary files for clip.mp4 will be deleted, so it can no longer be resumed.',
+                confirm: 'Remove',
+                cancel: 'Keep',
+                api: 'remove' as const,
+            },
+        ])('$title asks first and only calls the API after confirming', async (c) => {
+            const { fake, user } = await renderApp({ jobs: [paused()] });
+            const spy = vi.spyOn(fake.api.jobs, c.api);
+
+            await user.click(screen.getByRole('button', { name: c.button }));
+
+            const dialog = screen.getByRole('alertdialog', { name: c.title });
+
+            expect(dialog).toHaveTextContent(c.body);
+            expect(spy).not.toHaveBeenCalled();
+            expect(within(dialog).getByRole('button', { name: c.cancel })).toHaveFocus();
+
+            await user.click(within(dialog).getByRole('button', { name: c.confirm }));
+            expect(spy).toHaveBeenCalledWith('p');
+            expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        });
+
+        it.each([
+            { button: /^Start over:/, cancel: 'Keep paused', api: 'retry' as const },
+            { button: /^Remove:/, cancel: 'Keep', api: 'remove' as const },
+        ])('the cancel button does nothing ($api)', async (c) => {
+            const { fake, user } = await renderApp({ jobs: [paused()] });
+            const spy = vi.spyOn(fake.api.jobs, c.api);
+
+            await user.click(screen.getByRole('button', { name: c.button }));
+            await user.click(screen.getByRole('button', { name: c.cancel }));
+
+            expect(spy).not.toHaveBeenCalled();
+            expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        });
+
+        it.each([{ button: /^Start over:/ }, { button: /^Remove:/ }])(
+            'Escape closes the dialog and restores focus to the opener',
+            async (c) => {
+                const { fake, user } = await renderApp({ jobs: [paused()] });
+                const retry = vi.spyOn(fake.api.jobs, 'retry');
+                const remove = vi.spyOn(fake.api.jobs, 'remove');
+                const opener = screen.getByRole('button', { name: c.button });
+
+                await user.click(opener);
+                await user.keyboard('{Escape}');
+
+                expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+                expect(opener).toHaveFocus();
+                expect(retry).not.toHaveBeenCalled();
+                expect(remove).not.toHaveBeenCalled();
+            },
+        );
+
+        it('other states keep Retry and Remove without a confirmation', async () => {
+            const { fake, user } = await renderApp({
+                jobs: [makeJob({ id: 'f', state: 'failed', canRetry: true, canRemove: true })],
+            });
+            const retry = vi.spyOn(fake.api.jobs, 'retry');
+            const remove = vi.spyOn(fake.api.jobs, 'remove');
+
+            await user.click(screen.getByRole('button', { name: /^Retry:/ }));
+            await user.click(screen.getByRole('button', { name: /^Remove:/ }));
+
+            expect(retry).toHaveBeenCalledWith('f');
+            expect(remove).toHaveBeenCalledWith('f');
+            expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        });
+    });
+
+    it('shows an error toast when Resume is refused', async () => {
+        const { fake, user } = await renderApp({
+            jobs: [makeJob({ id: 'p', state: 'upload_interrupted', canResume: true })],
+        });
+
+        vi.spyOn(fake.api.jobs, 'resume').mockResolvedValue({
+            ok: false,
+            error: 'Sign in to resume this upload.',
+        });
+        await user.click(screen.getByRole('button', { name: /^Resume:/ }));
+        expect(await screen.findByText(/Sign in to resume this upload\./)).toBeInTheDocument();
+    });
+
+    it('shows the file name with a tooltip, formatted size and relative time', async () => {
         await renderApp({
             jobs: [
                 makeJob({
@@ -192,6 +380,25 @@ describe('Queue screen', () => {
         expect(footer).toHaveTextContent('3 waiting');
         expect(footer).toHaveTextContent('4 done');
         expect(footer).toHaveTextContent('1 failed');
+        expect(footer).not.toHaveTextContent('need attention');
+    });
+
+    it('counts paused uploads under "need attention" in the footer', async () => {
+        const { fake } = await renderApp();
+
+        push(() => fake.emitSummary(makeSummary({ attention: 2, total: 2 })));
+        expect(screen.getByText('2 need attention').closest('footer')).toBeInTheDocument();
+    });
+
+    it('computes the local attention count from the jobs before the first summary', async () => {
+        await renderApp({
+            jobs: [
+                makeJob({ id: 'a', state: 'upload_interrupted' }),
+                makeJob({ id: 'b', state: 'register_failed' }),
+            ],
+        });
+
+        expect(screen.getByText('2 need attention')).toBeInTheDocument();
     });
 
     it('adds dropped files through the preload helper', async () => {
@@ -480,6 +687,28 @@ describe('Queue screen', () => {
 
             expect(log).toHaveTextContent('line two: Invalid data found');
             expect(log).toHaveAttribute('tabindex', '0');
+        });
+
+        it('shows the message of a paused upload without an ffmpeg log', async () => {
+            const { user } = await renderApp({
+                jobs: [
+                    makeJob({
+                        id: 'p',
+                        state: 'upload_interrupted',
+                        errorMessage: 'Upload stopped: the network was unavailable.',
+                        errorDetail: { step: 'uploading', exitCode: null, stderrTail: [] },
+                    }),
+                ],
+            });
+
+            await user.click(screen.getByRole('button', { name: /^View details/ }));
+
+            const dialog = screen.getByRole('dialog', { name: 'Job details' });
+
+            expect(dialog).toHaveTextContent('Upload paused');
+            expect(dialog).toHaveTextContent('Upload stopped: the network was unavailable.');
+            expect(dialog).toHaveTextContent('kept on disk');
+            expect(within(dialog).queryByLabelText('ffmpeg output')).not.toBeInTheDocument();
         });
 
         it('copies the details and closes with Escape, restoring focus', async () => {

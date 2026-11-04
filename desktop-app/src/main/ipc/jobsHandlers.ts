@@ -22,7 +22,8 @@ export interface JobsHandlerDeps {
         cancel(id: string): Promise<ActionResult>;
         retry(id: string): Promise<ActionResult>;
         retryRegister(id: string): Promise<ActionResult>;
-        remove(id: string): ActionResult;
+        resume(id: string): Promise<ActionResult>;
+        remove(id: string): Promise<ActionResult>;
         clearFinished(): ActionResult;
         getJob(id: string): JobRecord | undefined;
     };
@@ -94,6 +95,7 @@ export function createJobsHandlers(deps: JobsHandlerDeps): Record<string, IpcHan
         [IpcChannels.jobsRetry]: (args) => queue.retry(parseId(args, 'retry')),
         [IpcChannels.jobsRetryRegister]: (args) =>
             queue.retryRegister(parseId(args, 'retry-register')),
+        [IpcChannels.jobsResume]: (args) => queue.resume(parseId(args, 'resume')),
         [IpcChannels.jobsRemove]: (args) => queue.remove(parseId(args, 'remove')),
 
         [IpcChannels.jobsClearFinished]: (args) => {

@@ -37,6 +37,7 @@ export function ReloadConfigButton({ label = 'Reload config' }: { label?: string
 export function QueueBanners() {
     const { auth, jobs, diagnostics } = useApp();
     const needSignIn = jobs.filter((job) => job.state === 'needs_sign_in').length;
+    const paused = jobs.filter((job) => job.state === 'upload_interrupted').length;
     const ffmpeg = diagnostics?.ffmpeg;
 
     return (
@@ -70,6 +71,12 @@ export function QueueBanners() {
             {auth.status === 'signed_in' && auth.r2Configured === false && (
                 <Banner tone="warning" title="R2 storage is not set up on the site.">
                     Ask an admin to set up R2 in the site dashboard (Settings -&gt; Storage).
+                </Banner>
+            )}
+            {paused > 0 && (
+                <Banner tone="warning" title={`${plural(paused, 'upload')} paused.`}>
+                    Use Resume to continue without processing the video again. Temporary files stay
+                    on disk until you resume or remove the video.
                 </Banner>
             )}
             {needSignIn > 0 && (
