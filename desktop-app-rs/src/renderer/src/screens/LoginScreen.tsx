@@ -1,4 +1,5 @@
 import { useId, useState, type FormEvent } from 'react';
+import { BrandMark } from '../components/icons';
 import { siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 
@@ -50,7 +51,10 @@ export function LoginScreen() {
     return (
         <main className="login">
             <form className="card login-card" onSubmit={(event) => void submit(event)} noValidate>
-                <p className="wordmark">HLS R2 Studio</p>
+                <div className="login-brand">
+                    <BrandMark size={36} />
+                    <p className="wordmark">HLS R2 Studio</p>
+                </div>
                 <h1 className="login-title">Sign in</h1>
                 <p className="muted">Use the account you have on your HLS site.</p>
                 {host !== '' && (

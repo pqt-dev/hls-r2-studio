@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { VideoListItem, VideoListMeta } from '../../../shared/ipc';
+import { SearchIcon } from '../components/icons';
 import { formatDate, formatDuration, plural } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 
@@ -138,14 +139,17 @@ export function LibraryScreen() {
 
             <div className="field library-search">
                 <label htmlFor="library-search">Search videos</label>
-                <input
-                    id="library-search"
-                    type="text"
-                    maxLength={100}
-                    value={input}
-                    placeholder="Search by title"
-                    onChange={onSearch}
-                />
+                <div className="search">
+                    <SearchIcon />
+                    <input
+                        id="library-search"
+                        type="text"
+                        maxLength={100}
+                        value={input}
+                        placeholder="Search by title"
+                        onChange={onSearch}
+                    />
+                </div>
             </div>
 
             {load.kind === 'loading' && (

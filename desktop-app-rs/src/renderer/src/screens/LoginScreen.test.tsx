@@ -102,10 +102,11 @@ describe('Login screen', () => {
             }),
         );
 
-        const header = screen.getByRole('banner');
+        // The account now lives in the sidebar footer (it used to be in the top bar).
+        const account = screen.getByRole('group', { name: 'Account' });
 
-        expect(within(header).getByText('bob')).toBeInTheDocument();
-        expect(within(header).getByText('b.example.com')).toBeInTheDocument();
+        expect(within(account).getByText('bob')).toBeInTheDocument();
+        expect(within(account).getByText('b.example.com')).toBeInTheDocument();
     });
 
     it('keeps the main screen when offline', async () => {
