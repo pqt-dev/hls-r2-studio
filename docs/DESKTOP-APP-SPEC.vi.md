@@ -128,6 +128,8 @@ Tất cả response JSON; request JSON; mọi response kèm `Cache-Control: no-s
 - 201 (hoặc 200 khi lặp): `{ "id": 123, "public_id": "ab12cd34ef56", "embed_url": "https://<site>/embed/ab12cd34ef56" }`.
 - Mã `error` của endpoint này: `playlist_not_found` (422), `public_id_conflict` (409), `storage_unavailable` (503); của config: `r2_not_configured` (409).
 
+> Các endpoint quản lý video (chi tiết, sửa, xoá, ảnh tuỳ chỉnh, overview, logs...) thêm sau Phase A được mô tả đầy đủ ở `docs/DESKTOP-APP-API.vi.md` (bản tiếng Anh: `docs/DESKTOP-APP-API.md`).
+
 ### 3.6 Report: sửa `resolveVideoIdFromPageUrl`
 
 `Api\ReportController::resolveVideoIdFromPageUrl` hiện yêu cầu segment cuối `ctype_digit` rồi `Video::whereKey((int))` → hỏng với id mới (report của video mới sẽ có `video_id = null`).

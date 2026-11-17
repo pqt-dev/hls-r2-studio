@@ -5,7 +5,10 @@ namespace App\Http\Controllers;
 use App\Jobs\MergeUploadChunksJob;
 use App\Models\Setting;
 use App\Models\Video;
-use App\Models\VideoStatusLog;
+use App\Services\VideoActionException;
+use App\Services\VideoLogs;
+use App\Services\VideoManager;
+use App\Support\SystemStats;
 use App\Support\VideoProgress;
 use App\Support\VideoStatusLogger;
 use Illuminate\Http\Request;
@@ -28,15 +31,7 @@ class VideoController extends Controller
      */
     private const DISK_FREE_MARGIN_BYTES = 256 * 1024 * 1024;
 
-    /**
-     * Newest entries shown in each of the Success / Error lists on the Logs page.
-     */
-    private const LOG_LIST_LIMIT = 10;
-
-    /**
-     * Maximum rows shown in the Logs page "In Progress" card.
-     */
-    private const IN_PROGRESS_LIST_LIMIT = 25;
+    public function __construct(private VideoManager $videos, private VideoLogs $logs) {}
 
     /**
      * Display a listing of the videos.
@@ -185,60 +180,16 @@ class VideoController extends Controller
      */
     public function overview()
     {
-        $totalVideos = Video::count();
-        $readyCount = Video::where('status', 'ready')->count();
-        $processingCount = Video::whereIn('status', ['pending', 'processing'])->count();
-        $failedCount = Video::where('status', 'failed')->count();
+        $counts = $this->logs->counts();
 
-        $cpuPercent = null;
-        $cpuCores = null;
-        $loadAvg1min = null;
-        if (file_exists('/proc/loadavg')) {
-            $loadAvg1min = (float) explode(' ', trim(file_get_contents('/proc/loadavg')))[0];
-            $coreCount = substr_count(file_get_contents('/proc/cpuinfo'), 'processor');
-            if ($coreCount > 0) {
-                $cpuCores = $coreCount;
-                $cpuPercent = min(100, round($loadAvg1min / $coreCount * 100));
-            }
-        }
+        $stats = SystemStats::snapshot();
 
-        $ramPercent = null;
-        $ramUsedGb = null;
-        $ramTotalGb = null;
-        if (file_exists('/proc/meminfo')) {
-            $memInfo = file_get_contents('/proc/meminfo');
-            preg_match('/MemTotal:\s+(\d+)/', $memInfo, $memTotalMatch);
-            preg_match('/MemAvailable:\s+(\d+)/', $memInfo, $memAvailableMatch);
-            if (isset($memTotalMatch[1], $memAvailableMatch[1]) && (int) $memTotalMatch[1] > 0) {
-                $memTotal = (int) $memTotalMatch[1];
-                $memAvailable = (int) $memAvailableMatch[1];
-                $ramPercent = round((($memTotal - $memAvailable) / $memTotal) * 100);
-                $ramUsedGb = round(($memTotal - $memAvailable) / 1024 / 1024, 1);
-                $ramTotalGb = round($memTotal / 1024 / 1024, 1);
-            }
-        }
-
-        $diskTotal = disk_total_space(storage_path());
-        $diskFree = disk_free_space(storage_path());
-        $diskPercent = $diskTotal ? round((($diskTotal - $diskFree) / $diskTotal) * 100) : null;
-        $diskUsedGb = round(($diskTotal - $diskFree) / 1024 / 1024 / 1024, 1);
-        $diskTotalGb = round($diskTotal / 1024 / 1024 / 1024, 1);
-
-        return view('dashboard.overview', compact(
-            'totalVideos',
-            'readyCount',
-            'processingCount',
-            'failedCount',
-            'cpuPercent',
-            'ramPercent',
-            'diskPercent',
-            'cpuCores',
-            'loadAvg1min',
-            'ramUsedGb',
-            'ramTotalGb',
-            'diskUsedGb',
-            'diskTotalGb'
-        ));
+        return view('dashboard.overview', [
+            'totalVideos' => $counts['total'],
+            'readyCount' => $counts['success'],
+            'processingCount' => $counts['processing'],
+            'failedCount' => $counts['error'],
+        ] + $stats);
     }
 
     /**
@@ -264,18 +215,13 @@ class VideoController extends Controller
             'ids' => ['required', 'string'],
         ]);
 
-        $ids = array_filter(array_map(
-            fn ($id) => (int) trim($id),
-            explode(',', $request->query('ids'))
-        ), fn ($id) => $id > 0);
-
-        $ids = array_slice(array_values(array_unique($ids)), 0, 50);
+        $ids = $this->videos->parseStatusIds($request->query('ids'));
 
         if ($ids === []) {
             return response()->json([]);
         }
 
-        $videos = Video::whereIn('id', $ids)->get(['id', 'status', 'stage', 'progress']);
+        $videos = $this->videos->statusRows($ids);
 
         return response()->json($videos);
     }
@@ -295,11 +241,7 @@ class VideoController extends Controller
      */
     public function statusLog(Video $video)
     {
-        // Server-origin rows only: client-origin lines (message set) come from GET /activity-log.
-        $logs = VideoStatusLog::where('video_id', $video->id)
-            ->whereNull('message')
-            ->orderBy('created_at')
-            ->get(['status', 'stage', 'progress', 'created_at']);
+        $logs = $this->videos->statusLog($video);
 
         return response()->json($logs);
     }
@@ -753,22 +695,18 @@ class VideoController extends Controller
      */
     public function logs()
     {
-        $limit = self::LOG_LIST_LIMIT;
-        $inProgressLimit = self::IN_PROGRESS_LIST_LIMIT;
-        $inProgressStatuses = ['pending', 'processing'];
+        $limit = VideoLogs::LIST_LIMIT;
+        $inProgressLimit = VideoLogs::IN_PROGRESS_LIST_LIMIT;
 
-        $totalCount = Video::count();
-        $successCount = Video::where('status', 'ready')->count();
-        $errorCount = Video::where('status', 'failed')->count();
-        $processingCount = Video::whereIn('status', $inProgressStatuses)->count();
+        $counts = $this->logs->counts();
+        $totalCount = $counts['total'];
+        $successCount = $counts['success'];
+        $errorCount = $counts['error'];
+        $processingCount = $counts['processing'];
 
-        $successLogs = Video::where('status', 'ready')->orderBy('created_at', 'desc')->limit($limit)->get();
-        $errorLogs = Video::where('status', 'failed')
-            ->orderByRaw('COALESCE(failed_at, updated_at) DESC')
-            ->orderByDesc('id')
-            ->limit($limit)
-            ->get();
-        $processingVideos = Video::whereIn('status', $inProgressStatuses)->orderBy('created_at', 'asc')->limit($inProgressLimit)->get();
+        $successLogs = $this->logs->query('success')->limit($limit)->get();
+        $errorLogs = $this->logs->query('error')->limit($limit)->get();
+        $processingVideos = $this->logs->query('processing')->limit($inProgressLimit)->get();
 
         return view('logs.index', compact(
             'totalCount', 'successCount', 'errorCount', 'processingCount',
@@ -781,9 +719,7 @@ class VideoController extends Controller
      */
     public function update(Request $request, Video $video)
     {
-        $validated = $request->validate([
-            'title' => ['required', 'string', 'max:255'],
-        ]);
+        $validated = $request->validate(VideoManager::titleRules());
 
         $video->update($validated);
 
@@ -796,56 +732,13 @@ class VideoController extends Controller
      */
     public function storeImage(Request $request, Video $video)
     {
-        $validated = $request->validate([
-            'image' => ['required', 'file', 'mimes:jpg,jpeg,png,webp', 'mimetypes:image/jpeg,image/png,image/webp', 'max:5120'],
-        ]);
-
-        if (! $video->disk_prefix) {
-            return response()->json([
-                'message' => 'This video has no storage folder yet. Please wait until it has finished processing.',
-            ], 422);
-        }
-
-        $file = $validated['image'];
-        $extension = $file->guessExtension() === 'jpeg' ? 'jpg' : $file->guessExtension();
-        $filename = 'custom-'.basename(rtrim($video->disk_prefix, '/')).'.'.$extension;
-        $disk = Setting::current()->r2Disk();
-        $oldPath = $video->custom_image_path;
-        $newPath = null;
+        $validated = $request->validate(VideoManager::imageRules());
 
         try {
-            $newPath = $disk->putFileAs(rtrim($video->disk_prefix, '/'), $file, $filename, [
-                'ContentType' => $file->getMimeType(),
-            ]);
-
-            if (! $newPath) {
-                throw new \RuntimeException('The R2 disk refused to store the file.');
-            }
-
-            // Set updated_at explicitly: a same-extension replace leaves the path unchanged, so
-            // Eloquent would skip the UPDATE and the cache-busting version would not move.
-            $video->forceFill(['custom_image_path' => $newPath, 'updated_at' => now()])->save();
-        } catch (\Throwable $e) {
-            Log::error("Failed to store custom image for video {$video->id}: {$e->getMessage()}");
-
-            // When the keys are equal the "new" object is the old one (already overwritten); keep it.
-            if ($newPath && $newPath !== $oldPath) {
-                $this->deleteR2Object($disk, $newPath, $video);
-            }
-
-            return response()->json([
-                'message' => 'Failed to upload the image. Please try again.',
-            ], 500);
+            return response()->json($this->videos->storeCustomImage($video, $validated['image']));
+        } catch (VideoActionException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->httpStatus);
         }
-
-        if ($oldPath && $oldPath !== $newPath) {
-            $this->deleteR2Object($disk, $oldPath, $video);
-        }
-
-        return response()->json([
-            'label' => 'Custom image',
-            'url' => $disk->url($newPath).'?v='.$video->updated_at->timestamp,
-        ]);
     }
 
     /**
@@ -853,38 +746,13 @@ class VideoController extends Controller
      */
     public function destroyImage(Video $video)
     {
-        if (! $video->custom_image_path) {
-            return response()->json(['message' => 'This video has no custom image.'], 404);
+        try {
+            $this->videos->destroyCustomImage($video);
+        } catch (VideoActionException $e) {
+            return response()->json(['message' => $e->getMessage()], $e->httpStatus);
         }
-
-        // Keep the DB path when the object could not be deleted, otherwise it would be orphaned on R2.
-        if (! $this->deleteR2Object(Setting::current()->r2Disk(), $video->custom_image_path, $video)) {
-            return response()->json([
-                'message' => 'Failed to delete the image. Please try again.',
-            ], 500);
-        }
-
-        $video->update(['custom_image_path' => null]);
 
         return response()->json(['ok' => true]);
-    }
-
-    /**
-     * Delete one R2 object; failures are logged, not thrown. Returns whether the object was deleted.
-     */
-    private function deleteR2Object($disk, string $path, Video $video): bool
-    {
-        try {
-            if ($disk->delete($path)) {
-                return true;
-            }
-
-            Log::warning("Unable to delete custom image '{$path}' of video {$video->id} from R2.");
-        } catch (\Throwable $e) {
-            Log::warning("Unable to delete custom image '{$path}' of video {$video->id} from R2: {$e->getMessage()}");
-        }
-
-        return false;
     }
 
     /**
@@ -892,37 +760,13 @@ class VideoController extends Controller
      */
     public function destroy(Request $request, Video $video)
     {
-        if ($this->isBeingProcessed($video)) {
-            $message = 'This video is still being processed and cannot be deleted yet.';
-
-            if ($request->expectsJson()) {
-                return response()->json(['status' => 'skipped', 'message' => $message]);
-            }
-
-            return redirect()->route('videos.index')->with('error', $message);
-        }
-
-        $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
-
-        try {
-            $this->deleteVideo($video, $deleteFromR2);
-        } catch (\Throwable $e) {
-            $message = 'Could not delete the files on R2; the video was kept so you can retry.';
-
-            if ($request->expectsJson()) {
-                return response()->json(['status' => 'failed', 'message' => $message]);
-            }
-
-            return redirect()->route('videos.index')->with('error', $message);
-        }
-
-        $message = $deleteFromR2 ? 'Video has been deleted.' : 'Record deleted, file on R2 was KEPT.';
+        $result = $this->videos->destroy($video);
 
         if ($request->expectsJson()) {
-            return response()->json(['status' => 'deleted', 'message' => $message]);
+            return response()->json($result);
         }
 
-        return redirect()->route('videos.index')->with('success', $message);
+        return redirect()->route('videos.index')->with($result['status'] === 'deleted' ? 'success' : 'error', $result['message']);
     }
 
     /**
@@ -935,80 +779,8 @@ class VideoController extends Controller
             'selected_ids.*' => ['integer', 'exists:videos,id'],
         ]);
 
-        $deleteFromR2 = Setting::current()->delete_from_r2_on_destroy;
-        $successCount = 0;
-        $failedCount = 0;
-        $skippedCount = 0;
+        $result = $this->videos->bulkDestroy($validated['selected_ids']);
 
-        foreach (Video::whereIn('id', $validated['selected_ids'])->get() as $video) {
-            if ($this->isBeingProcessed($video)) {
-                $skippedCount++;
-
-                continue;
-            }
-
-            try {
-                $this->deleteVideo($video, $deleteFromR2);
-                $successCount++;
-            } catch (\Throwable $e) {
-                $failedCount++;
-
-                Log::error("Failed to delete video {$video->id} during bulk delete: {$e->getMessage()}");
-            }
-        }
-
-        $details = [];
-
-        if ($failedCount > 0) {
-            $details[] = "{$failedCount} failed — check logs";
-        }
-
-        if ($skippedCount > 0) {
-            $details[] = "{$skippedCount} skipped: still processing";
-        }
-
-        $message = "Deleted {$successCount} videos".($details ? ' ('.implode(', ', $details).')' : '').'.';
-
-        $flashKey = $successCount === 0 && $failedCount > 0 ? 'error' : 'success';
-
-        return redirect()->route('videos.index')->with($flashKey, $message);
-    }
-
-    /**
-     * Whether the video is still queued or being transcoded.
-     */
-    private function isBeingProcessed(Video $video): bool
-    {
-        return in_array($video->status, ['pending', 'processing'], true);
-    }
-
-    /**
-     * Delete a single video's record and, optionally, its files on R2.
-     *
-     * @throws \RuntimeException when the R2 files could not be deleted; the record is kept so the delete can be retried.
-     */
-    private function deleteVideo(Video $video, bool $deleteFromR2): void
-    {
-        if ($video->disk_prefix && $deleteFromR2) {
-            try {
-                $deleted = Setting::current()->r2Disk()->deleteDirectory($video->disk_prefix);
-            } catch (\Throwable $e) {
-                Log::error("Failed to delete R2 files for video {$video->id} (disk_prefix: {$video->disk_prefix}): {$e->getMessage()}");
-
-                throw new \RuntimeException("Failed to delete R2 files for video {$video->id}.", 0, $e);
-            }
-
-            if (! $deleted) {
-                Log::error("Failed to delete R2 files for video {$video->id} (disk_prefix: {$video->disk_prefix}); the record was kept so the delete can be retried.");
-
-                throw new \RuntimeException("Failed to delete R2 files for video {$video->id}.");
-            }
-        }
-
-        $video->delete();
-
-        if (! $deleteFromR2) {
-            Log::info("Video {$video->id} deleted from DB only, kept files on R2 (disk_prefix: {$video->disk_prefix}).");
-        }
+        return redirect()->route('videos.index')->with($result['flash_key'], $result['message']);
     }
 }

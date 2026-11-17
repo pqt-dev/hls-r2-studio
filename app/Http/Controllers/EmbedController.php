@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Setting;
 use App\Models\Video;
+use App\Support\EmbedStoryboard;
 use Illuminate\Http\Request;
 
 class EmbedController extends Controller
@@ -25,25 +26,7 @@ class EmbedController extends Controller
         $autoplay = $request->boolean('autoplay');
         $muted = $request->boolean('muted') || $autoplay; // browsers require muted for unattended autoplay to actually work
 
-        $storyboards = $video->storyboards ?? [];
-        $tileSize = config('videos.storyboard_tile_size');
-        $storyboardThumbnails = null;
-
-        foreach ([5, 4, 3] as $size) {
-            $entry = $storyboards["{$size}x{$size}"] ?? null;
-
-            if ($entry && ! empty($entry['path'])) {
-                $storyboardThumbnails = [
-                    'url' => $disk->url($entry['path']),
-                    'number' => $size * $size,
-                    'column' => $size,
-                    'width' => $tileSize,
-                    'height' => $tileSize,
-                ];
-
-                break;
-            }
-        }
+        $storyboardThumbnails = EmbedStoryboard::pick($video->storyboards, $disk);
 
         $response = response()->view('embed.show', compact('video', 'playlistUrl', 'storyboardThumbnails', 'autoplay', 'muted'));
 

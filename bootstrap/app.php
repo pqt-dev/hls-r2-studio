@@ -33,6 +33,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return $request->is('api/*') || $request->expectsJson() ? $e : new NotFoundHttpException;
         });
+        // Desktop app API: a missing record or route answers the same {"error": ...} shape as the other app errors.
+        $exceptions->render(function (NotFoundHttpException $e, Request $request) {
+            return $request->is('api/app/*') ? response()->json(['error' => 'not_found'], 404) : null;
+        });
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

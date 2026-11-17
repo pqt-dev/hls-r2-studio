@@ -5,6 +5,9 @@ namespace App\Http\Controllers\Api\App;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Models\Video;
+use App\Services\VideoActionException;
+use App\Services\VideoManager;
+use App\Support\EmbedStoryboard;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -13,6 +16,57 @@ use Illuminate\Support\Facades\Log;
 class VideoController extends Controller
 {
     private const STORYBOARD_KEYS = ['3x3', '4x4', '5x5'];
+
+    private const LIST_COLUMNS = [
+        'id', 'public_id', 'title', 'original_filename', 'original_size_bytes', 'status', 'duration',
+        'output_width', 'output_height', 'output_codec', 'disk_prefix', 'playlist_path', 'thumbnail_path',
+        'custom_image_path', 'storyboards', 'created_at',
+    ];
+
+    private const BULK_DELETE_LIMIT = 100;
+
+    public function __construct(private VideoManager $videos) {}
+
+    /**
+     * Paginated, read-only list of the site's videos (all statuses), newest first.
+     */
+    public function index(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+            'q' => ['nullable', 'string', 'max:100'],
+        ]);
+
+        $search = trim((string) ($validated['q'] ?? ''));
+
+        $paginator = Video::query()
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($q) use ($search) {
+                    // "!" is the escape character (same approach as the web dashboard search).
+                    $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
+
+                    $q->whereRaw("title LIKE ? ESCAPE '!'", [$pattern])
+                        ->orWhereRaw("original_filename LIKE ? ESCAPE '!'", [$pattern]);
+                });
+            })
+            ->orderByDesc('id')
+            ->paginate(
+                perPage: (int) ($validated['per_page'] ?? 24),
+                columns: self::LIST_COLUMNS,
+                page: (int) ($validated['page'] ?? 1),
+            );
+
+        return response()->json([
+            'data' => $paginator->getCollection()->map(fn (Video $video) => $this->listItem($video))->all(),
+            'meta' => [
+                'page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+            ],
+        ]);
+    }
 
     /**
      * Register a video the desktop app already uploaded to R2.
@@ -84,6 +138,197 @@ class VideoController extends Controller
         return response()->json($this->payload($video), 201);
     }
 
+    /**
+     * Full detail of one video, as the embed player needs it. Never exposes R2 credentials or server paths.
+     */
+    public function show(Video $video): JsonResponse
+    {
+        return response()->json($this->detail($video));
+    }
+
+    /**
+     * Update a video's title (same validation as the web admin).
+     */
+    public function update(Request $request, Video $video): JsonResponse
+    {
+        $video->update($request->validate(VideoManager::titleRules()));
+
+        return response()->json($this->detail($video->refresh()));
+    }
+
+    /**
+     * Status, stage and progress of the given ids (comma separated), for polling.
+     */
+    public function status(Request $request): JsonResponse
+    {
+        $request->validate(['ids' => ['required', 'string']]);
+
+        $ids = $this->videos->parseStatusIds($request->query('ids'));
+
+        return response()->json([
+            'data' => $this->videos->statusRows($ids)
+                ->map(fn (Video $video) => [
+                    'id' => $video->id,
+                    'status' => $video->status,
+                    'stage' => $video->stage,
+                    'progress' => $video->progress,
+                ])
+                ->values()
+                ->all(),
+        ]);
+    }
+
+    /**
+     * Server-origin status history of a video.
+     */
+    public function statusLog(Video $video): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->videos->statusLog($video)
+                ->map(fn ($log) => [
+                    'status' => $log->status,
+                    'stage' => $log->stage,
+                    'progress' => $log->progress,
+                    'created_at' => $log->created_at?->toIso8601String(),
+                ])
+                ->all(),
+        ]);
+    }
+
+    /**
+     * Delete one video (and its R2 files when the site setting says so). Outcome is in "status", as on the web admin.
+     */
+    public function destroy(Video $video): JsonResponse
+    {
+        return response()->json($this->videos->destroy($video));
+    }
+
+    /**
+     * Delete up to BULK_DELETE_LIMIT videos at once.
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'selected_ids' => ['required', 'array', 'min:1', 'max:'.self::BULK_DELETE_LIMIT],
+            'selected_ids.*' => ['integer', 'exists:videos,id'],
+        ]);
+
+        $result = $this->videos->bulkDestroy($validated['selected_ids']);
+
+        return response()->json([
+            'deleted' => $result['deleted'],
+            'failed' => $result['failed'],
+            'skipped' => $result['skipped'],
+            'message' => $result['message'],
+        ]);
+    }
+
+    /**
+     * Upload (or replace) the custom image of a video.
+     */
+    public function storeImage(Request $request, Video $video): JsonResponse
+    {
+        $validated = $request->validate(VideoManager::imageRules());
+
+        try {
+            return response()->json($this->videos->storeCustomImage($video, $validated['image']));
+        } catch (VideoActionException $e) {
+            return $this->actionError($e);
+        }
+    }
+
+    /**
+     * Remove the custom image of a video.
+     */
+    public function destroyImage(Video $video): JsonResponse
+    {
+        try {
+            $this->videos->destroyCustomImage($video);
+        } catch (VideoActionException $e) {
+            return $this->actionError($e);
+        }
+
+        return response()->json(['ok' => true]);
+    }
+
+    private function actionError(VideoActionException $e): JsonResponse
+    {
+        return response()->json(['error' => $e->errorCode, 'message' => $e->getMessage()], $e->httpStatus);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function detail(Video $video): array
+    {
+        $disk = Setting::current()->r2Disk();
+
+        // URLs are built from the public R2 URL; if R2 is not configured they are simply absent.
+        $url = function (?string $path) use ($disk): ?string {
+            if (! $path) {
+                return null;
+            }
+
+            try {
+                return $disk->url($path);
+            } catch (\Throwable) {
+                return null;
+            }
+        };
+
+        $storyboards = [];
+
+        foreach (self::STORYBOARD_KEYS as $key) {
+            $path = $video->storyboards[$key]['path'] ?? null;
+            $storyboardUrl = $url($path);
+
+            if ($storyboardUrl !== null) {
+                $columns = (int) explode('x', $key)[0];
+                $storyboards[$key] = ['url' => $storyboardUrl, 'columns' => $columns, 'count' => $columns * $columns];
+            }
+        }
+
+        try {
+            $embedStoryboard = EmbedStoryboard::pick($video->storyboards, $disk);
+        } catch (\Throwable) {
+            $embedStoryboard = null;
+        }
+
+        $customImageUrl = $url($video->custom_image_path);
+
+        return [
+            'id' => $video->id,
+            'public_id' => $video->public_id,
+            'title' => $video->title,
+            'original_filename' => $video->original_filename,
+            'original_size_bytes' => $video->original_size_bytes,
+            'status' => $video->status,
+            'stage' => $video->stage,
+            'progress' => $video->progress,
+            'error' => $video->status === 'failed' ? [
+                'message' => $video->error_message,
+                'detail' => $video->error_detail,
+                'failed_at' => $video->failed_at?->toIso8601String(),
+            ] : null,
+            'duration' => $video->duration,
+            'output_width' => $video->output_width,
+            'output_height' => $video->output_height,
+            'output_fps' => $video->output_fps,
+            'output_bitrate_kbps' => $video->output_bitrate_kbps,
+            'output_codec' => $video->output_codec,
+            'embed_url' => route('embed.show', ['video' => $video->public_id]),
+            'playlist_url' => $url($video->playlist_path),
+            'thumbnail_url' => $url($video->thumbnail_path),
+            'has_custom_image' => (bool) $video->custom_image_path,
+            // Same cache-busting version the web admin appends.
+            'custom_image_url' => $customImageUrl === null ? null : $customImageUrl.'?v='.$video->updated_at->timestamp,
+            'storyboards' => $storyboards,
+            'embed_storyboard' => $embedStoryboard,
+            'created_at' => $video->created_at?->toIso8601String(),
+            'updated_at' => $video->updated_at?->toIso8601String(),
+        ];
+    }
+
     private function existingResponse(Video $video, ?string $diskPrefix): JsonResponse
     {
         if ($diskPrefix === null || $video->disk_prefix !== $diskPrefix) {
@@ -91,6 +336,32 @@ class VideoController extends Controller
         }
 
         return response()->json($this->payload($video));
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function listItem(Video $video): array
+    {
+        return [
+            'id' => $video->id,
+            'public_id' => $video->public_id,
+            'title' => $video->title,
+            'original_filename' => $video->original_filename,
+            'original_size_bytes' => $video->original_size_bytes,
+            'status' => $video->status,
+            'duration' => $video->duration,
+            'output_width' => $video->output_width,
+            'output_height' => $video->output_height,
+            'output_codec' => $video->output_codec,
+            'disk_prefix' => $video->disk_prefix,
+            'playlist_path' => $video->playlist_path,
+            'thumbnail_path' => $video->thumbnail_path,
+            'custom_image_path' => $video->custom_image_path,
+            'storyboards' => $video->storyboards,
+            'embed_url' => route('embed.show', ['video' => $video->public_id]),
+            'created_at' => $video->created_at?->toIso8601String(),
+        ];
     }
 
     /**
