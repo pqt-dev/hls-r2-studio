@@ -11,6 +11,7 @@ import type {
     QueueSummary,
     RendererApi,
     SettingsDto,
+    VideoListItem,
 } from '../../../shared/ipc';
 
 export function makeJob(partial: Partial<JobDto> = {}): JobDto {
@@ -38,6 +39,22 @@ export function makeJob(partial: Partial<JobDto> = {}): JobDto {
         canResume: false,
         canRetryRegister: false,
         canRemove: false,
+        ...partial,
+    };
+}
+
+export function makeVideo(partial: Partial<VideoListItem> = {}): VideoListItem {
+    return {
+        id: 1,
+        publicId: 'abcdefghijkl',
+        title: 'Holiday video',
+        originalFilename: 'holiday.mp4',
+        status: 'ready',
+        duration: 75,
+        thumbnailUrl: null,
+        hasCustomImage: false,
+        embedUrl: 'https://site.example.com/embed/abcdefghijkl',
+        createdAt: '2026-01-01T10:00:00.000Z',
         ...partial,
     };
 }
@@ -183,6 +200,15 @@ export function createFakeApi(initial: Partial<FakeState> = {}): FakeApi {
             copy: () => Promise.resolve(OK),
             onUpdated: (listener) => subscribe(jobListeners, listener),
             onSummary: (listener) => subscribe(summaryListeners, listener),
+        },
+        videos: {
+            list: () =>
+                Promise.resolve({
+                    ok: true,
+                    data: [],
+                    meta: { page: 1, perPage: 24, total: 0, lastPage: 1 },
+                }),
+            get: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
         },
     };
 

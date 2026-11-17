@@ -4,6 +4,9 @@
 //! CSP (see `app.security.csp` in tauri.conf.json; JSON cannot hold comments, so it is explained
 //! here). It equals the production policy in src/shared/csp.ts plus ONE addition.
 //!
+//! `img-src ... https:` lets the Library screen show video thumbnails from the R2 CDN (`<img>`
+//! only; scripts, styles and connections stay local).
+//!
 //! `connect-src ... ipc: http://ipc.localhost` is the Tauri IPC transport: `ipc:` is the custom
 //! protocol used on macOS/Linux and `http://ipc.localhost` is used on Windows/Android. Without it
 //! every `invoke` is blocked. No other network origin is allowed.
@@ -247,7 +250,7 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn csp_is_strict_and_only_adds_the_ipc_transport() {
+    fn csp_is_strict_and_only_adds_the_ipc_transport_and_https_images() {
         let conf: serde_json::Value =
             serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
         let csp = conf["app"]["security"]["csp"].as_str().unwrap();
@@ -256,7 +259,7 @@ mod tests {
             "default-src 'self'",
             "script-src 'self';",
             "style-src 'self';",
-            "img-src 'self' data:",
+            "img-src 'self' data: https:",
             "connect-src 'self' ipc: http://ipc.localhost;",
             "object-src 'none'",
             "base-uri 'none'",

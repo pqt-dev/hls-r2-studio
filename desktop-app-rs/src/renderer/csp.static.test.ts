@@ -55,13 +55,26 @@ describe('renderer sources respect the strict CSP', () => {
 
             expect(text, file).not.toMatch(/https?:\/\/[A-Za-z0-9]/);
             expect(text, file).not.toMatch(/@import|url\(/);
-            expect(text, file).not.toMatch(/<(link|img|iframe)[^>]+(src|href)=/i);
+            expect(text, file).not.toMatch(/<(link|iframe)[^>]+(src|href)=/i);
+            // An <img> may only load a URL held in a variable (CDN thumbnails), never a literal.
+            expect(text, file).not.toMatch(/<img[^>]+src=["']/i);
         }
     });
 
     it('does not import Electron or Node modules in the renderer', () => {
         for (const file of files.filter((path) => /\.tsx?$/.test(path))) {
             expect(read(file), file).not.toMatch(/from 'electron'|from 'node:|require\(/);
+        }
+    });
+
+    it('allows https only for images in the Tauri CSP', () => {
+        const conf = JSON.parse(
+            readFileSync(resolve(ROOT, '../../src-tauri/tauri.conf.json'), 'utf8'),
+        ) as { app: { security: { csp: string; devCsp: string } } };
+
+        for (const csp of [conf.app.security.csp, conf.app.security.devCsp]) {
+            expect(csp).toContain("img-src 'self' data: https:;");
+            expect(csp.replace("img-src 'self' data: https:", '')).not.toContain('https:');
         }
     });
 });

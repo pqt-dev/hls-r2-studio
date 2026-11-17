@@ -240,6 +240,68 @@ pub fn parse_copy(payload: Option<Value>) -> Result<(String, CopyKind)> {
     Ok((id, kind))
 }
 
+pub const DEFAULT_VIDEOS_PAGE: u32 = 1;
+pub const DEFAULT_VIDEOS_PER_PAGE: u32 = 24;
+pub const MAX_VIDEOS_PER_PAGE: u32 = 50;
+pub const MAX_VIDEOS_QUERY_LENGTH: usize = 100;
+/// Largest integer a JS number holds exactly (the server id is a PHP integer).
+const MAX_VIDEO_ID: i64 = 9_007_199_254_740_991;
+
+/// Validated `videos:list` input.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideosListInput {
+    pub page: u32,
+    pub per_page: u32,
+    /// Trimmed search text; `None` when absent or blank.
+    pub query: Option<String>,
+}
+
+/// `videos:list`: `{ page?, perPage?, q? }` (no argument = all defaults).
+pub fn parse_videos_list(payload: Option<Value>) -> Result<VideosListInput> {
+    let Some(payload) = payload else {
+        return Ok(VideosListInput {
+            page: DEFAULT_VIDEOS_PAGE,
+            per_page: DEFAULT_VIDEOS_PER_PAGE,
+            query: None,
+        });
+    };
+    let object = expect_single_object(Some(payload), "videos", &["page", "perPage", "q"])?;
+    let page = match object.get("page") {
+        None => DEFAULT_VIDEOS_PAGE,
+        value => expect_int(value, "page", 1, i64::from(u32::MAX))? as u32,
+    };
+    let per_page = match object.get("perPage") {
+        None => DEFAULT_VIDEOS_PER_PAGE,
+        value => expect_int(value, "perPage", 1, i64::from(MAX_VIDEOS_PER_PAGE))? as u32,
+    };
+    let query = match object.get("q") {
+        None => None,
+        Some(Value::String(text)) => {
+            let text = text.trim();
+
+            if js_length(text) > MAX_VIDEOS_QUERY_LENGTH {
+                return invalid("q is too long");
+            }
+
+            Some(text.to_string()).filter(|text| !text.is_empty())
+        }
+        Some(_) => return invalid("q must be a string"),
+    };
+
+    Ok(VideosListInput {
+        page,
+        per_page,
+        query,
+    })
+}
+
+/// `videos:get`: `{ id }` with a positive integer.
+pub fn parse_video_id(payload: Option<Value>) -> Result<i64> {
+    let object = expect_single_object(payload, "video", &["id"])?;
+
+    expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
@@ -489,6 +551,67 @@ mod tests {
             Some(json!({ "id": "a", "kind": "shortcode", "evil": 1 })),
         ] {
             assert!(parse_copy(bad.clone()).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn videos_list_applies_defaults_and_validates_bounds() {
+        let defaults = VideosListInput {
+            page: 1,
+            per_page: 24,
+            query: None,
+        };
+
+        assert_eq!(parse_videos_list(None).unwrap(), defaults);
+        assert_eq!(parse_videos_list(Some(json!({}))).unwrap(), defaults);
+        assert_eq!(
+            parse_videos_list(Some(json!({ "page": 3, "perPage": 50, "q": "  a b  " }))).unwrap(),
+            VideosListInput {
+                page: 3,
+                per_page: 50,
+                query: Some("a b".into()),
+            }
+        );
+        assert_eq!(
+            parse_videos_list(Some(json!({ "q": "   " })))
+                .unwrap()
+                .query,
+            None
+        );
+
+        let long = "x".repeat(101);
+
+        for bad in [
+            json!({ "page": 0 }),
+            json!({ "page": 1.5 }),
+            json!({ "page": "1" }),
+            json!({ "perPage": 0 }),
+            json!({ "perPage": 51 }),
+            json!({ "q": long }),
+            json!({ "q": 5 }),
+            json!({ "other": 1 }),
+            json!("page"),
+        ] {
+            assert!(parse_videos_list(Some(bad.clone())).is_err(), "{bad}");
+        }
+
+        assert!(parse_videos_list(Some(json!({ "q": "x".repeat(100) }))).is_ok());
+    }
+
+    #[test]
+    fn video_id_must_be_a_positive_integer() {
+        assert_eq!(parse_video_id(Some(json!({ "id": 12 }))).unwrap(), 12);
+
+        for bad in [
+            None,
+            Some(json!({})),
+            Some(json!({ "id": 0 })),
+            Some(json!({ "id": -1 })),
+            Some(json!({ "id": 1.5 })),
+            Some(json!({ "id": "12" })),
+            Some(json!({ "id": 1, "x": 1 })),
+        ] {
+            assert!(parse_video_id(bad.clone()).is_err(), "{bad:?}");
         }
     }
 }

@@ -50,6 +50,9 @@ describe('createTauriApi', () => {
         await api.jobs.cancel('j1');
         await api.jobs.copy('j1', 'shortcode');
         await api.jobs.clearFinished();
+        await api.videos.list();
+        await api.videos.list({ page: 2, q: 'a' });
+        await api.videos.get(7);
 
         expect(calls).toEqual([
             ['app_get_version', undefined],
@@ -59,6 +62,9 @@ describe('createTauriApi', () => {
             ['jobs_cancel', { payload: { id: 'j1' } }],
             ['jobs_copy', { payload: { id: 'j1', kind: 'shortcode' } }],
             ['jobs_clear_finished', undefined],
+            ['videos_list', { payload: {} }],
+            ['videos_list', { payload: { page: 2, q: 'a' } }],
+            ['videos_get', { payload: { id: 7 } }],
         ]);
     });
 

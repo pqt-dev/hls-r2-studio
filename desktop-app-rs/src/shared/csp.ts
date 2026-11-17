@@ -7,7 +7,8 @@ export interface CspOptions {
 
 /**
  * Builds the Content-Security-Policy string.
- * The renderer never talks to the network: only the main process does.
+ * The renderer never talks to the network (connect-src stays local): only the main process
+ * does. The one exception is `<img>` thumbnails from the CDN (img-src https:).
  */
 export function buildCsp({ dev, devServerOrigin }: CspOptions): string {
     const connect = ["'self'"];
@@ -28,7 +29,8 @@ export function buildCsp({ dev, devServerOrigin }: CspOptions): string {
         "default-src 'self'",
         `script-src ${script.join(' ')}`,
         `style-src ${style.join(' ')}`,
-        "img-src 'self' data:",
+        // https: only for the video thumbnails served from the R2 CDN (`<img>` loads).
+        "img-src 'self' data: https:",
         `connect-src ${connect.join(' ')}`,
         "object-src 'none'",
         "base-uri 'none'",

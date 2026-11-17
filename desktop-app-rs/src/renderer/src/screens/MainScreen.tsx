@@ -2,13 +2,15 @@ import { useRef, useState, type KeyboardEvent } from 'react';
 import { siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { AboutScreen } from './AboutScreen';
+import { LibraryScreen } from './LibraryScreen';
 import { QueueScreen } from './QueueScreen';
 import { SettingsScreen } from './SettingsScreen';
 
-type Tab = 'queue' | 'settings' | 'about';
+type Tab = 'queue' | 'library' | 'settings' | 'about';
 
 const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
     { id: 'queue', label: 'Queue' },
+    { id: 'library', label: 'Library' },
     { id: 'settings', label: 'Settings' },
     { id: 'about', label: 'About' },
 ];
@@ -89,6 +91,7 @@ export function MainScreen() {
                 aria-labelledby={`tab-${tab}`}
             >
                 {tab === 'queue' && <QueueScreen />}
+                {tab === 'library' && <LibraryScreen />}
                 {tab === 'settings' && <SettingsScreen />}
                 {tab === 'about' && <AboutScreen />}
             </main>

@@ -25,6 +25,7 @@ use zeroize::Zeroizing;
 
 use super::app_config::{parse_app_config, r2_location_problem, AppConfig};
 use super::error::SiteApiError;
+use super::videos::{VideoDetail, VideoPage, MAX_LIST_ITEMS};
 use crate::logger::Log;
 use crate::pipeline::register::{
     RegisterClient, RegisterFailure, RegisterPayload, RegisterRequestError, RegisteredVideo,
@@ -252,10 +253,12 @@ impl SiteClient {
         }
 
         let method_name = method.as_str().to_string();
+        // The query string (e.g. a search text) is never logged.
+        let log_path = path.split('?').next().unwrap_or(path);
         let network_error = |reason: String| {
             self.warn(
                 "Site request failed.",
-                json!({ "method": method_name, "path": path, "error": reason }),
+                json!({ "method": method_name, "path": log_path, "error": reason }),
             );
 
             SiteApiError::new("Could not reach the site. Check your internet connection.")
@@ -321,7 +324,7 @@ impl SiteClient {
                 Err(_elapsed) => {
                     self.warn(
                         "Site request failed.",
-                        json!({ "method": method_name, "path": path, "error": "timeout" }),
+                        json!({ "method": method_name, "path": log_path, "error": "timeout" }),
                     );
 
                     return Err(SiteApiError::new("The site did not respond in time.")
@@ -342,7 +345,7 @@ impl SiteClient {
         if status.is_redirection() {
             self.warn(
                 "Site answered with a redirect; refusing to follow.",
-                json!({ "method": method_name, "path": path, "status": status.as_u16() }),
+                json!({ "method": method_name, "path": log_path, "status": status.as_u16() }),
             );
 
             return Err(SiteApiError::new(
@@ -355,7 +358,7 @@ impl SiteClient {
 
         self.debug(
             "Site request done.",
-            json!({ "method": method_name, "path": path, "status": status.as_u16() }),
+            json!({ "method": method_name, "path": log_path, "status": status.as_u16() }),
         );
 
         if status == StatusCode::UNAUTHORIZED && auth && token.is_some() {
@@ -477,6 +480,75 @@ impl SiteClient {
         Ok(config)
     }
 
+    /// `GET /api/app/videos?page=&per_page=&q=` (one page of the cloud library). The search
+    /// text is URL-encoded and never logged; the answer is parsed, size-capped and sanitized.
+    pub async fn list_videos(
+        &self,
+        page: u32,
+        per_page: u32,
+        query: Option<&str>,
+    ) -> Result<VideoPage, SiteApiError> {
+        let path = videos_list_path(page, per_page, query);
+        let raw = self.send(Method::GET, &path, true, None).await?;
+
+        Self::video_status_check(
+            &raw,
+            "Could not load the videos",
+            "Could not load the videos.",
+        )?;
+
+        let mut parsed: VideoPage = serde_json::from_slice(&raw.body).map_err(|_| {
+            SiteApiError::new("The site sent an unexpected video list.")
+                .status(raw.status)
+                .code("invalid_response")
+        })?;
+
+        if parsed.data.len() > MAX_LIST_ITEMS {
+            return Err(SiteApiError::new("The site sent an unexpected video list.")
+                .status(raw.status)
+                .code("invalid_response"));
+        }
+
+        parsed.sanitize();
+
+        Ok(parsed)
+    }
+
+    /// `GET /api/app/videos/{id}`. `id` is a positive integer (validated by the caller).
+    pub async fn get_video(&self, id: i64) -> Result<VideoDetail, SiteApiError> {
+        let path = format!("/api/app/videos/{id}");
+        let raw = self.send(Method::GET, &path, true, None).await?;
+
+        Self::video_status_check(&raw, "Could not load the video", "Video not found.")?;
+
+        let mut parsed: VideoDetail = serde_json::from_slice(&raw.body).map_err(|_| {
+            SiteApiError::new("The site sent an unexpected video response.")
+                .status(raw.status)
+                .code("invalid_response")
+        })?;
+
+        parsed.sanitize();
+
+        Ok(parsed)
+    }
+
+    /// Non-200 answers of the video read calls become safe, body-free messages.
+    fn video_status_check(
+        raw: &RawResponse,
+        failure: &str,
+        not_found: &str,
+    ) -> Result<(), SiteApiError> {
+        let message = match raw.status {
+            200 => return Ok(()),
+            401 => "Your session has expired. Please sign in again.".to_string(),
+            404 => not_found.to_string(),
+            429 => "Too many requests. Please try again in a moment.".to_string(),
+            status => format!("{failure} (HTTP {status})."),
+        };
+
+        Err(Self::http_error(raw, message))
+    }
+
     /// `POST /api/app/videos`. Any failure is a `RegisterRequestError`; the request body and
     /// the token are never logged.
     pub async fn register(
@@ -521,6 +593,20 @@ impl RegisterClient for SiteClient {
     ) -> Result<RegisteredVideo, RegisterRequestError> {
         SiteClient::register(self, payload).await
     }
+}
+
+/// `/api/app/videos?page=&per_page=[&q=]`; the search text is trimmed and form-encoded.
+fn videos_list_path(page: u32, per_page: u32, query: Option<&str>) -> String {
+    let mut params = url::form_urlencoded::Serializer::new(String::new());
+
+    params.append_pair("page", &page.to_string());
+    params.append_pair("per_page", &per_page.to_string());
+
+    if let Some(text) = query.map(str::trim).filter(|text| !text.is_empty()) {
+        params.append_pair("q", text);
+    }
+
+    format!("/api/app/videos?{}", params.finish())
 }
 
 /// A site error that carries a 401 `not_signed_in` becomes an HTTP failure; everything else is

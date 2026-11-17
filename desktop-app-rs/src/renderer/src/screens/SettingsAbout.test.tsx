@@ -15,6 +15,11 @@ describe('Tabs', () => {
 
         screen.getByRole('tab', { name: 'Queue' }).focus();
         await user.keyboard('{ArrowRight}');
+        expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+        await user.keyboard('{ArrowRight}');
         expect(screen.getByRole('tab', { name: 'Settings' })).toHaveAttribute(
             'aria-selected',
             'true',

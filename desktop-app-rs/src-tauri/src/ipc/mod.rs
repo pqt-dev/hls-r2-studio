@@ -15,11 +15,13 @@ mod jobs;
 pub mod notices;
 mod settings;
 pub mod validate;
+mod videos;
 
 pub use app::*;
 pub use auth::*;
 pub use jobs::*;
 pub use settings::*;
+pub use videos::*;
 
 use serde::{Serialize, Serializer};
 
@@ -98,6 +100,8 @@ register_commands!(
     jobs_clear_finished,
     jobs_open_embed,
     jobs_copy,
+    videos_list,
+    videos_get,
 );
 
 #[cfg(test)]
@@ -130,6 +134,8 @@ mod tests {
         "jobs:clear-finished",
         "jobs:open-embed",
         "jobs:copy",
+        "videos:list",
+        "videos:get",
     ];
 
     fn command_of(channel: &str) -> String {

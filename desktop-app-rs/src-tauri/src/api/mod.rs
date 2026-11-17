@@ -5,6 +5,7 @@ pub mod error;
 pub mod site_client;
 #[cfg(test)]
 pub mod test_server;
+pub mod videos;
 
 pub use app_config::{
     parse_app_config, r2_location_problem, AppConfig, AppConfigR2, AppConfigTranscode,

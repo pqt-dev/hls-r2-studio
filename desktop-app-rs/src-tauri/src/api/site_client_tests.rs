@@ -9,6 +9,7 @@ use serde_json::{json, Value};
 use super::*;
 use crate::api::app_config::Resolution;
 use crate::api::test_server::{closed_port_url, Recorded, Reply, TestServer};
+use crate::api::videos::VideoStatus;
 use crate::logger::testing::RecordingLogger;
 
 fn config_body() -> Value {
@@ -812,4 +813,213 @@ mod register_tests {
 
         assert_eq!(client.register(&payload()).await.unwrap(), expected());
     }
+}
+
+// ---- videos (list + detail) -----------------------------------------------------------------
+
+fn list_item(id: i64, status: &str) -> Value {
+    json!({
+        "id": id,
+        "public_id": format!("abcdefghij{id:02}"),
+        "title": "My clip",
+        "original_filename": "my clip.mp4",
+        "original_size_bytes": 1234,
+        "status": status,
+        "duration": 12.5,
+        "output_width": 1280,
+        "output_height": 720,
+        "output_codec": "h264",
+        "disk_prefix": "2026/11/03/clip-abcdefghij12/",
+        "playlist_path": "2026/11/03/clip-abcdefghij12/playlist.m3u8",
+        "thumbnail_path": null,
+        "custom_image_path": null,
+        "storyboards": [],
+        "embed_url": "https://site.example/embed/abcdefghij12",
+        "created_at": "2026-11-03T10:00:00+00:00",
+        "future_field": { "ignored": true },
+    })
+}
+
+fn detail_body(status: &str) -> Value {
+    json!({
+        "id": 12,
+        "public_id": "abcdefghij12",
+        "title": "My clip",
+        "original_filename": "my clip.mp4",
+        "original_size_bytes": 1234,
+        "status": status,
+        "stage": status,
+        "progress": 100,
+        "error": null,
+        "duration": 12.5,
+        "output_width": 1280,
+        "output_height": 720,
+        "output_fps": 30.0,
+        "output_bitrate_kbps": 2500,
+        "output_codec": "h264",
+        "embed_url": "https://site.example/embed/abcdefghij12",
+        "playlist_url": "https://cdn.example.com/p.m3u8",
+        "thumbnail_url": null,
+        "has_custom_image": false,
+        "custom_image_url": null,
+        "storyboards": [],
+        "embed_storyboard": null,
+        "created_at": "2026-11-03T10:00:00+00:00",
+        "updated_at": "2026-11-03T10:05:00+00:00",
+    })
+}
+
+#[tokio::test]
+async fn list_videos_sends_encoded_query_and_parses_the_page() {
+    let t = setup(|_| {
+        Reply::json(
+            200,
+            json!({
+                "data": [list_item(1, "ready"), list_item(2, "brand_new_status")],
+                "meta": { "page": 2, "per_page": 10, "total": 12, "last_page": 2 },
+            }),
+        )
+    })
+    .await;
+    let page = t
+        .client
+        .list_videos(2, 10, Some("  a b&c#é=1  "))
+        .await
+        .unwrap();
+
+    assert_eq!(page.meta.total, 12);
+    assert_eq!(page.data.len(), 2);
+    assert_eq!(page.data[0].status, VideoStatus::Ready);
+    assert_eq!(
+        page.data[1].status,
+        VideoStatus::Unknown("brand_new_status".into())
+    );
+    assert_eq!(page.data[0].thumbnail_path, None);
+    assert!(page.data[0].storyboards.is_empty());
+
+    let calls = t.server.requests();
+    assert_eq!(calls[0].method, "GET");
+    assert_eq!(
+        calls[0].path,
+        "/api/app/videos?page=2&per_page=10&q=a+b%26c%23%C3%A9%3D1"
+    );
+    assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+
+    // The search text is not logged.
+    let logs = t.logger.text();
+    assert!(logs.contains("/api/app/videos") && !logs.contains("%C3%A9") && !logs.contains("q="));
+
+    let no_query = setup(|_| {
+        Reply::json(
+            200,
+            json!({ "data": [], "meta": { "page": 1, "per_page": 24, "total": 0, "last_page": 1 } }),
+        )
+    })
+    .await;
+    no_query
+        .client
+        .list_videos(1, 24, Some("  "))
+        .await
+        .unwrap();
+    assert_eq!(
+        no_query.server.requests()[0].path,
+        "/api/app/videos?page=1&per_page=24"
+    );
+}
+
+#[tokio::test]
+async fn list_videos_rejects_oversized_and_malformed_answers() {
+    let items: Vec<Value> = (1..=51).map(|id| list_item(id, "ready")).collect();
+    let too_many = setup(move |_| {
+        Reply::json(
+            200,
+            json!({ "data": items, "meta": { "page": 1, "per_page": 50, "total": 51, "last_page": 2 } }),
+        )
+    })
+    .await;
+    let error = too_many.client.list_videos(1, 50, None).await.unwrap_err();
+    assert_eq!(error.code.as_deref(), Some("invalid_response"));
+
+    let malformed = setup(|_| Reply::json(200, json!({ "data": "x" }))).await;
+    let error = malformed.client.list_videos(1, 24, None).await.unwrap_err();
+    assert_eq!(error.code.as_deref(), Some("invalid_response"));
+}
+
+#[tokio::test]
+async fn get_video_parses_ready_and_failed_details() {
+    let t = setup(|_| Reply::json(200, detail_body("ready"))).await;
+    let video = t.client.get_video(12).await.unwrap();
+
+    assert_eq!(t.server.requests()[0].path, "/api/app/videos/12");
+    assert_eq!(video.status, VideoStatus::Ready);
+    assert_eq!(video.thumbnail_url, None);
+    assert_eq!(video.error, None);
+    assert_eq!(video.output_fps, Some(30.0));
+    assert_eq!(
+        video.playlist_url.as_deref(),
+        Some("https://cdn.example.com/p.m3u8")
+    );
+    assert!(video.storyboards.is_empty());
+
+    let mut failed = detail_body("failed");
+    failed["error"] =
+        json!({ "message": "boom", "detail": "d", "failed_at": "2026-11-03T10:01:00+00:00" });
+    failed["playlist_url"] = json!("http://insecure.example/p.m3u8");
+    failed["storyboards"] =
+        json!({ "3x3": { "url": "https://cdn.example.com/s.jpg", "columns": 3, "count": 9 } });
+    let t = setup(move |_| Reply::json(200, failed.clone())).await;
+    let video = t.client.get_video(12).await.unwrap();
+
+    assert_eq!(video.status, VideoStatus::Failed);
+    assert_eq!(video.error.unwrap().message.as_deref(), Some("boom"));
+    // Only https URLs are kept.
+    assert_eq!(video.playlist_url, None);
+    assert_eq!(video.storyboards["3x3"].count, Some(9));
+}
+
+#[tokio::test]
+async fn video_reads_map_failures_to_safe_errors() {
+    let not_found = setup(|_| Reply::json(404, json!({ "error": "not_found" }))).await;
+    let error = not_found.client.get_video(99).await.unwrap_err();
+    assert_eq!(error.status, Some(404));
+    assert_eq!(error.code.as_deref(), Some("not_found"));
+    assert_eq!(error.message, "Video not found.");
+
+    let busy = setup(|_| {
+        Reply::json_with(
+            429,
+            json!({ "message": "secret server text" }),
+            &[("Retry-After", "7")],
+        )
+    })
+    .await;
+    let error = busy.client.list_videos(1, 24, None).await.unwrap_err();
+    assert_eq!(error.retry_after_seconds, Some(7));
+    assert!(!error.message.contains("secret"));
+
+    let broken = setup(|_| Reply::text(500, "<html>stack trace /var/www</html>")).await;
+    let error = broken.client.list_videos(1, 24, None).await.unwrap_err();
+    assert_eq!(error.message, "Could not load the videos (HTTP 500).");
+}
+
+#[tokio::test]
+async fn video_reads_report_401_through_on_unauthorized_and_need_a_token() {
+    let t = setup(|_| Reply::json(401, json!({ "message": "Unauthenticated." }))).await;
+    let error = t.client.get_video(1).await.unwrap_err();
+    assert_eq!(error.status, Some(401));
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 1);
+    t.client.list_videos(1, 24, None).await.unwrap_err();
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 2);
+
+    let signed_out = setup_with(
+        Opts {
+            token: None,
+            ..Opts::default()
+        },
+        |_, _| Reply::json(200, json!({})),
+    )
+    .await;
+    let error = signed_out.client.get_video(1).await.unwrap_err();
+    assert!(error.has_code("not_signed_in"));
+    assert!(signed_out.server.requests().is_empty());
 }

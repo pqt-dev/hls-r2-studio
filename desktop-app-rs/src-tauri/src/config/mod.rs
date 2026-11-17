@@ -77,6 +77,14 @@ impl ConfigService {
         self.lock().config.clone()
     }
 
+    /// The R2 public base URL only (no credentials are cloned). For main-side URL building.
+    pub fn r2_public_url(&self) -> Option<String> {
+        self.lock()
+            .config
+            .as_ref()
+            .map(|config| config.r2.url.clone())
+    }
+
     /// Safe view for IPC: no credentials.
     pub fn get_public(&self) -> Option<PublicConfig> {
         self.lock().public_view()

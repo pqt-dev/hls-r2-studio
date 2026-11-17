@@ -25,6 +25,8 @@
  *     |resume|remove|open-embed         jobs_retry_register|...
  *   jobs:clear-finished               jobs_clear_finished      -
  *   jobs:copy                         jobs_copy                { payload: {id,kind} }
+ *   videos:list                       videos_list              { payload: {page?,perPage?,q?} }
+ *   videos:get                        videos_get               { payload: {id} }
  *
  *   IpcEvents (Rust -> renderer)      Tauri event name
  *   --------------------------------  ----------------
@@ -60,6 +62,8 @@ import type {
     SettingsDto,
     SettingsResult,
     Unsubscribe,
+    VideosGetResult,
+    VideosListResult,
 } from '../../shared/ipc';
 
 export type InvokeFn = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -170,6 +174,10 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
             copy: (id, kind) => send<ActionResult>(IpcChannels.jobsCopy, { id, kind }),
             onUpdated: (listener) => subscribe<JobDto[]>(IpcEvents.jobsUpdated, listener),
             onSummary: (listener) => subscribe<QueueSummary>(IpcEvents.queueSummary, listener),
+        },
+        videos: {
+            list: (params) => send<VideosListResult>(IpcChannels.videosList, params ?? {}),
+            get: (id) => send<VideosGetResult>(IpcChannels.videosGet, { id }),
         },
     };
 }

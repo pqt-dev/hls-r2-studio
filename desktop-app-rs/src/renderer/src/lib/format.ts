@@ -93,3 +93,30 @@ export function siteHost(url: string | undefined): string {
 export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
     return `${count} ${count === 1 ? singular : pluralForm}`;
 }
+
+/** "m:ss" or "h:mm:ss" from seconds; "" when the value is missing or invalid. */
+export function formatDuration(seconds: number | null | undefined): string {
+    if (seconds === null || seconds === undefined || !Number.isFinite(seconds) || seconds < 0) {
+        return '';
+    }
+
+    const total = Math.round(seconds);
+    const hours = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    const secs = String(total % 60).padStart(2, '0');
+
+    return hours > 0
+        ? `${hours}:${String(minutes).padStart(2, '0')}:${secs}`
+        : `${minutes}:${secs}`;
+}
+
+/** Local calendar date such as "Jan 1, 2026"; "" when missing or invalid. */
+export function formatDate(iso: string | null | undefined): string {
+    if (iso === null || iso === undefined) return '';
+
+    const time = new Date(iso);
+
+    if (Number.isNaN(time.getTime())) return '';
+
+    return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(time);
+}

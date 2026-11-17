@@ -25,6 +25,8 @@ export const IpcChannels = {
     jobsClearFinished: 'jobs:clear-finished',
     jobsOpenEmbed: 'jobs:open-embed',
     jobsCopy: 'jobs:copy',
+    videosList: 'videos:list',
+    videosGet: 'videos:get',
 } as const;
 
 /** Main -> renderer push events. */
@@ -153,6 +155,101 @@ export interface DiagnosticsDto {
 
 export type CopyKind = 'embed-url' | 'shortcode';
 
+// ---- cloud video library (read-only) ------------------------------------------------------
+
+/** Unknown words can appear when the site adds a status, so treat any other value as "other". */
+export type VideoStatus = 'pending' | 'processing' | 'ready' | 'failed' | (string & {});
+
+export interface VideoListParams {
+    /** >= 1, default 1. */
+    page?: number;
+    /** 1..50, default 24. */
+    perPage?: number;
+    /** Search text, trimmed, at most 100 characters. */
+    q?: string;
+}
+
+export interface VideoListMeta {
+    page: number;
+    perPage: number;
+    total: number;
+    lastPage: number;
+}
+
+/**
+ * One row of the list. Thumbnail and embed URLs are built by the main process; storage paths
+ * and the R2 base URL never reach the renderer.
+ */
+export interface VideoListItem {
+    id: number;
+    publicId: string;
+    title: string;
+    originalFilename: string | null;
+    status: VideoStatus;
+    duration: number | null;
+    /** Custom image when present, else the generated thumbnail; null when unavailable. */
+    thumbnailUrl: string | null;
+    hasCustomImage: boolean;
+    embedUrl: string | null;
+    createdAt: string | null;
+}
+
+export interface VideoErrorInfo {
+    message: string | null;
+    /** Already sanitized by the site. */
+    detail: string | null;
+    failedAt: string | null;
+}
+
+export interface VideoStoryboard {
+    url: string | null;
+    columns: number | null;
+    count: number | null;
+}
+
+export interface VideoEmbedStoryboard {
+    url: string | null;
+    number: number | null;
+    column: number | null;
+    width: number | null;
+    height: number | null;
+}
+
+/** Detail of one video. URL fields are https URLs, or null when the file does not exist. */
+export interface VideoDetail {
+    id: number;
+    publicId: string;
+    title: string;
+    originalFilename: string | null;
+    originalSizeBytes: number | null;
+    status: VideoStatus;
+    stage: string | null;
+    progress: number | null;
+    /** Set only when `status` is `failed`. */
+    error: VideoErrorInfo | null;
+    duration: number | null;
+    outputWidth: number | null;
+    outputHeight: number | null;
+    outputFps: number | null;
+    outputBitrateKbps: number | null;
+    outputCodec: string | null;
+    embedUrl: string | null;
+    playlistUrl: string | null;
+    thumbnailUrl: string | null;
+    hasCustomImage: boolean;
+    customImageUrl: string | null;
+    storyboards: Record<string, VideoStoryboard>;
+    embedStoryboard: VideoEmbedStoryboard | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+}
+
+/** `error` is safe English text (never the site's body, URL or token). */
+export type VideosListResult =
+    { ok: true; data: VideoListItem[]; meta: VideoListMeta } | { ok: false; error: string };
+
+export type VideosGetResult = { ok: true; video: VideoDetail } | { ok: false; error: string };
+
 // ---- preload API --------------------------------------------------------------------------
 
 /** Function that removes a subscription. */
@@ -204,11 +301,17 @@ export interface JobsApi {
     onSummary(listener: (summary: QueueSummary) => void): Unsubscribe;
 }
 
+export interface VideosApi {
+    list(params?: VideoListParams): Promise<VideosListResult>;
+    get(id: number): Promise<VideosGetResult>;
+}
+
 export interface RendererApi {
     app: AppApi;
     auth: AuthApi;
     settings: SettingsApi;
     jobs: JobsApi;
+    videos: VideosApi;
 }
 
 /** Name of the property exposed on `window` through contextBridge. */
