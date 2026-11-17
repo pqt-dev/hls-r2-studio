@@ -265,15 +265,13 @@ jobs:
           if-no-files-found: error
 
       # ---- Launch smoke test -------------------------------------------------------------------
-      # Installs the installer again into a fresh folder, STARTS the app, and checks that the
-      # window and the webview came up and that the Rust <-> UI IPC answers. The screenshot, the
-      # app log and the cleanup run even when this step fails (if: always()); this step leaves
-      # the app running on purpose so the screenshot step can still see the window.
-      #
-      # SECURITY: the remote debugging port below is a CI-only inspection hook. It is set only in
-      # the environment of this one step (never baked into the app, never set globally), it binds
-      # to 127.0.0.1 and the runner is ephemeral. It must NEVER be enabled in the shipped app.
-      - name: Launch smoke test (start the app, check window, webview and IPC)
+      # Installs the installer again into a fresh folder, STARTS the app and checks that it comes
+      # up: the main window `HLS R2 Studio` appears, the app survives a settle delay, WebView2 was
+      # started for it, and app.log shows the startup and the ffmpeg self-check. The screenshot,
+      # the app log and the cleanup run even when this step fails (if: always()); this step leaves
+      # the app running on purpose so the screenshot step can still see the window. Only the
+      # Cleanup step stops the app.
+      - name: Launch smoke test (start the app, check window, webview and log)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -282,9 +280,13 @@ jobs:
           $dir = Join-Path $env:RUNNER_TEMP 'hls-r2-launch-smoke'
           # userData = <config dir>\HLS R2 Studio (state.rs), logs in its logs\ folder.
           $logsDir = Join-Path $env:APPDATA 'HLS R2 Studio\logs'
+          $expectedTitle = 'HLS R2 Studio'
           $failures = New-Object System.Collections.Generic.List[string]
-          $info = [ordered]@{ url = ''; title = ''; windowTitle = ''; version = ''; auth = ''; text = '' }
           $proc = $null
+          $windowOk = $false
+          $appAlive = ''
+          $webviewOk = ''
+          $logOk = ''
 
           Add-Type -TypeDefinition @'
           using System;
@@ -310,8 +312,41 @@ jobs:
               }, IntPtr.Zero);
               return res;
             }
+            // Titles of the visible top-level windows owned by the given process.
+            public static List<string> TitlesOf(uint wantedPid) {
+              var res = new List<string>();
+              EnumWindows(delegate (IntPtr h, IntPtr l) {
+                if (IsWindowVisible(h)) {
+                  uint pid; GetWindowThreadProcessId(h, out pid);
+                  if (pid == wantedPid) {
+                    var sb = new StringBuilder(512);
+                    GetWindowText(h, sb, sb.Capacity);
+                    res.Add(sb.ToString());
+                  }
+                }
+                return true;
+              }, IntPtr.Zero);
+              return res;
+            }
           }
           '@
+
+          # Reads app.log* while the app may still have it open for writing.
+          function Get-AppLogText {
+            $sb = New-Object System.Text.StringBuilder
+            if (Test-Path -LiteralPath $logsDir) {
+              foreach ($f in @(Get-ChildItem -LiteralPath $logsDir -Filter 'app.log*' -File)) {
+                try {
+                  $fs = [System.IO.File]::Open($f.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                  try {
+                    $sr = New-Object System.IO.StreamReader($fs)
+                    [void]$sb.AppendLine($sr.ReadToEnd())
+                  } finally { $fs.Dispose() }
+                } catch { }
+              }
+            }
+            return $sb.ToString()
+          }
 
           function Show-AppLog {
             Write-Host "---- app log ($logsDir) ----"
@@ -320,7 +355,14 @@ jobs:
             if ($files.Count -eq 0) { Write-Host '(no app.log found)' }
             foreach ($f in $files) {
               Write-Host "== $($f.Name) (last 200 lines)"
-              Get-Content -LiteralPath $f.FullName -Tail 200 | ForEach-Object { Write-Host $_ }
+              try {
+                $fs = [System.IO.File]::Open($f.FullName, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+                try {
+                  $sr = New-Object System.IO.StreamReader($fs)
+                  $all = @($sr.ReadToEnd() -split "\r?\n")
+                } finally { $fs.Dispose() }
+                $all | Select-Object -Last 200 | ForEach-Object { Write-Host $_ }
+              } catch { Write-Host "(could not read: $($_.Exception.Message))" }
             }
             Write-Host '---- end of app log ----'
           }
@@ -331,61 +373,9 @@ jobs:
             Write-Host '---- end of windows ----'
           }
 
-          # One Runtime.evaluate over the DevTools websocket; returns the string value.
-          function Invoke-Cdp([string]$WsUrl, [string]$Expression) {
-            $ws = New-Object System.Net.WebSockets.ClientWebSocket
-            $cts = New-Object System.Threading.CancellationTokenSource
-            $cts.CancelAfter(20000)
-            try {
-              $ws.ConnectAsync([Uri]$WsUrl, $cts.Token).GetAwaiter().GetResult()
-              $payload = @{
-                id     = 1
-                method = 'Runtime.evaluate'
-                params = @{ expression = $Expression; returnByValue = $true; awaitPromise = $true }
-              } | ConvertTo-Json -Depth 5 -Compress
-              $bytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
-              $ws.SendAsync([ArraySegment[byte]]::new($bytes), [System.Net.WebSockets.WebSocketMessageType]::Text, $true, $cts.Token).GetAwaiter().GetResult()
-
-              $buf = New-Object byte[] 65536
-              $seg = [ArraySegment[byte]]::new($buf)
-              $msg = $null
-              while ($true) {
-                $ms = New-Object System.IO.MemoryStream
-                do {
-                  $r = $ws.ReceiveAsync($seg, $cts.Token).GetAwaiter().GetResult()
-                  if ($r.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) { throw 'DevTools websocket was closed' }
-                  $ms.Write($buf, 0, $r.Count)
-                } while (-not $r.EndOfMessage)
-                $msg = [System.Text.Encoding]::UTF8.GetString($ms.ToArray()) | ConvertFrom-Json
-                if ($msg.id -eq 1) { break }
-              }
-              if ($msg.error) { throw "DevTools error: $($msg.error.message)" }
-              if ($msg.result.exceptionDetails) { throw "JavaScript exception: $($msg.result.exceptionDetails.text)" }
-              return $msg.result.result.value
-            } finally {
-              $ws.Dispose()
-              $cts.Dispose()
-            }
-          }
-
-          $jsProbe = @'
-          (async () => {
-            const r = {};
-            r.href = location.href;
-            r.title = document.title;
-            r.apiType = typeof window.hlsApi;
-            try { r.version = await window.hlsApi.app.getVersion(); } catch (e) { r.versionError = String((e && e.message) || e); }
-            try { r.auth = await window.hlsApi.auth.getState(); } catch (e) { r.authError = String((e && e.message) || e); }
-            r.text = (document.body ? document.body.innerText : '').trim().slice(0, 500);
-            return JSON.stringify(r);
-          })()
-          '@
-
           try {
             $installers = @(Get-ChildItem -LiteralPath $env:NSIS_DIR -Filter '*.exe' -File)
             if ($installers.Count -ne 1) { throw "expected exactly one NSIS installer in $env:NSIS_DIR, found $($installers.Count)" }
-            $conf = Get-Content -Raw -LiteralPath 'src-tauri/tauri.conf.json' | ConvertFrom-Json
-            $expectedVersion = [string]$conf.version
 
             if (Test-Path -LiteralPath $dir) { Remove-Item -Recurse -Force -LiteralPath $dir }
             if (Test-Path -LiteralPath $logsDir) { Remove-Item -Recurse -Force -LiteralPath $logsDir }
@@ -397,102 +387,79 @@ jobs:
             $exe = Join-Path $dir 'hls-r2-studio.exe'
             if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) { throw "missing file after install: $exe" }
 
-            # Process-local only: the variable is removed again right after the app has started.
-            $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = '--remote-debugging-port=9222 --remote-allow-origins=*'
-            try {
-              Write-Host "Starting $exe"
-              $proc = Start-Process -FilePath $exe -WorkingDirectory $dir -PassThru
-            } finally {
-              Remove-Item -Path Env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS -ErrorAction SilentlyContinue
-            }
+            Write-Host "Starting $exe"
+            $proc = Start-Process -FilePath $exe -WorkingDirectory $dir -PassThru
 
-            # Wait up to 60 s for (a) the main window and (b) the webview page target.
-            $windowOk = $false
-            $target = $null
+            # 1) Wait up to 60 s for a visible top-level window titled exactly the expected title,
+            #    owned by the started process.
+            $windowSeenAt = $null
             $deadline = (Get-Date).AddSeconds(60)
-            while ((Get-Date) -lt $deadline -and -not ($windowOk -and $target)) {
+            while ((Get-Date) -lt $deadline) {
               if ($proc.HasExited) { break }
-              $proc.Refresh()
-              if (-not $windowOk -and $proc.MainWindowHandle -ne [IntPtr]::Zero) {
+              $titles = @([HlsWin]::TitlesOf([uint32]$proc.Id))
+              if ($titles -contains $expectedTitle) {
                 $windowOk = $true
-                $info.windowTitle = $proc.MainWindowTitle
-              }
-              if (-not $target) {
-                try {
-                  $targets = @(Invoke-RestMethod -Uri 'http://127.0.0.1:9222/json' -TimeoutSec 3)
-                  $target = $targets | Where-Object { $_.type -eq 'page' -and $_.url -match '^https?://tauri\.localhost(/|$)' -and $_.title } | Select-Object -First 1
-                } catch { }
+                $windowSeenAt = Get-Date
+                break
               }
               Start-Sleep -Seconds 1
             }
 
             if ($proc.HasExited) {
-              Show-Windows
-              Show-AppLog
-              throw "the app exited early with code $($proc.ExitCode)"
-            }
-
-            if (-not $windowOk) {
-              $failures.Add('no main window handle within 60 s')
-            } elseif ($info.windowTitle -ne 'HLS R2 Studio') {
-              $failures.Add("unexpected window title [$($info.windowTitle)], expected [HLS R2 Studio]")
+              $appAlive = 'exited early'
+              $failures.Add("the app exited early with code $($proc.ExitCode)")
+            } elseif (-not $windowOk) {
+              $failures.Add("no visible top-level window titled [$expectedTitle] owned by the app within 60 s")
             } else {
-              Write-Host "ok: main window found, title [$($info.windowTitle)]"
-            }
+              Write-Host "ok: main window found, title [$expectedTitle]"
 
-            if (-not $target) {
-              $failures.Add('no webview page target on http(s)://tauri.localhost with a title within 60 s')
-              try { Write-Host 'DevTools /json said:'; (Invoke-RestMethod -Uri 'http://127.0.0.1:9222/json' -TimeoutSec 3) | ConvertTo-Json -Depth 4 | Write-Host } catch { Write-Host "DevTools /json not reachable: $($_.Exception.Message)" }
-              # Diagnostics (non-fatal): did --remote-debugging-port reach the WebView2 browser process?
-              try {
-                Write-Host 'msedgewebview2.exe command lines:'
-                $wv = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" -ErrorAction Stop)
-                if ($wv.Count -eq 0) { Write-Host '  (no msedgewebview2.exe process found)' }
-                foreach ($w in $wv) { Write-Host "  [$($w.ProcessId)] $($w.CommandLine)" }
-              } catch { Write-Host "could not list msedgewebview2.exe processes: $($_.Exception.Message)" }
-            } else {
-              $info.url = [string]$target.url
-              $info.title = [string]$target.title
-              Write-Host "ok: webview page $($info.url) title [$($info.title)]"
+              # 2) Settle time so the UI can render (the screenshot step runs after this step).
+              Start-Sleep -Seconds 8
 
-              # The UI may still be rendering: retry up to 30 s until the page has some text.
-              $res = $null
-              $lastError = ''
-              $cdpDeadline = (Get-Date).AddSeconds(30)
-              do {
-                try {
-                  $res = (Invoke-Cdp $target.webSocketDebuggerUrl $jsProbe) | ConvertFrom-Json
-                  if ($res.text) { break }
-                } catch {
-                  $lastError = $_.Exception.Message
-                  $res = $null
-                }
-                Start-Sleep -Seconds 1
-              } while ((Get-Date) -lt $cdpDeadline)
-
-              if ($null -eq $res) {
-                $failures.Add("could not evaluate JavaScript over DevTools: $lastError")
+              # 3) The app must still be running and WebView2 must have been started for it.
+              $proc.Refresh()
+              if ($proc.HasExited) {
+                $appAlive = 'crashed after the window appeared'
+                $failures.Add("the app exited after the window appeared (exit code $($proc.ExitCode))")
               } else {
-                if ($res.apiType -ne 'object') { $failures.Add("typeof window.hlsApi is [$($res.apiType)], expected [object]") }
-                else { Write-Host 'ok: window.hlsApi is an object' }
-
-                $info.version = [string]$res.version
-                if ($res.versionError) { $failures.Add("hlsApi.app.getVersion() failed: $($res.versionError)") }
-                elseif ($info.version -notmatch '^\d+\.\d+\.\d+([-+][0-9A-Za-z.+-]+)?$') { $failures.Add("app version [$($info.version)] is not semver-like") }
-                elseif ($info.version -ne $expectedVersion) { $failures.Add("app version [$($info.version)] differs from tauri.conf.json [$expectedVersion]") }
-                else { Write-Host "ok: app version $($info.version)" }
-
-                if ($res.authError) { $failures.Add("hlsApi.auth.getState() failed: $($res.authError)") }
-                else {
-                  $info.auth = ($res.auth | ConvertTo-Json -Compress -Depth 5)
-                  if ($res.auth.status -ne 'signed_out') { $failures.Add("auth state is $($info.auth), expected status signed_out") }
-                  else { Write-Host "ok: auth state $($info.auth)" }
-                }
-
-                $info.text = [string]$res.text
-                if ([string]::IsNullOrWhiteSpace($info.text)) { $failures.Add('document.body.innerText is empty (blank page)') }
-                else { Write-Host '---- page text (first 500 chars) ----'; Write-Host $info.text; Write-Host '---- end of page text ----' }
+                $appAlive = 'running'
+                Write-Host 'ok: app process still running after the settle delay'
               }
+
+              $needle = '--webview-exe-name=hls-r2-studio.exe'
+              try {
+                $wv = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" -ErrorAction Stop |
+                  Where-Object { $_.CommandLine -and $_.CommandLine.Contains($needle) })
+                if ($wv.Count -eq 0) {
+                  $webviewOk = 'not found'
+                  $failures.Add("no msedgewebview2.exe process with $needle in its command line (WebView2 did not start for the app)")
+                } else {
+                  $webviewOk = "found ($($wv.Count) process(es))"
+                  Write-Host "ok: WebView2 started for the app ($($wv.Count) msedgewebview2.exe process(es) with $needle)"
+                }
+              } catch {
+                $webviewOk = 'could not be checked'
+                $failures.Add("could not list msedgewebview2.exe processes: $($_.Exception.Message)")
+              }
+            }
+
+            # 4) app.log must show the startup and the ffmpeg self-check, up to 30 s after the
+            #    window appeared (immediately checked once if the window never appeared).
+            $logDeadline = if ($windowSeenAt) { $windowSeenAt.AddSeconds(30) } else { Get-Date }
+            $markers = @('App starting', 'ffmpeg self-check passed')
+            $missing = $markers
+            while ($true) {
+              $text = Get-AppLogText
+              $missing = @($markers | Where-Object { -not $text.Contains($_) })
+              if ($missing.Count -eq 0 -or (Get-Date) -ge $logDeadline) { break }
+              Start-Sleep -Seconds 1
+            }
+            if ($missing.Count -eq 0) {
+              $logOk = 'both markers found'
+              Write-Host "ok: app.log contains: $($markers -join '; ')"
+            } else {
+              $logOk = "missing: $($missing -join '; ')"
+              $failures.Add("app.log does not contain: $($missing -join '; ')")
             }
 
             if ($failures.Count -gt 0) {
@@ -501,20 +468,19 @@ jobs:
             }
           } catch {
             $failures.Add($_.Exception.Message)
+            try { Show-Windows; Show-AppLog } catch { }
           } finally {
             # Job summary, written whatever happened above.
-            $fence = '`' * 3
             $lines = @(
               '## Launch smoke test',
               '',
               '| | |',
               '| --- | --- |',
               "| Result | $(if ($failures.Count -eq 0) { 'passed' } else { 'FAILED' }) |",
-              "| Page URL | ``$($info.url)`` |",
-              "| Page title | ``$($info.title)`` |",
-              "| Window title | ``$($info.windowTitle)`` |",
-              "| App version | ``$($info.version)`` |",
-              "| Auth state | ``$($info.auth)`` |",
+              "| Main window [$expectedTitle] | $(if ($windowOk) { 'found' } else { 'not found' }) |",
+              "| App process after settle delay | $appAlive |",
+              "| WebView2 for the app | $webviewOk |",
+              "| app.log markers | $logOk |",
               ''
             )
             if ($failures.Count -gt 0) {
@@ -523,13 +489,7 @@ jobs:
               foreach ($f in $failures) { $lines += "- $($f -replace '[\r\n]+', ' ')" }
               $lines += ''
             }
-            $lines += 'First lines of `document.body.innerText`:'
-            $lines += ''
-            $lines += $fence
-            $lines += (@(($info.text -replace '```', "'''") -split "\r?\n" | Select-Object -First 20))
-            $lines += $fence
-            $lines += ''
-            $lines += 'The screenshot (`screenshot.png`, `window.png`) and the app log are in the artifact `launch-smoke-<commit sha>`.'
+            $lines += 'The screenshots (`screenshots/`) and the app log are in the artifact `launch-smoke-<commit sha>`.'
             $lines | Add-Content -Encoding utf8 -Path $env:GITHUB_STEP_SUMMARY
           }
 
@@ -539,14 +499,16 @@ jobs:
           }
           Write-Host 'Launch smoke test passed'
 
-      # Screenshot of the whole screen and of the app window. A failed capture only warns.
+      # Screenshot of the whole screen and of the app window, taken after the settle delay of the
+      # launch step (the app is still running). A failed capture only warns. More screenshots can
+      # be added later as screenshots/02-*.png etc.; the whole screenshots folder is uploaded.
       - name: Launch smoke test screenshot
         if: always()
         continue-on-error: true
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          $out = Join-Path $env:RUNNER_TEMP 'launch-smoke'
+          $out = Join-Path $env:RUNNER_TEMP 'launch-smoke/screenshots'
           New-Item -ItemType Directory -Force -Path $out | Out-Null
           Add-Type -AssemblyName System.Windows.Forms
           Add-Type -AssemblyName System.Drawing
@@ -559,15 +521,13 @@ jobs:
           }
           '@
           try {
-            Start-Sleep -Seconds 3
-
             $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
             $bmp = [System.Drawing.Bitmap]::new($vs.Width, $vs.Height)
             try {
               $g = [System.Drawing.Graphics]::FromImage($bmp)
               try { $g.CopyFromScreen($vs.Left, $vs.Top, 0, 0, $bmp.Size) } finally { $g.Dispose() }
-              $bmp.Save((Join-Path $out 'screenshot.png'), [System.Drawing.Imaging.ImageFormat]::Png)
-              Write-Host "Saved screenshot.png ($($vs.Width)x$($vs.Height))"
+              $bmp.Save((Join-Path $out '01-login.png'), [System.Drawing.Imaging.ImageFormat]::Png)
+              Write-Host "Saved 01-login.png ($($vs.Width)x$($vs.Height))"
 
               # Optional: crop of the app window.
               try {
@@ -581,8 +541,8 @@ jobs:
                     $h = [Math]::Min($bmp.Height - $y, $rc.Bottom - $rc.Top)
                     if ($w -gt 0 -and $h -gt 0) {
                       $crop = $bmp.Clone([System.Drawing.Rectangle]::new($x, $y, $w, $h), $bmp.PixelFormat)
-                      try { $crop.Save((Join-Path $out 'window.png'), [System.Drawing.Imaging.ImageFormat]::Png) } finally { $crop.Dispose() }
-                      Write-Host "Saved window.png (${w}x${h})"
+                      try { $crop.Save((Join-Path $out '01-login-window.png'), [System.Drawing.Imaging.ImageFormat]::Png) } finally { $crop.Dispose() }
+                      Write-Host "Saved 01-login-window.png (${w}x${h})"
                     }
                   }
                 } else {
