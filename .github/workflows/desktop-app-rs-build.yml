@@ -443,6 +443,13 @@ jobs:
             if (-not $target) {
               $failures.Add('no webview page target on http(s)://tauri.localhost with a title within 60 s')
               try { Write-Host 'DevTools /json said:'; (Invoke-RestMethod -Uri 'http://127.0.0.1:9222/json' -TimeoutSec 3) | ConvertTo-Json -Depth 4 | Write-Host } catch { Write-Host "DevTools /json not reachable: $($_.Exception.Message)" }
+              # Diagnostics (non-fatal): did --remote-debugging-port reach the WebView2 browser process?
+              try {
+                Write-Host 'msedgewebview2.exe command lines:'
+                $wv = @(Get-CimInstance Win32_Process -Filter "Name = 'msedgewebview2.exe'" -ErrorAction Stop)
+                if ($wv.Count -eq 0) { Write-Host '  (no msedgewebview2.exe process found)' }
+                foreach ($w in $wv) { Write-Host "  [$($w.ProcessId)] $($w.CommandLine)" }
+              } catch { Write-Host "could not list msedgewebview2.exe processes: $($_.Exception.Message)" }
             } else {
               $info.url = [string]$target.url
               $info.title = [string]$target.title
