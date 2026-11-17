@@ -1,0 +1,265 @@
+name: Desktop app Rust (Windows installer)
+
+# Manual build of the unsigned NSIS installer of the Tauri app (desktop-app-rs). The installer is
+# uploaded as a workflow artifact; nothing is published or released.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-app-rs-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: desktop-app-rs
+    env:
+      # Where the NSIS installer and SHA256SUMS.txt end up (relative to desktop-app-rs).
+      NSIS_DIR: src-tauri/target/release/bundle/nsis
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # The site URL is baked into the app at build time (HLS_SITE_URL, a plain repository
+      # variable, not a secret). build.rs also refuses a release build without a valid https URL.
+      - name: Check HLS_SITE_URL is configured
+        shell: bash
+        env:
+          HLS_SITE_URL: ${{ vars.HLS_SITE_URL }}
+        run: |
+          if [ -z "$HLS_SITE_URL" ]; then
+            echo "The repository variable HLS_SITE_URL is empty. Set it under Settings > Secrets and variables > Actions > Variables (for example https://admin.example.com) and run the build again." >&2
+            exit 1
+          fi
+          case "$HLS_SITE_URL" in
+            https://*) ;;
+            *)
+              echo "The repository variable HLS_SITE_URL must start with https:// (got a different scheme). Fix it under Settings > Secrets and variables > Actions > Variables and run the build again." >&2
+              exit 1
+              ;;
+          esac
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop-app-rs/package-lock.json
+
+      - run: npm ci --ignore-scripts
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop-app-rs/src-tauri
+
+      - name: Cache ffmpeg download
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: desktop-app-rs/.ffmpeg-cache
+          key: ffmpeg-${{ runner.os }}-${{ hashFiles('desktop-app-rs/ffmpeg.lock.json') }}
+
+      # Downloads the pinned archive (ffmpeg.lock.json), verifies its SHA-256 BEFORE opening it,
+      # extracts ONLY ffmpeg.exe and ffprobe.exe into src-tauri/resources/bin and verifies each
+      # against the per-file hash of the lock. Any mismatch fails the build. Nothing downloaded is
+      # executed here.
+      - name: Fetch pinned ffmpeg (SHA-256 verified)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $ProgressPreference = 'SilentlyContinue'
+
+          function Get-Sha256([string]$Path) {
+            return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+          }
+
+          $lock = Get-Content -Raw -LiteralPath 'ffmpeg.lock.json' | ConvertFrom-Json
+          if ($lock.url -notmatch '^https://') { throw 'ffmpeg.lock.json: url must be https' }
+          if ($lock.sha256 -notmatch '^[0-9a-f]{64}$') { throw 'ffmpeg.lock.json: sha256 is malformed' }
+
+          $cacheDir = Join-Path $PWD '.ffmpeg-cache'
+          New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+          $zip = Join-Path $cacheDir "$($lock.sha256).zip"
+
+          if ((Test-Path -LiteralPath $zip) -and ((Get-Sha256 $zip) -ne $lock.sha256)) {
+            Write-Host 'Cached archive is corrupt, downloading again'
+            Remove-Item -Force -LiteralPath $zip
+          }
+          if (-not (Test-Path -LiteralPath $zip)) {
+            Write-Host "Downloading $($lock.url)"
+            Invoke-WebRequest -Uri $lock.url -OutFile "$zip.part"
+            Move-Item -Force -LiteralPath "$zip.part" -Destination $zip
+          }
+          $actual = Get-Sha256 $zip
+          if ($actual -ne $lock.sha256) {
+            Remove-Item -Force -LiteralPath $zip
+            throw "SHA-256 mismatch for the ffmpeg archive`n  expected $($lock.sha256)`n  actual   $actual"
+          }
+          Write-Host 'ffmpeg archive SHA-256 verified'
+
+          $binDir = Join-Path $PWD 'src-tauri/resources/bin'
+          New-Item -ItemType Directory -Force -Path $binDir | Out-Null
+
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($zip)
+          try {
+            foreach ($f in ($lock.files | Where-Object { $_.kind -eq 'binary' })) {
+              if ($f.dest -ne (Split-Path -Leaf $f.dest)) { throw "lock dest must be a plain file name: $($f.dest)" }
+              $entryName = "$($lock.archiveRoot)/$($f.entry)"
+              $entry = $archive.GetEntry($entryName)
+              if ($null -eq $entry) { throw "archive does not contain the expected entry $entryName" }
+
+              $dest = Join-Path $binDir $f.dest
+              $tmp = "$dest.tmp"
+              $in = $entry.Open()
+              try {
+                $out = [System.IO.File]::Create($tmp)
+                try { $in.CopyTo($out) } finally { $out.Dispose() }
+              } finally { $in.Dispose() }
+
+              if ((Get-Sha256 $tmp) -ne $f.sha256) {
+                Remove-Item -Force -LiteralPath $tmp
+                throw "SHA-256 mismatch for extracted $entryName"
+              }
+              Move-Item -Force -LiteralPath $tmp -Destination $dest
+              Write-Host "Installed $($f.dest)"
+            }
+          } finally { $archive.Dispose() }
+
+          # The ffmpeg license texts are committed under LICENSES/ffmpeg; they must match the lock.
+          foreach ($f in ($lock.files | Where-Object { $_.kind -eq 'license' })) {
+            $path = Join-Path 'LICENSES/ffmpeg' $f.dest
+            if (-not (Test-Path -LiteralPath $path)) { throw "missing license file $path" }
+            if ((Get-Sha256 $path) -ne $f.sha256) { throw "SHA-256 mismatch for $path (does not match ffmpeg.lock.json)" }
+          }
+          Write-Host 'ffmpeg license files match the lock'
+
+      - name: Generate third-party notices
+        run: node scripts/gen-notices.mjs
+
+      # `npx tauri build` runs `npm run build:web` first (beforeBuildCommand). The bundle config
+      # adds the resources (ffmpeg, licenses); it is kept out of tauri.conf.json so that dev
+      # builds and cargo test work without the downloaded files.
+      - name: Build NSIS installer
+        env:
+          HLS_SITE_URL: ${{ vars.HLS_SITE_URL }}
+        run: npx tauri build --bundles nsis --config src-tauri/tauri.bundle.conf.json
+
+      - name: Write SHA256SUMS.txt
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installers = @(Get-ChildItem -LiteralPath $env:NSIS_DIR -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) {
+            throw "expected exactly one NSIS installer in $env:NSIS_DIR, found $($installers.Count): $($installers.Name -join ', ')"
+          }
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installers[0].FullName).Hash.ToLowerInvariant()
+          # sha256sum format ("<hash>  <file>"), no BOM.
+          [System.IO.File]::WriteAllText(
+            (Join-Path (Resolve-Path $env:NSIS_DIR) 'SHA256SUMS.txt'),
+            "$hash  $($installers[0].Name)`n")
+
+      # Silent install into a temp dir, check the installed files, run the bundled ffmpeg, then
+      # silent uninstall. NSIS needs /D= as the LAST argument, unquoted. On Windows Tauri installs
+      # resources next to the executable (resource_dir() is the executable folder), so the layout is
+      # <dir>\bin\ffmpeg.exe and <dir>\LICENSES\THIRD-PARTY-NOTICES.txt.
+      - name: Smoke test (install, run ffmpeg, uninstall)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+
+          function Assert-File([string]$Path) {
+            if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+              Write-Host 'Install folder content:'
+              Get-ChildItem -Recurse -LiteralPath $dir | ForEach-Object { Write-Host $_.FullName }
+              throw "missing file after install: $Path"
+            }
+            Write-Host "ok: $Path"
+          }
+
+          $installers = @(Get-ChildItem -LiteralPath $env:NSIS_DIR -Filter '*.exe' -File)
+          if ($installers.Count -ne 1) {
+            throw "expected exactly one NSIS installer in $env:NSIS_DIR, found $($installers.Count)"
+          }
+          $installer = $installers[0].FullName
+          $lock = Get-Content -Raw -LiteralPath 'ffmpeg.lock.json' | ConvertFrom-Json
+
+          $dir = Join-Path $env:RUNNER_TEMP 'hls-r2-studio-smoke'
+          if (Test-Path -LiteralPath $dir) { Remove-Item -Recurse -Force -LiteralPath $dir }
+
+          Write-Host "Installing $installer into $dir"
+          $p = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$dir" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exited with code $($p.ExitCode)" }
+
+          Assert-File (Join-Path $dir 'hls-r2-studio.exe')
+          Assert-File (Join-Path $dir 'uninstall.exe')
+          Assert-File (Join-Path $dir 'bin/ffmpeg.exe')
+          Assert-File (Join-Path $dir 'bin/ffprobe.exe')
+          Assert-File (Join-Path $dir 'LICENSES/THIRD-PARTY-NOTICES.txt')
+          Assert-File (Join-Path $dir 'LICENSES/ffmpeg/LICENSE-GPL-3.0.txt')
+          Assert-File (Join-Path $dir 'LICENSES/ffmpeg/README-gyan-build.txt')
+
+          # The installed binaries are the pinned ones.
+          foreach ($f in ($lock.files | Where-Object { $_.kind -eq 'binary' })) {
+            $installed = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $dir "bin/$($f.dest)")).Hash.ToLowerInvariant()
+            if ($installed -ne $f.sha256) { throw "installed $($f.dest) does not match the pinned SHA-256" }
+          }
+
+          foreach ($tool in 'ffmpeg.exe', 'ffprobe.exe') {
+            $lines = @(& (Join-Path $dir "bin/$tool") -version)
+            if ($LASTEXITCODE -ne 0) { throw "$tool -version exited with code $LASTEXITCODE" }
+            if (-not ($lines[0] -match '^(ffmpeg|ffprobe) version')) { throw "unexpected $tool -version output: $($lines[0])" }
+            Write-Host $lines[0]
+          }
+
+          # `_?=` keeps the uninstaller running in place (it does not copy itself to %TEMP% and
+          # return at once), so -Wait really waits. It must be the last argument, unquoted.
+          Write-Host 'Uninstalling'
+          $u = Start-Process -FilePath (Join-Path $dir 'uninstall.exe') -ArgumentList '/S', "_?=$dir" -Wait -PassThru
+          if ($u.ExitCode -ne 0) { throw "uninstaller exited with code $($u.ExitCode)" }
+
+          foreach ($rel in 'hls-r2-studio.exe', 'bin/ffmpeg.exe', 'bin/ffprobe.exe', 'LICENSES/THIRD-PARTY-NOTICES.txt') {
+            if (Test-Path -LiteralPath (Join-Path $dir $rel)) { throw "file still present after uninstall: $rel" }
+          }
+          Write-Host 'Uninstall removed the application files'
+
+          # Only the uninstaller itself may remain (it cannot delete itself while `_?=` is used).
+          if (Test-Path -LiteralPath $dir) { Remove-Item -Recurse -Force -LiteralPath $dir }
+
+      - name: Job summary
+        shell: pwsh
+        env:
+          HLS_SITE_URL: ${{ vars.HLS_SITE_URL }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $installer = @(Get-ChildItem -LiteralPath $env:NSIS_DIR -Filter '*.exe' -File)[0]
+          $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $installer.FullName).Hash.ToLowerInvariant()
+          $mb = [math]::Round($installer.Length / 1MB, 1)
+          @(
+            '## Windows installer (unsigned)',
+            '',
+            '| | |',
+            '| --- | --- |',
+            "| Installer | ``$($installer.Name)`` |",
+            "| Size | $mb MB ($($installer.Length) bytes) |",
+            "| SHA-256 | ``$hash`` |",
+            "| Site URL baked in | ``$env:HLS_SITE_URL`` |",
+            "| Commit | ``$env:GITHUB_SHA`` |"
+          ) | Add-Content -Encoding utf8 -Path $env:GITHUB_STEP_SUMMARY
+
+      - name: Upload installer
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: hls-r2-studio-rs-windows-${{ github.sha }}
+          path: |
+            desktop-app-rs/src-tauri/target/release/bundle/nsis/*.exe
+            desktop-app-rs/src-tauri/target/release/bundle/nsis/SHA256SUMS.txt
+          retention-days: 14
+          if-no-files-found: error

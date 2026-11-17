@@ -69,7 +69,7 @@ never logged and never part of a DTO.
 
 `ffmpeg::resolve_binaries` (same rules as the Electron app's `binaries.ts`; it takes the resource directory explicitly, so it needs no Tauri runtime):
 
-- Packaged build (`!cfg!(debug_assertions)`): `<resource_dir>/bin/ffmpeg(.exe)` and `ffprobe(.exe)`, absolute paths; PATH and the env variables are never used. The bundling itself (`bundle.resources`, e.g. `{ "resources/bin/*": "bin/" }`) and `fetch-ffmpeg` belong to a later milestone; until then a packaged build reports ffmpeg as missing.
+- Packaged build (`!cfg!(debug_assertions)`): `<resource_dir>/bin/ffmpeg(.exe)` and `ffprobe(.exe)`, absolute paths; PATH and the env variables are never used. The installer bundles the pinned ffmpeg build there (see "Windows installer (M8-lite)"); a build made without the bundle config reports ffmpeg as missing.
 - Development: `FFMPEG_PATH` / `FFPROBE_PATH` (blank counts as unset), otherwise the bare names `ffmpeg` / `ffprobe` (`.exe` on Windows), resolved through PATH.
 
 The self check (`ffmpeg -version`, `-encoders`, `-filters`, `-muxers`; required: libx264, aac, hls, scale, thumbnail, signalstats, edgedetect, hstack, tile, crop, fps, movie) runs in the background at startup. `diagnostics_get` returns `ffmpeg: { checked: false, ... }` until it has finished; missing binaries never stop the app (`ok: false`, `missing: ["ffmpeg:version", ...]`).
@@ -110,7 +110,30 @@ Failures are `PipelineError`s (kinds `failed`, `cancelled`, `register_failed`, `
 - clipboard: `arboard` from Rust (text only), not the Tauri clipboard plugin.
 - `rfd` (Windows/macOS only): the startup error box, before the app handle exists.
 
-Notices: `app_open_notices` opens `<resources>/LICENSES/THIRD-PARTY-NOTICES.txt` (packaged) or `<desktop-app-rs>/LICENSES/...` (dev); bundling that file is part of the packaging milestone, until then the command returns "Notices file not found.".
+Notices: `app_open_notices` opens `<resources>/LICENSES/THIRD-PARTY-NOTICES.txt` (packaged) or `<desktop-app-rs>/LICENSES/...` (dev); `scripts/gen-notices.mjs` generates it and the installer bundles it there (see "Windows installer (M8-lite)"); a build made without the bundle config returns "Notices file not found.".
+
+## Windows installer (M8-lite)
+
+Workflow `.github/workflows/desktop-app-rs-build.yml` builds an unsigned NSIS installer on `windows-latest`.
+
+**Run it:** GitHub > Actions > "Desktop app Rust (Windows installer)" > Run workflow. Prerequisite: the repository variable `HLS_SITE_URL` (Settings > Secrets and variables > Actions > Variables; a plain variable, not a secret) must be set to the https URL of the site, for example `https://admin.example.com`; the run fails early otherwise. The URL is baked into the app at build time.
+
+**Steps:** check `HLS_SITE_URL` -> `npm ci` -> Rust toolchain + cache -> fetch the pinned ffmpeg (`ffmpeg.lock.json`, SHA-256 verified, only `ffmpeg.exe` / `ffprobe.exe` extracted into `src-tauri/resources/bin/`, git-ignored) -> `node scripts/gen-notices.mjs` (`LICENSES/THIRD-PARTY-NOTICES.txt`, git-ignored) -> `tauri build --bundles nsis --config src-tauri/tauri.bundle.conf.json` -> smoke test (silent install into a temp folder, check the files, run `ffmpeg.exe -version` and `ffprobe.exe -version` from the installed location, silent uninstall) -> upload.
+
+**Artifact** `hls-r2-studio-rs-windows-<commit sha>` (kept 14 days): `HLS R2 Studio_<version>_x64-setup.exe` and `SHA256SUMS.txt`. The job summary shows the installer name, size, SHA-256 and the site URL baked in. Check the download with `Get-FileHash -Algorithm SHA256 "<installer>"` against `SHA256SUMS.txt`.
+
+**Install:** run the `.exe`. It is a wizard (welcome, install folder you can change, Start Menu folder, install, finish). Default folder `%LOCALAPPDATA%\HLS R2 Studio`, per user, no administrator prompt. A Start Menu shortcut is created; uninstall from "Installed apps" or `uninstall.exe` in the install folder. Installed layout (on Windows Tauri's resource directory is the folder of the executable): `hls-r2-studio.exe`, `bin\ffmpeg.exe`, `bin\ffprobe.exe`, `LICENSES\THIRD-PARTY-NOTICES.txt`, `LICENSES\ffmpeg\*`, `uninstall.exe`.
+
+**Resources are in a separate config.** `bundle.resources` lives in `src-tauri/tauri.bundle.conf.json`, merged only by the workflow (`--config`). If it were in `tauri.conf.json`, every `cargo check` / `cargo test` / `tauri dev` would fail when the downloaded files are missing (`glob pattern ... didn't match any files`). A plain `npm run build` therefore makes an installer WITHOUT ffmpeg and licenses; use the workflow (or fetch the files and pass the same `--config`).
+
+**ffmpeg license (GPL v3):** the gyan.dev build is GPL. The installer ships the GPL text and the build README under `LICENSES\ffmpeg\` (copies in the repo, checked against the hashes in `ffmpeg.lock.json` in CI), and `THIRD-PARTY-NOTICES.txt` carries the source offer. ffmpeg runs as a separate process. To change the ffmpeg version, update `ffmpeg.lock.json` (URL, SHA-256 of the archive and of each file, from the publisher) and the files in `LICENSES/ffmpeg/` together.
+
+**Known limits of this first build**
+- Unsigned: Windows SmartScreen shows "Windows protected your PC"; choose "More info" > "Run anyway".
+- WebView2: the installer uses `downloadBootstrapper` (default; needs internet only if the runtime is missing; Windows 11 and updated Windows 10 already have it).
+- The UI is still the React renderer copied from the Electron app (the Dioxus UI comes later).
+- No cloud video library yet; no auto-update.
+- Not verified on a real Windows machine from the development Mac: only the workflow run proves the installer, the install layout and the smoke test.
 
 ## Milestones
 
@@ -121,3 +144,4 @@ Notices: `app_open_notices` opens `<resources>/LICENSES/THIRD-PARTY-NOTICES.txt`
 - [x] M4a: pipeline utilities (slug, public id, prefix, progress model, pool, planners), `register()` on the site client, and the non-upload steps (probe, transcode, thumbnail, storyboard, cleanup, image size) over traits with fakes.
 - [x] M5: R2 client (SigV4 over reqwest), upload step, resumable upload, `run_pipeline` / `retry_register` / `resume_upload`, safe temp-dir lifecycle.
 - [x] M6: job queue (concurrency, retry, resume, job store wiring), all 22 IPC commands real, push events, quit / startup-failure / single-instance lifecycle, file dialogs.
+- [x] M8-lite: NSIS installer through GitHub Actions (ffmpeg and license files bundled, smoke test); first run on CI pending.

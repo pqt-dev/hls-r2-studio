@@ -1,0 +1,11 @@
+{
+    "bundle": {
+        "resources": {
+            "resources/bin/ffmpeg.exe": "bin/ffmpeg.exe",
+            "resources/bin/ffprobe.exe": "bin/ffprobe.exe",
+            "../LICENSES/THIRD-PARTY-NOTICES.txt": "LICENSES/THIRD-PARTY-NOTICES.txt",
+            "../LICENSES/ffmpeg/LICENSE-GPL-3.0.txt": "LICENSES/ffmpeg/LICENSE-GPL-3.0.txt",
+            "../LICENSES/ffmpeg/README-gyan-build.txt": "LICENSES/ffmpeg/README-gyan-build.txt"
+        }
+    }
+}
