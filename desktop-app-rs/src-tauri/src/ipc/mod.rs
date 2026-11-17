@@ -102,6 +102,8 @@ register_commands!(
     jobs_copy,
     videos_list,
     videos_get,
+    videos_copy_link,
+    videos_open_embed,
 );
 
 #[cfg(test)]
@@ -136,6 +138,8 @@ mod tests {
         "jobs:copy",
         "videos:list",
         "videos:get",
+        "videos:copy-link",
+        "videos:open-embed",
     ];
 
     fn command_of(channel: &str) -> String {

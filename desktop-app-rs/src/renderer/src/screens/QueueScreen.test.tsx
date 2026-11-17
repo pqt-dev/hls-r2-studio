@@ -54,7 +54,7 @@ const CASES: ReadonlyArray<{
     {
         state: 'done',
         stage: 'Done',
-        buttons: ['Copy embed URL', 'Copy shortcode', 'Open on site', 'Remove'],
+        buttons: ['Copy embed URL', 'Copy shortcode', 'Open on site', 'View in Library', 'Remove'],
         job: { canRemove: true, progress: 100, embedUrl: EMBED, publicId: 'abc123' },
     },
     {
@@ -115,6 +115,7 @@ const ALL_ACTIONS = [
     'Copy embed URL',
     'Copy shortcode',
     'Open on site',
+    'View in Library',
     'View details',
 ];
 
@@ -771,5 +772,53 @@ describe('Queue screen', () => {
             fireEvent.mouseDown(screen.getByRole('alertdialog').parentElement as HTMLElement);
             expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
         });
+    });
+});
+
+describe('Queue "View in Library"', () => {
+    it('is offered for done jobs only', async () => {
+        await renderApp({
+            jobs: [
+                makeJob({ id: 'a', state: 'done', canRemove: true }),
+                makeJob({ id: 'b', state: 'uploading', canCancel: true }),
+                makeJob({ id: 'c', state: 'failed', canRetry: true }),
+            ],
+        });
+
+        expect(screen.getAllByRole('button', { name: /^View in Library/ })).toHaveLength(1);
+    });
+
+    it('opens the video detail page when the cloud id is known', async () => {
+        const { fake, user } = await renderApp({
+            jobs: [makeJob({ id: 'a', fileName: 'clip.mp4', state: 'done', videoId: 42 })],
+        });
+        const get = vi.spyOn(fake.api.videos, 'get');
+
+        await user.click(screen.getByRole('button', { name: 'View in Library: clip.mp4' }));
+
+        const tab = screen.getByRole('tab', { name: 'Library' });
+
+        expect(tab).toHaveAttribute('aria-selected', 'true');
+        expect(tab).toHaveAttribute('tabindex', '0');
+        expect(screen.getByRole('tab', { name: 'Queue' })).toHaveAttribute('tabindex', '-1');
+        await waitFor(() => expect(get).toHaveBeenCalledWith(42));
+    });
+
+    it('shows the reloaded list when the cloud id is unknown', async () => {
+        const { fake, user } = await renderApp({
+            jobs: [makeJob({ id: 'a', fileName: 'clip.mp4', state: 'done' })],
+        });
+        const list = vi.spyOn(fake.api.videos, 'list');
+        const get = vi.spyOn(fake.api.videos, 'get');
+
+        await user.click(screen.getByRole('button', { name: 'View in Library: clip.mp4' }));
+
+        expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+        expect(screen.getByRole('tab', { name: 'Library' })).toHaveFocus();
+        await waitFor(() => expect(list).toHaveBeenCalledWith({ page: 1, perPage: 24 }));
+        expect(get).not.toHaveBeenCalled();
     });
 });

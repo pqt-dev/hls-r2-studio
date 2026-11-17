@@ -27,6 +27,8 @@ export const IpcChannels = {
     jobsCopy: 'jobs:copy',
     videosList: 'videos:list',
     videosGet: 'videos:get',
+    videosCopyLink: 'videos:copy-link',
+    videosOpenEmbed: 'videos:open-embed',
 } as const;
 
 /** Main -> renderer push events. */
@@ -115,6 +117,8 @@ export interface JobDto {
     errorDetail: JobErrorDetail | null;
     publicId: string | null;
     embedUrl: string | null;
+    /** Numeric id of the video on the site; set only once the job is registered. */
+    videoId?: number;
     createdAt: string;
     updatedAt: string;
     startedAt: string | null;
@@ -250,6 +254,9 @@ export type VideosListResult =
 
 export type VideosGetResult = { ok: true; video: VideoDetail } | { ok: false; error: string };
 
+/** Which URL of a video the main process copies (it fetches the video itself). */
+export type VideoLinkKind = 'embed-url' | 'playlist-url';
+
 // ---- preload API --------------------------------------------------------------------------
 
 /** Function that removes a subscription. */
@@ -304,6 +311,10 @@ export interface JobsApi {
 export interface VideosApi {
     list(params?: VideoListParams): Promise<VideosListResult>;
     get(id: number): Promise<VideosGetResult>;
+    /** Main fetches the video and copies the URL; the renderer never passes clipboard text. */
+    copyLink(id: number, kind: VideoLinkKind): Promise<ActionResult>;
+    /** Main fetches the video and opens its embed page when it is https on the signed-in site. */
+    openEmbed(id: number): Promise<ActionResult>;
 }
 
 export interface RendererApi {

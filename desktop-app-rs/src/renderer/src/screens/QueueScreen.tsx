@@ -8,6 +8,7 @@ import { QueueBanners } from '../components/QueueBanners';
 import { plural } from '../lib/format';
 import { isRunning } from '../lib/jobState';
 import { finishedCount, useApp } from '../state/AppProvider';
+import { useNavigation } from '../state/Navigation';
 import { useToast } from '../state/Toasts';
 
 type Confirm =
@@ -20,6 +21,7 @@ type Confirm =
 export function QueueScreen() {
     const { api, jobs, summary } = useApp();
     const toast = useToast();
+    const { openLibraryVideo } = useNavigation();
     const now = useNow();
     const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
     const [confirm, setConfirm] = useState<Confirm>(null);
@@ -89,6 +91,9 @@ export function QueueScreen() {
                 break;
             case 'open':
                 void run(job.id, () => api.jobs.openEmbed(job.id));
+                break;
+            case 'view-library':
+                openLibraryVideo(job.videoId);
                 break;
             case 'details':
                 setDetailsId(job.id);

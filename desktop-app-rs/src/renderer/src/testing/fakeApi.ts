@@ -11,6 +11,7 @@ import type {
     QueueSummary,
     RendererApi,
     SettingsDto,
+    VideoDetail,
     VideoListItem,
 } from '../../../shared/ipc';
 
@@ -55,6 +56,36 @@ export function makeVideo(partial: Partial<VideoListItem> = {}): VideoListItem {
         hasCustomImage: false,
         embedUrl: 'https://site.example.com/embed/abcdefghijkl',
         createdAt: '2026-01-01T10:00:00.000Z',
+        ...partial,
+    };
+}
+
+export function makeVideoDetail(partial: Partial<VideoDetail> = {}): VideoDetail {
+    return {
+        id: 1,
+        publicId: 'abcdefghijkl',
+        title: 'Holiday video',
+        originalFilename: 'holiday.mp4',
+        originalSizeBytes: 150 * 1024 * 1024,
+        status: 'ready',
+        stage: null,
+        progress: null,
+        error: null,
+        duration: 75,
+        outputWidth: 1920,
+        outputHeight: 1080,
+        outputFps: 29.97,
+        outputBitrateKbps: 4500,
+        outputCodec: 'h264',
+        embedUrl: 'https://site.example.com/embed/abcdefghijkl',
+        playlistUrl: 'https://cdn.example.com/videos/abcdefghijkl/master.m3u8',
+        thumbnailUrl: 'https://cdn.example.com/videos/abcdefghijkl/thumb.jpg',
+        hasCustomImage: false,
+        customImageUrl: null,
+        storyboards: {},
+        embedStoryboard: null,
+        createdAt: '2026-01-01T10:00:00.000Z',
+        updatedAt: '2026-01-02T10:00:00.000Z',
         ...partial,
     };
 }
@@ -209,6 +240,8 @@ export function createFakeApi(initial: Partial<FakeState> = {}): FakeApi {
                     meta: { page: 1, perPage: 24, total: 0, lastPage: 1 },
                 }),
             get: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
+            copyLink: () => Promise.resolve(OK),
+            openEmbed: () => Promise.resolve(OK),
         },
     };
 

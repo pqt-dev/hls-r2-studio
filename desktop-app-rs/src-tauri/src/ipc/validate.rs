@@ -8,7 +8,7 @@ use std::fmt;
 
 use serde_json::{Map, Value};
 
-use crate::dto::CopyKind;
+use crate::dto::{CopyKind, VideoLinkKind};
 use crate::secure::Secret;
 use crate::settings::SettingsPatch;
 
@@ -245,6 +245,7 @@ pub const DEFAULT_VIDEOS_PER_PAGE: u32 = 24;
 pub const MAX_VIDEOS_PER_PAGE: u32 = 50;
 pub const MAX_VIDEOS_QUERY_LENGTH: usize = 100;
 /// Largest integer a JS number holds exactly (the server id is a PHP integer).
+const VIDEO_LINK_KINDS: &[&str] = &["embed-url", "playlist-url"];
 const MAX_VIDEO_ID: i64 = 9_007_199_254_740_991;
 
 /// Validated `videos:list` input.
@@ -293,6 +294,18 @@ pub fn parse_videos_list(payload: Option<Value>) -> Result<VideosListInput> {
         per_page,
         query,
     })
+}
+
+/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url`.
+pub fn parse_video_link(payload: Option<Value>) -> Result<(i64, VideoLinkKind)> {
+    let object = expect_single_object(payload, "video link", &["id", "kind"])?;
+    let id = expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)?;
+    let kind = match expect_one_of(object.get("kind"), "kind", VIDEO_LINK_KINDS)? {
+        "embed-url" => VideoLinkKind::EmbedUrl,
+        _ => VideoLinkKind::PlaylistUrl,
+    };
+
+    Ok((id, kind))
 }
 
 /// `videos:get`: `{ id }` with a positive integer.
@@ -612,6 +625,33 @@ mod tests {
             Some(json!({ "id": 1, "x": 1 })),
         ] {
             assert!(parse_video_id(bad.clone()).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn video_link_validates_id_and_kind() {
+        assert_eq!(
+            parse_video_link(Some(json!({ "id": 5, "kind": "embed-url" }))).unwrap(),
+            (5, VideoLinkKind::EmbedUrl)
+        );
+        assert_eq!(
+            parse_video_link(Some(json!({ "id": 5, "kind": "playlist-url" }))).unwrap(),
+            (5, VideoLinkKind::PlaylistUrl)
+        );
+
+        for bad in [
+            None,
+            Some(json!({ "id": 5 })),
+            Some(json!({ "kind": "embed-url" })),
+            Some(json!({ "id": 0, "kind": "embed-url" })),
+            Some(json!({ "id": -2, "kind": "embed-url" })),
+            Some(json!({ "id": "5", "kind": "embed-url" })),
+            Some(json!({ "id": 5, "kind": "shortcode" })),
+            Some(json!({ "id": 5, "kind": 1 })),
+            Some(json!({ "id": 5, "kind": "embed-url", "url": "https://evil.example" })),
+            Some(json!({ "id": 5, "kind": "embed-url", "text": "x" })),
+        ] {
+            assert!(parse_video_link(bad.clone()).is_err(), "{bad:?}");
         }
     }
 }

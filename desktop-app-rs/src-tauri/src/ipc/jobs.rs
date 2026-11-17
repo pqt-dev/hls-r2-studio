@@ -169,7 +169,7 @@ pub fn copy(
 }
 
 /// The built-in site origin; the only host embed links may open (`auth.getSiteUrl()`).
-fn site_url(state: &AppState) -> Option<String> {
+pub(super) fn site_url(state: &AppState) -> Option<String> {
     Some(state.auth.get_site_url()).filter(|url| !url.is_empty())
 }
 
@@ -358,7 +358,7 @@ pub fn jobs_copy<R: Runtime>(
 }
 
 #[cfg(test)]
-mod tests {
+pub(super) mod tests {
     use std::sync::Mutex;
 
     use serde_json::json;
@@ -371,12 +371,13 @@ mod tests {
     const EMBED: &str = "https://site.example.com/embed/abc123";
     const SITE: Option<&str> = Some("https://site.example.com");
 
+    /// Shared with the videos tests (`ipc/videos.rs`).
     #[derive(Default)]
-    struct FakeDesktop {
-        picked: Option<Vec<String>>,
-        clipboard: Mutex<Vec<String>>,
-        opened: Mutex<Vec<String>>,
-        clipboard_fails: bool,
+    pub(in crate::ipc) struct FakeDesktop {
+        pub(in crate::ipc) picked: Option<Vec<String>>,
+        pub(in crate::ipc) clipboard: Mutex<Vec<String>>,
+        pub(in crate::ipc) opened: Mutex<Vec<String>>,
+        pub(in crate::ipc) clipboard_fails: bool,
     }
 
     #[async_trait]

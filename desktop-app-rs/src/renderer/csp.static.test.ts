@@ -55,7 +55,10 @@ describe('renderer sources respect the strict CSP', () => {
 
             expect(text, file).not.toMatch(/https?:\/\/[A-Za-z0-9]/);
             expect(text, file).not.toMatch(/@import|url\(/);
-            expect(text, file).not.toMatch(/<(link|iframe)[^>]+(src|href)=/i);
+            expect(text, file).not.toMatch(/<link[^>]+(src|href)=/i);
+            // An <iframe> may only load a URL held in a variable (the site embed page, checked
+            // against the signed-in site host), never a literal.
+            expect(text, file).not.toMatch(/<iframe[^>]+src=["']/i);
             // An <img> may only load a URL held in a variable (CDN thumbnails), never a literal.
             expect(text, file).not.toMatch(/<img[^>]+src=["']/i);
         }
@@ -76,5 +79,24 @@ describe('renderer sources respect the strict CSP', () => {
             expect(csp).toContain("img-src 'self' data: https:;");
             expect(csp.replace("img-src 'self' data: https:", '')).not.toContain('https:');
         }
+    });
+
+    it('frames nothing in the static Tauri CSP (the site origin is added at startup)', () => {
+        const conf = JSON.parse(
+            readFileSync(resolve(ROOT, '../../src-tauri/tauri.conf.json'), 'utf8'),
+        ) as { app: { security: { csp: string; devCsp: string } } };
+
+        for (const csp of [conf.app.security.csp, conf.app.security.devCsp]) {
+            expect(csp.match(/frame-src [^;]*/g)).toEqual(["frame-src 'none'"]);
+            expect(csp).not.toContain('*');
+        }
+    });
+
+    it('only frames an https URL held in a variable, and only after the user asks', () => {
+        const source = readFileSync(resolve(ROOT, 'src/screens/VideoDetailPage.tsx'), 'utf8');
+
+        expect(source).toContain('src={video.embedUrl}');
+        expect(source).toContain('sandbox="allow-scripts allow-same-origin allow-presentation"');
+        expect(source).toContain('referrerPolicy="no-referrer"');
     });
 });

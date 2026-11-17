@@ -212,6 +212,9 @@ pub struct JobDto {
     pub error_detail: Option<JobErrorDetail>,
     pub public_id: Option<String>,
     pub embed_url: Option<String>,
+    /// Numeric id of the video on the site (`registered.id`); set only for a registered job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video_id: Option<i64>,
     pub created_at: String,
     pub updated_at: String,
     pub started_at: Option<String>,
@@ -266,6 +269,14 @@ pub struct IdPayload {
 pub enum CopyKind {
     EmbedUrl,
     Shortcode,
+}
+
+/// What `videos:copy-link` copies: a URL taken from the video detail fetched by Rust.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum VideoLinkKind {
+    EmbedUrl,
+    PlaylistUrl,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -410,6 +421,7 @@ mod tests {
             }),
             public_id: None,
             embed_url: None,
+            video_id: None,
             created_at: "t".into(),
             updated_at: "t".into(),
             started_at: None,

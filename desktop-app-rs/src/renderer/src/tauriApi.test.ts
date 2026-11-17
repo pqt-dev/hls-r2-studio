@@ -53,6 +53,8 @@ describe('createTauriApi', () => {
         await api.videos.list();
         await api.videos.list({ page: 2, q: 'a' });
         await api.videos.get(7);
+        await api.videos.copyLink(7, 'playlist-url');
+        await api.videos.openEmbed(7);
 
         expect(calls).toEqual([
             ['app_get_version', undefined],
@@ -65,6 +67,8 @@ describe('createTauriApi', () => {
             ['videos_list', { payload: {} }],
             ['videos_list', { payload: { page: 2, q: 'a' } }],
             ['videos_get', { payload: { id: 7 } }],
+            ['videos_copy_link', { payload: { id: 7, kind: 'playlist-url' } }],
+            ['videos_open_embed', { payload: { id: 7 } }],
         ]);
     });
 

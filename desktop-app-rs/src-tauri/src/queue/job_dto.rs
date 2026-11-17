@@ -40,6 +40,15 @@ pub fn registered_field<'a>(job: &'a JobRecord, field: &str) -> Option<&'a str> 
     job.registered.as_ref()?.get(field)?.as_str()
 }
 
+/// `registered.id` (the site's numeric video id) of a done job, when it is a positive integer.
+fn registered_video_id(job: &JobRecord) -> Option<i64> {
+    job.registered
+        .as_ref()?
+        .get("id")?
+        .as_i64()
+        .filter(|id| *id > 0)
+}
+
 /// Progress shown for jobs that have no live value (e.g. after a restart).
 fn fallback_progress(state: JobState) -> u32 {
     if state == JobState::Done {
@@ -118,6 +127,7 @@ pub fn to_job_dto(job: &JobRecord, runtime: &JobRuntimeInfo, style: PathStyle) -
         error_detail: error_detail_of(job),
         public_id,
         embed_url: registered_field(job, "embed_url").map(str::to_string),
+        video_id: registered_video_id(job),
         created_at: job.created_at.clone(),
         updated_at: job.updated_at.clone(),
         started_at: job.started_at.clone(),
@@ -178,6 +188,13 @@ mod tests {
         assert_eq!(dto.progress, 100.0);
         assert_eq!(dto.public_id.as_deref(), Some("newid"));
         assert_eq!(dto.embed_url.as_deref(), Some("https://s/embed/newid"));
+        assert_eq!(dto.video_id, Some(1));
+
+        // Without a usable id the field is absent (and not serialized).
+        done.registered = Some(json!({ "id": "x", "public_id": "newid" }));
+        let dto = to_job_dto(&done, &JobRuntimeInfo::default(), PathStyle::Posix);
+        assert_eq!(dto.video_id, None);
+        assert!(!serde_json::to_string(&dto).unwrap().contains("videoId"));
 
         let mut attention = job("a", JobState::RegisterFailed);
         attention.register_payload = Some(payload());

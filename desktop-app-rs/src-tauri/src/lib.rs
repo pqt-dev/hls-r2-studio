@@ -7,6 +7,10 @@
 //! `img-src ... https:` lets the Library screen show video thumbnails from the R2 CDN (`<img>`
 //! only; scripts, styles and connections stay local).
 //!
+//! `frame-src 'none'` in the JSON is replaced at startup by `frame-src https://<site host>` (the
+//! built-in `HLS_SITE_URL` origin) so the video detail page can embed the site player; see
+//! `csp.rs`. No other origin may be framed.
+//!
 //! `connect-src ... ipc: http://ipc.localhost` is the Tauri IPC transport: `ipc:` is the custom
 //! protocol used on macOS/Linux and `http://ipc.localhost` is used on Windows/Android. Without it
 //! every `invoke` is blocked. No other network origin is allowed.
@@ -19,6 +23,7 @@
 pub mod api;
 pub mod auth;
 pub mod config;
+pub mod csp;
 pub mod desktop;
 pub mod dto;
 pub mod ffmpeg;
@@ -203,6 +208,11 @@ fn start(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // The CSP header is built from this config at runtime: allow frames of the site origin only.
+    let mut context = tauri::generate_context!();
+
+    csp::allow_site_frames(context.config_mut());
+
     let built = tauri::Builder::default()
         // Registered first: a second launch exits here and only focuses the existing window.
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
@@ -221,7 +231,7 @@ pub fn run() {
                 Err(payload) => fail_startup(Some(app.handle()), &panic_text(&*payload)),
             }
         })
-        .build(tauri::generate_context!());
+        .build(context);
 
     let app = match built {
         Ok(app) => app,
@@ -260,6 +270,7 @@ mod tests {
             "script-src 'self';",
             "style-src 'self';",
             "img-src 'self' data: https:",
+            "frame-src 'none'",
             "connect-src 'self' ipc: http://ipc.localhost;",
             "object-src 'none'",
             "base-uri 'none'",

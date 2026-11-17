@@ -27,6 +27,8 @@
  *   jobs:copy                         jobs_copy                { payload: {id,kind} }
  *   videos:list                       videos_list              { payload: {page?,perPage?,q?} }
  *   videos:get                        videos_get               { payload: {id} }
+ *   videos:copy-link                  videos_copy_link         { payload: {id,kind} }
+ *   videos:open-embed                 videos_open_embed        { payload: {id} }
  *
  *   IpcEvents (Rust -> renderer)      Tauri event name
  *   --------------------------------  ----------------
@@ -178,6 +180,8 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
         videos: {
             list: (params) => send<VideosListResult>(IpcChannels.videosList, params ?? {}),
             get: (id) => send<VideosGetResult>(IpcChannels.videosGet, { id }),
+            copyLink: (id, kind) => send<ActionResult>(IpcChannels.videosCopyLink, { id, kind }),
+            openEmbed: (id) => send<ActionResult>(IpcChannels.videosOpenEmbed, { id }),
         },
     };
 }

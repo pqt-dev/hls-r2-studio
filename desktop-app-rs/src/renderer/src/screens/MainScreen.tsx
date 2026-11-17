@@ -1,7 +1,8 @@
-import { useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { AboutIcon, BrandMark, LibraryIcon, QueueIcon, SettingsIcon } from '../components/icons';
 import { siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
+import { NavigationContext, type NavigationApi } from '../state/Navigation';
 import { AboutScreen } from './AboutScreen';
 import { LibraryScreen } from './LibraryScreen';
 import { QueueScreen } from './QueueScreen';
@@ -19,11 +20,30 @@ const TABS: ReadonlyArray<{ id: Tab; label: string; icon: ReactNode }> = [
 export function MainScreen() {
     const { auth, settings, summary } = useApp();
     const [tab, setTab] = useState<Tab>('queue');
+    // The video the Library should open when it mounts; cleared by any tab change of the user.
+    const [libraryVideoId, setLibraryVideoId] = useState<number | undefined>(undefined);
     const refs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
 
     const host = siteHost(auth.siteUrl ?? settings?.siteUrl);
     const active = summary.running + summary.waiting;
     const current = TABS.find((item) => item.id === tab);
+
+    function selectTab(next: Tab): void {
+        setLibraryVideoId(undefined);
+        setTab(next);
+    }
+
+    const navigation = useMemo<NavigationApi>(
+        () => ({
+            openLibraryVideo: (id) => {
+                setLibraryVideoId(id);
+                setTab('library');
+                // The detail page takes focus itself; otherwise the selected tab does.
+                if (id === undefined) refs.current.library?.focus();
+            },
+        }),
+        [],
+    );
 
     function onKeyDown(event: KeyboardEvent): void {
         const index = TABS.findIndex((item) => item.id === tab);
@@ -42,104 +62,106 @@ export function MainScreen() {
         const target = TABS[next];
 
         if (target !== undefined) {
-            setTab(target.id);
+            selectTab(target.id);
             refs.current[target.id]?.focus();
         }
     }
 
     return (
-        <div className="shell">
-            <div className="sidebar">
-                <div className="sidebar-brand">
-                    <BrandMark />
-                    <p className="wordmark">HLS R2 Studio</p>
-                </div>
+        <NavigationContext.Provider value={navigation}>
+            <div className="shell">
+                <div className="sidebar">
+                    <div className="sidebar-brand">
+                        <BrandMark />
+                        <p className="wordmark">HLS R2 Studio</p>
+                    </div>
 
-                <div
-                    className="nav"
-                    role="tablist"
-                    aria-label="Sections"
-                    aria-orientation="vertical"
-                    onKeyDown={onKeyDown}
-                >
-                    {TABS.map((item) => (
-                        <button
-                            key={item.id}
-                            ref={(node) => {
-                                refs.current[item.id] = node;
-                            }}
-                            id={`tab-${item.id}`}
-                            type="button"
-                            role="tab"
-                            className={item.id === 'about' ? 'tab tab-secondary' : 'tab'}
-                            aria-selected={tab === item.id}
-                            aria-controls={`panel-${item.id}`}
-                            tabIndex={tab === item.id ? 0 : -1}
-                            onClick={() => setTab(item.id)}
-                        >
-                            {item.icon}
-                            <span className="tab-label">{item.label}</span>
-                            {item.id === 'queue' && active > 0 && (
-                                <span className="tab-count num">{active}</span>
+                    <div
+                        className="nav"
+                        role="tablist"
+                        aria-label="Sections"
+                        aria-orientation="vertical"
+                        onKeyDown={onKeyDown}
+                    >
+                        {TABS.map((item) => (
+                            <button
+                                key={item.id}
+                                ref={(node) => {
+                                    refs.current[item.id] = node;
+                                }}
+                                id={`tab-${item.id}`}
+                                type="button"
+                                role="tab"
+                                className={item.id === 'about' ? 'tab tab-secondary' : 'tab'}
+                                aria-selected={tab === item.id}
+                                aria-controls={`panel-${item.id}`}
+                                tabIndex={tab === item.id ? 0 : -1}
+                                onClick={() => selectTab(item.id)}
+                            >
+                                {item.icon}
+                                <span className="tab-label">{item.label}</span>
+                                {item.id === 'queue' && active > 0 && (
+                                    <span className="tab-count num">{active}</span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div
+                        className="sidebar-footer"
+                        role="group"
+                        aria-label="Account"
+                        title={auth.siteUrl}
+                    >
+                        <span className="avatar" aria-hidden="true">
+                            {(auth.username ?? '?').slice(0, 1).toUpperCase()}
+                        </span>
+                        <p className="account">
+                            {auth.username !== undefined && (
+                                <strong className="account-name" title={auth.username}>
+                                    {auth.username}
+                                </strong>
                             )}
-                        </button>
-                    ))}
+                            {host !== '' && (
+                                <span className="account-site" title={host}>
+                                    {host}
+                                </span>
+                            )}
+                        </p>
+                    </div>
                 </div>
 
-                <div
-                    className="sidebar-footer"
-                    role="group"
-                    aria-label="Account"
-                    title={auth.siteUrl}
-                >
-                    <span className="avatar" aria-hidden="true">
-                        {(auth.username ?? '?').slice(0, 1).toUpperCase()}
-                    </span>
-                    <p className="account">
-                        {auth.username !== undefined && (
-                            <strong className="account-name" title={auth.username}>
-                                {auth.username}
-                            </strong>
-                        )}
-                        {host !== '' && (
-                            <span className="account-site" title={host}>
-                                {host}
-                            </span>
-                        )}
-                    </p>
+                <div className="workspace">
+                    <header className="topbar">
+                        <p className="topbar-brand">HLS R2 Studio</p>
+                        <p className="page-title">{current?.label}</p>
+                        <div className="topbar-status">
+                            {active > 0 && (
+                                <span className="chip chip-running num" aria-hidden="true">
+                                    {active} active
+                                </span>
+                            )}
+                            {auth.status === 'offline' && (
+                                <span className="chip chip-attention">Offline</span>
+                            )}
+                        </div>
+                    </header>
+
+                    <main
+                        className="panel"
+                        id={`panel-${tab}`}
+                        role="tabpanel"
+                        aria-labelledby={`tab-${tab}`}
+                    >
+                        <div className="panel-inner">
+                            {tab === 'queue' && <QueueScreen />}
+                            {tab === 'library' && <LibraryScreen initialVideoId={libraryVideoId} />}
+                            {tab === 'settings' && <SettingsScreen />}
+                            {tab === 'about' && <AboutScreen />}
+                        </div>
+                    </main>
                 </div>
             </div>
-
-            <div className="workspace">
-                <header className="topbar">
-                    <p className="topbar-brand">HLS R2 Studio</p>
-                    <p className="page-title">{current?.label}</p>
-                    <div className="topbar-status">
-                        {active > 0 && (
-                            <span className="chip chip-running num" aria-hidden="true">
-                                {active} active
-                            </span>
-                        )}
-                        {auth.status === 'offline' && (
-                            <span className="chip chip-attention">Offline</span>
-                        )}
-                    </div>
-                </header>
-
-                <main
-                    className="panel"
-                    id={`panel-${tab}`}
-                    role="tabpanel"
-                    aria-labelledby={`tab-${tab}`}
-                >
-                    <div className="panel-inner">
-                        {tab === 'queue' && <QueueScreen />}
-                        {tab === 'library' && <LibraryScreen />}
-                        {tab === 'settings' && <SettingsScreen />}
-                        {tab === 'about' && <AboutScreen />}
-                    </div>
-                </main>
-            </div>
-        </div>
+        </NavigationContext.Provider>
     );
 }

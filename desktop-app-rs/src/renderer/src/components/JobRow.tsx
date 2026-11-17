@@ -12,6 +12,7 @@ export type JobAction =
     | 'copy-url'
     | 'copy-shortcode'
     | 'open'
+    | 'view-library'
     | 'details';
 
 /** Re-renders every `intervalMs` so relative times stay fresh. */
@@ -175,6 +176,7 @@ export function JobRow({
                         {button('open', 'Open on site')}
                     </>
                 )}
+                {job.state === 'done' && button('view-library', 'View in Library')}
                 {hasDetailsView(job.state) && button('details', 'View details')}
                 {button('remove', 'Remove', job.canRemove, true)}
             </div>

@@ -3,17 +3,26 @@
 //! site's body, URL and token never reach the renderer.
 
 use serde::Serialize;
-use serde_json::Value;
-use tauri::State;
+use serde_json::{json, Value};
+use tauri::{Runtime, State, WebviewWindow};
 
 use super::auth::rejected;
-use super::validate::{parse_video_id, parse_videos_list, VideosListInput};
+use super::jobs::{
+    site_url, JobsDesktop, TauriJobsDesktop, CLIPBOARD_FAILED, FOREIGN_EMBED_URL, NO_EMBED_URL,
+    OPEN_FAILED,
+};
+use super::validate::{parse_video_id, parse_video_link, parse_videos_list, VideosListInput};
 use super::IpcError;
 use crate::api::videos::{
     build_public_url, VideoDetail, VideoListItem, VideoListMeta, VideoStatus,
 };
 use crate::api::{SiteApiError, SiteClient};
+use crate::desktop::{is_embed_url_of_site, open_external_https, safe_https_url};
+use crate::dto::{ActionResult, VideoLinkKind};
+use crate::logger::Log;
 use crate::state::AppState;
+
+pub const NO_PLAYLIST_URL: &str = "This video has no playlist URL yet.";
 
 /// One list row for the renderer: URLs built here from the R2 public base URL. The storage
 /// paths (`diskPrefix`, `playlistPath`, `*Path`) and the R2 base never leave Rust.
@@ -157,11 +166,257 @@ pub async fn videos_get(
     Ok(get_video(&state.site_client, id).await)
 }
 
+/// Copies the embed or playlist URL of a video detail that Rust fetched itself; the renderer
+/// never supplies clipboard text. Only a plain https URL is copied.
+pub(crate) fn copy_video_link(
+    video: &VideoDetail,
+    kind: VideoLinkKind,
+    desktop: &dyn JobsDesktop,
+    logger: &dyn Log,
+) -> ActionResult {
+    let (url, missing) = match kind {
+        VideoLinkKind::EmbedUrl => (video.embed_url.as_deref(), NO_EMBED_URL),
+        VideoLinkKind::PlaylistUrl => (video.playlist_url.as_deref(), NO_PLAYLIST_URL),
+    };
+    let Some(url) = url else {
+        return ActionResult::err(missing);
+    };
+
+    if safe_https_url(url).is_none() {
+        return ActionResult::err(missing);
+    }
+
+    match desktop.write_clipboard(url) {
+        Ok(()) => ActionResult::Ok,
+        Err(error) => {
+            logger.warn(
+                "Could not write the clipboard",
+                Some(json!({ "error": error })),
+            );
+            ActionResult::err(CLIPBOARD_FAILED)
+        }
+    }
+}
+
+/// Opens the embed page of a video detail, only when it is https on the signed-in site.
+pub(crate) fn open_video_embed(
+    video: &VideoDetail,
+    desktop: &dyn JobsDesktop,
+    site_url: Option<&str>,
+    logger: &dyn Log,
+) -> ActionResult {
+    let Some(embed_url) = video.embed_url.as_deref() else {
+        return ActionResult::err(NO_EMBED_URL);
+    };
+
+    if !is_embed_url_of_site(embed_url, site_url) {
+        return ActionResult::err(FOREIGN_EMBED_URL);
+    }
+
+    match open_external_https(embed_url, |url| desktop.open_external(url)) {
+        Ok(true) => ActionResult::Ok,
+        Ok(false) => ActionResult::err(OPEN_FAILED),
+        Err(error) => {
+            logger.warn(
+                "Could not open the embed URL",
+                Some(json!({ "error": error })),
+            );
+            ActionResult::err(OPEN_FAILED)
+        }
+    }
+}
+
+/// The OS calls (clipboard, browser) run off the async workers, after the network call.
+#[tauri::command]
+pub async fn videos_copy_link<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, AppState>,
+    payload: Option<Value>,
+) -> Result<ActionResult, IpcError> {
+    let (id, kind) =
+        parse_video_link(payload).map_err(|e| rejected(&state, "videos:copy-link", e))?;
+    let video = match state.site_client.get_video(id).await {
+        Ok(video) => video,
+        Err(error) => return Ok(ActionResult::err(error.message)),
+    };
+    let logger = state.logger.clone();
+
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        copy_video_link(&video, kind, &TauriJobsDesktop { window }, &*logger)
+    })
+    .await
+    .unwrap_or_else(|_| ActionResult::err(CLIPBOARD_FAILED)))
+}
+
+#[tauri::command]
+pub async fn videos_open_embed<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, AppState>,
+    payload: Option<Value>,
+) -> Result<ActionResult, IpcError> {
+    let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:open-embed", e))?;
+    let video = match state.site_client.get_video(id).await {
+        Ok(video) => video,
+        Err(error) => return Ok(ActionResult::err(error.message)),
+    };
+    let logger = state.logger.clone();
+    let site = site_url(&state);
+
+    Ok(tauri::async_runtime::spawn_blocking(move || {
+        open_video_embed(
+            &video,
+            &TauriJobsDesktop { window },
+            site.as_deref(),
+            &*logger,
+        )
+    })
+    .await
+    .unwrap_or_else(|_| ActionResult::err(OPEN_FAILED)))
+}
+
 #[cfg(test)]
 mod tests {
     use serde_json::json;
 
+    use super::super::jobs::tests::FakeDesktop;
     use super::*;
+    use crate::logger::testing::RecordingLogger;
+
+    const SITE: Option<&str> = Some("https://site.example.com");
+
+    fn detail(embed: Option<&str>, playlist: Option<&str>) -> VideoDetail {
+        let mut video: VideoDetail = serde_json::from_value(json!({
+            "id": 7,
+            "public_id": "abcdefghijkl",
+            "title": "T",
+            "status": "ready",
+            "embed_url": embed,
+            "playlist_url": playlist,
+        }))
+        .unwrap();
+
+        video.sanitize();
+        video
+    }
+
+    #[test]
+    fn copy_link_writes_the_url_of_the_detail() {
+        let video = detail(
+            Some("https://site.example.com/embed/abcdefghijkl"),
+            Some("https://cdn.example.com/v/master.m3u8"),
+        );
+        let desktop = FakeDesktop::default();
+        let log = RecordingLogger::default();
+
+        assert_eq!(
+            copy_video_link(&video, VideoLinkKind::EmbedUrl, &desktop, &log),
+            ActionResult::Ok
+        );
+        assert_eq!(
+            copy_video_link(&video, VideoLinkKind::PlaylistUrl, &desktop, &log),
+            ActionResult::Ok
+        );
+        assert_eq!(
+            *desktop.clipboard.lock().unwrap(),
+            [
+                "https://site.example.com/embed/abcdefghijkl",
+                "https://cdn.example.com/v/master.m3u8"
+            ]
+        );
+    }
+
+    #[test]
+    fn copy_link_refuses_missing_or_non_https_urls_and_reports_clipboard_failures() {
+        let log = RecordingLogger::default();
+        let desktop = FakeDesktop::default();
+        let none = detail(None, None);
+
+        assert_eq!(
+            copy_video_link(&none, VideoLinkKind::EmbedUrl, &desktop, &log),
+            ActionResult::err(NO_EMBED_URL)
+        );
+        assert_eq!(
+            copy_video_link(&none, VideoLinkKind::PlaylistUrl, &desktop, &log),
+            ActionResult::err(NO_PLAYLIST_URL)
+        );
+
+        // `sanitize` already drops http URLs; the copy check also holds on its own.
+        let mut insecure = detail(None, None);
+        insecure.embed_url = Some("http://site.example.com/embed/a".into());
+        insecure.playlist_url = Some("https://user:pw@cdn.example.com/p.m3u8".into());
+
+        assert_eq!(
+            copy_video_link(&insecure, VideoLinkKind::EmbedUrl, &desktop, &log),
+            ActionResult::err(NO_EMBED_URL)
+        );
+        assert_eq!(
+            copy_video_link(&insecure, VideoLinkKind::PlaylistUrl, &desktop, &log),
+            ActionResult::err(NO_PLAYLIST_URL)
+        );
+        assert!(desktop.clipboard.lock().unwrap().is_empty());
+
+        let failing = FakeDesktop {
+            clipboard_fails: true,
+            ..FakeDesktop::default()
+        };
+        let ok = detail(Some("https://site.example.com/embed/a"), None);
+
+        assert_eq!(
+            copy_video_link(&ok, VideoLinkKind::EmbedUrl, &failing, &log),
+            ActionResult::err(CLIPBOARD_FAILED)
+        );
+    }
+
+    #[test]
+    fn open_embed_opens_an_https_embed_url_of_the_signed_in_site() {
+        let video = detail(Some("https://site.example.com/embed/abcdefghijkl"), None);
+        let desktop = FakeDesktop::default();
+        let log = RecordingLogger::default();
+
+        assert_eq!(
+            open_video_embed(&video, &desktop, SITE, &log),
+            ActionResult::Ok
+        );
+        assert_eq!(
+            *desktop.opened.lock().unwrap(),
+            ["https://site.example.com/embed/abcdefghijkl"]
+        );
+    }
+
+    #[test]
+    fn open_embed_refuses_foreign_insecure_or_missing_embed_urls() {
+        let log = RecordingLogger::default();
+        let desktop = FakeDesktop::default();
+        let mut insecure = detail(None, None);
+        insecure.embed_url = Some("http://site.example.com/embed/a".into());
+        let cases = [
+            (
+                detail(Some("https://evil.example.com/embed/a"), None),
+                SITE,
+                FOREIGN_EMBED_URL,
+            ),
+            (
+                detail(Some("https://site.example.com.evil.test/embed/a"), None),
+                SITE,
+                FOREIGN_EMBED_URL,
+            ),
+            (insecure, SITE, FOREIGN_EMBED_URL),
+            (
+                detail(Some("https://site.example.com/embed/a"), None),
+                None,
+                FOREIGN_EMBED_URL,
+            ),
+            (detail(None, None), SITE, NO_EMBED_URL),
+        ];
+
+        for (video, site, error) in cases {
+            assert_eq!(
+                open_video_embed(&video, &desktop, site, &log),
+                ActionResult::err(error)
+            );
+        }
+        assert!(desktop.opened.lock().unwrap().is_empty());
+    }
 
     #[test]
     fn results_serialize_like_the_other_ok_or_error_results() {
