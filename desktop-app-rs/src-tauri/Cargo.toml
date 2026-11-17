@@ -1,0 +1,70 @@
+[package]
+name = "hls-r2-studio"
+version = "0.1.0"
+description = "HLS R2 Studio desktop app"
+authors = ["HLS R2 Studio"]
+edition = "2021"
+rust-version = "1.77"
+publish = false
+
+[lib]
+name = "hls_r2_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+url = "2"
+regex = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+tauri-plugin-dialog = "2"
+# Site API client. rustls only (no native-tls/OpenSSL); certificates are checked against the OS
+# trust store (rustls-platform-verifier). The crypto provider is `ring` (see api/site_client.rs):
+# it needs no cmake/NASM on Windows. No http2/proxy/compression features: plain HTTP/1.1 like the
+# Electron app's Node fetch.
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+tokio = { version = "1", features = ["sync", "time", "process", "io-util", "macros", "rt", "fs"] }
+tokio-util = "0.7"
+bytes = "1.9"
+async-trait = "0.1"
+# R2 client (pipeline/s3): SigV4 HMAC/SHA-256 come from `ring` (already the rustls provider),
+# Content-MD5 of DeleteObjects from `md-5` (pure Rust), the streamed request body implements
+# `http_body::Body` (already in the tree via reqwest/hyper).
+ring = "0.17"
+md-5 = "0.10"
+http-body = "1"
+zeroize = "1"
+gethostname = "1"
+tauri-plugin-single-instance = "2"
+tauri-plugin-opener = "2"
+arboard = { version = "3", default-features = false }
+
+# Native error box for a fatal startup failure, before the app (and its dialog plugin handle)
+# exists. Same crate and version the dialog plugin already uses; no extra features.
+[target.'cfg(any(windows, target_os = "macos"))'.dependencies]
+rfd = { version = "0.17", default-features = false }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Cryptography",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Com",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt", "rt-multi-thread", "net", "io-util", "time", "sync", "test-util"] }

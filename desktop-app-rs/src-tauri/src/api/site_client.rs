@@ -1,0 +1,607 @@
+//! HTTP client for the site API (spec 3.5). Port of desktop-app/src/main/api/siteClient.ts.
+//!
+//! Rules (same as the Electron client):
+//! - The origin comes from the built-in site URL and is validated again on every request
+//!   (https only; see `site_url::normalize`).
+//! - Redirects are never followed: a 3xx could carry the Bearer token to another host.
+//! - One timeout (default 30 s) covers the whole exchange, body included.
+//! - Bodies larger than 1 MB are refused while streaming; nothing larger is buffered.
+//! - No retries. Error messages are safe English text; bodies and tokens are never logged.
+//! - Any 401 on an authenticated call whose token is still the current one calls
+//!   `on_unauthorized` exactly once.
+//! - `register()` (POST /api/app/videos) reuses `send()`; its failures are `RegisterRequestError`s
+//!   so the pipeline can classify them (`pipeline::register::map_register_error`).
+
+use std::sync::{Arc, Once};
+use std::time::Duration;
+
+use bytes::Bytes;
+use reqwest::header::{HeaderMap, HeaderValue, ACCEPT, AUTHORIZATION, CONTENT_TYPE, USER_AGENT};
+use reqwest::{Method, StatusCode};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use url::Url;
+use zeroize::Zeroizing;
+
+use super::app_config::{parse_app_config, r2_location_problem, AppConfig};
+use super::error::SiteApiError;
+use crate::logger::Log;
+use crate::pipeline::register::{
+    RegisterClient, RegisterFailure, RegisterPayload, RegisterRequestError, RegisteredVideo,
+};
+use crate::secure::Secret;
+use crate::site_url;
+
+pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Responses larger than this are treated as invalid (the API only returns tiny JSON).
+pub const MAX_BODY_BYTES: usize = 1024 * 1024;
+
+pub type GetBaseUrl = Arc<dyn Fn() -> String + Send + Sync>;
+pub type GetToken = Arc<dyn Fn() -> Option<Secret> + Send + Sync>;
+pub type OnUnauthorized = Arc<dyn Fn() + Send + Sync>;
+
+pub struct SiteClientOptions {
+    /// Current site URL (validated again on every request).
+    pub get_base_url: GetBaseUrl,
+    pub get_token: GetToken,
+    pub user_agent: String,
+    pub timeout: Duration,
+    /// Called once for ANY 401 on an authenticated call whose token is still the current one.
+    pub on_unauthorized: Option<OnUnauthorized>,
+    pub logger: Option<Arc<dyn Log>>,
+}
+
+/// `HLS-R2-Studio/<version> (<platform>)`, like the Electron app.
+pub fn user_agent(version: &str) -> String {
+    format!(
+        "HLS-R2-Studio/{version} ({})",
+        crate::ipc::platform_name(std::env::consts::OS)
+    )
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LoginResult {
+    pub token: Secret,
+    pub username: String,
+}
+
+/// One HTTP answer. The body may hold a token (sign-in), so it is wiped when dropped.
+struct RawResponse {
+    status: u16,
+    body: Zeroizing<Vec<u8>>,
+    retry_after_seconds: Option<u64>,
+}
+
+impl RawResponse {
+    /// JSON of the body; `Null` when empty or not JSON.
+    fn json(&self) -> Value {
+        serde_json::from_slice(&self.body).unwrap_or(Value::Null)
+    }
+}
+
+fn parse_retry_after(header: Option<&HeaderValue>) -> Option<u64> {
+    let text = header?.to_str().ok()?.trim();
+
+    if text.is_empty() || text.len() > 6 || !text.bytes().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+
+    text.parse().ok()
+}
+
+fn error_code_of(body: &Value) -> Option<String> {
+    body.get("error")?.as_str().map(str::to_string)
+}
+
+/// A header value backed by a buffer that is wiped when the request is dropped.
+fn secret_header(value: Zeroizing<Vec<u8>>) -> Option<HeaderValue> {
+    let mut header = HeaderValue::from_maybe_shared(Bytes::from_owner(value)).ok()?;
+    header.set_sensitive(true);
+
+    Some(header)
+}
+
+/// Appends `chunk`, growing into a fresh zeroizing buffer so no stale copy is left behind.
+fn push_wiped(buffer: &mut Zeroizing<Vec<u8>>, chunk: &[u8]) {
+    let needed = buffer.len() + chunk.len();
+
+    if needed > buffer.capacity() {
+        let capacity = needed.max(buffer.capacity() * 2).min(MAX_BODY_BYTES);
+        let mut bigger = Zeroizing::new(Vec::with_capacity(capacity));
+
+        bigger.extend_from_slice(buffer);
+        *buffer = bigger;
+    }
+
+    buffer.extend_from_slice(chunk);
+}
+
+const LOOPBACK_HOSTS: [&str; 2] = ["localhost", "127.0.0.1"];
+
+/// The request origin. Production: `site_url::normalize` (https only). Loopback tests may also
+/// use `http://localhost` / `http://127.0.0.1`.
+fn request_origin(raw: &str, allow_loopback_http: bool) -> Result<String, String> {
+    if allow_loopback_http {
+        if let Ok(url) = Url::parse(raw.trim()) {
+            if url.scheme() == "http"
+                && url.username().is_empty()
+                && url.password().is_none()
+                && url.host_str().is_some_and(|h| LOOPBACK_HOSTS.contains(&h))
+            {
+                return Ok(url.origin().ascii_serialization());
+            }
+        }
+    }
+
+    site_url::normalize(raw)
+}
+
+pub(crate) fn ensure_crypto_provider() {
+    static INSTALL: Once = Once::new();
+
+    // `ring` instead of reqwest's default aws-lc-rs: no cmake/NASM needed to build on Windows.
+    // Err only means another provider is already installed, which is fine.
+    INSTALL.call_once(|| {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
+#[derive(Serialize)]
+struct LoginRequest<'a> {
+    username: &'a str,
+    password: &'a str,
+    device_name: &'a str,
+}
+
+#[derive(Deserialize)]
+struct LoginUser {
+    #[serde(default)]
+    username: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct LoginBody {
+    #[serde(default)]
+    token: Option<Secret>,
+    #[serde(default)]
+    user: Option<LoginUser>,
+}
+
+enum Failure {
+    Send(String),
+    Read(String),
+}
+
+pub struct SiteClient {
+    http: Result<reqwest::Client, String>,
+    options: SiteClientOptions,
+    /// Tests only: allows `http://` for loopback base URLs (the mock server).
+    allow_loopback_http: bool,
+    /// Tests only: allows `http://localhost` R2 locations (`allowInsecureLocalhost` in TS).
+    allow_insecure_r2_localhost: bool,
+}
+
+impl SiteClient {
+    pub fn new(options: SiteClientOptions) -> Self {
+        Self::build(options, false, false)
+    }
+
+    /// Loopback mock-server tests only: `https_only` would refuse the plain-http test server.
+    /// Production code cannot reach this constructor.
+    #[cfg(test)]
+    pub fn new_for_loopback_tests(
+        options: SiteClientOptions,
+        allow_insecure_r2_localhost: bool,
+    ) -> Self {
+        Self::build(options, true, allow_insecure_r2_localhost)
+    }
+
+    fn build(
+        options: SiteClientOptions,
+        allow_loopback_http: bool,
+        allow_insecure_r2_localhost: bool,
+    ) -> Self {
+        ensure_crypto_provider();
+
+        let http = reqwest::Client::builder()
+            // A redirect could carry the Bearer token to another host: never follow.
+            .redirect(reqwest::redirect::Policy::none())
+            .https_only(!allow_loopback_http)
+            // Like the Electron app's Node fetch: no proxy from the environment.
+            .no_proxy()
+            .build()
+            .map_err(|e| e.to_string());
+
+        Self {
+            http,
+            options,
+            allow_loopback_http,
+            allow_insecure_r2_localhost,
+        }
+    }
+
+    fn warn(&self, message: &str, meta: Value) {
+        if let Some(logger) = &self.options.logger {
+            logger.warn(message, Some(meta));
+        }
+    }
+
+    fn debug(&self, message: &str, meta: Value) {
+        if let Some(logger) = &self.options.logger {
+            logger.debug(message, Some(meta));
+        }
+    }
+
+    /// One HTTP exchange. Transport problems and redirects become `SiteApiError`s; any HTTP
+    /// status is returned as is.
+    async fn send(
+        &self,
+        method: Method,
+        path: &str,
+        auth: bool,
+        body: Option<Zeroizing<Vec<u8>>>,
+    ) -> Result<RawResponse, SiteApiError> {
+        let origin = request_origin(&(self.options.get_base_url)(), self.allow_loopback_http)
+            .map_err(|message| SiteApiError::new(message).code("invalid_site_url"))?;
+        let token = (self.options.get_token)();
+
+        if auth && token.is_none() {
+            return Err(SiteApiError::new("You are not signed in.")
+                .status(401)
+                .code("not_signed_in"));
+        }
+
+        let method_name = method.as_str().to_string();
+        let network_error = |reason: String| {
+            self.warn(
+                "Site request failed.",
+                json!({ "method": method_name, "path": path, "error": reason }),
+            );
+
+            SiteApiError::new("Could not reach the site. Check your internet connection.")
+                .code("network")
+                .network()
+        };
+
+        let http = match &self.http {
+            Ok(http) => http,
+            Err(reason) => return Err(network_error(reason.clone())),
+        };
+
+        let mut headers = HeaderMap::new();
+        headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+
+        if let Ok(agent) = HeaderValue::from_str(&self.options.user_agent) {
+            headers.insert(USER_AGENT, agent);
+        }
+
+        if let (true, Some(token)) = (auth, &token) {
+            let mut value = Zeroizing::new(Vec::with_capacity(7 + token.len()));
+            value.extend_from_slice(b"Bearer ");
+            value.extend_from_slice(token.expose().as_bytes());
+
+            // A token with bytes that are not allowed in a header can never authenticate.
+            let Some(header) = secret_header(value) else {
+                return Err(SiteApiError::new("You are not signed in.")
+                    .status(401)
+                    .code("not_signed_in"));
+            };
+            headers.insert(AUTHORIZATION, header);
+        }
+
+        let mut request = http
+            .request(method, format!("{origin}{path}"))
+            .headers(headers);
+
+        if let Some(body) = body {
+            request = request
+                .header(CONTENT_TYPE, "application/json")
+                .body(Bytes::from_owner(body));
+        }
+
+        let exchange = async {
+            let response = request
+                .send()
+                .await
+                .map_err(|e| Failure::Send(e.to_string()))?;
+            let status = response.status();
+
+            if status.is_redirection() {
+                return Ok((status, None, Zeroizing::new(Vec::new())));
+            }
+
+            let retry_after = parse_retry_after(response.headers().get("retry-after"));
+            let body = read_limited(response).await.map_err(Failure::Read)?;
+
+            Ok((status, retry_after, body))
+        };
+
+        let (status, retry_after_seconds, body) =
+            match tokio::time::timeout(self.options.timeout, exchange).await {
+                Err(_elapsed) => {
+                    self.warn(
+                        "Site request failed.",
+                        json!({ "method": method_name, "path": path, "error": "timeout" }),
+                    );
+
+                    return Err(SiteApiError::new("The site did not respond in time.")
+                        .code("timeout")
+                        .network());
+                }
+                Ok(Err(Failure::Send(reason))) => return Err(network_error(reason)),
+                Ok(Err(Failure::Read(_reason))) => {
+                    return Err(
+                        SiteApiError::new("The response from the site could not be read.")
+                            .code("network")
+                            .network(),
+                    );
+                }
+                Ok(Ok(result)) => result,
+            };
+
+        if status.is_redirection() {
+            self.warn(
+                "Site answered with a redirect; refusing to follow.",
+                json!({ "method": method_name, "path": path, "status": status.as_u16() }),
+            );
+
+            return Err(SiteApiError::new(
+                "The site sent an unexpected redirect. Check the site URL.",
+            )
+            .status(status.as_u16())
+            .code("unexpected_redirect")
+            .network());
+        }
+
+        self.debug(
+            "Site request done.",
+            json!({ "method": method_name, "path": path, "status": status.as_u16() }),
+        );
+
+        if status == StatusCode::UNAUTHORIZED && auth && token.is_some() {
+            let still_current = (self.options.get_token)() == token;
+
+            if still_current {
+                if let Some(on_unauthorized) = &self.options.on_unauthorized {
+                    on_unauthorized();
+                }
+            }
+        }
+
+        Ok(RawResponse {
+            status: status.as_u16(),
+            body,
+            retry_after_seconds,
+        })
+    }
+
+    fn http_error(raw: &RawResponse, fallback: String) -> SiteApiError {
+        SiteApiError {
+            message: fallback,
+            status: Some(raw.status),
+            code: error_code_of(&raw.json()),
+            retry_after_seconds: raw.retry_after_seconds,
+            network: false,
+        }
+    }
+
+    pub async fn login(
+        &self,
+        username: &str,
+        password: &Secret,
+        device_name: &str,
+    ) -> Result<LoginResult, SiteApiError> {
+        let request = LoginRequest {
+            username,
+            password: password.expose(),
+            device_name,
+        };
+        // Worst case every char is escaped as \uXXXX: reserve enough so the buffer never grows
+        // (a reallocation would leave an unwiped copy of the password behind).
+        let capacity = 64 + 6 * (username.len() + password.len() + device_name.len());
+        let mut body = Zeroizing::new(Vec::with_capacity(capacity));
+
+        serde_json::to_writer(&mut *body, &request)
+            .map_err(|_| SiteApiError::new("Sign-in failed."))?;
+
+        let raw = self
+            .send(Method::POST, "/api/app/login", false, Some(body))
+            .await?;
+
+        if raw.status != 200 {
+            return Err(Self::http_error(
+                &raw,
+                format!("Sign-in failed (HTTP {}).", raw.status),
+            ));
+        }
+
+        let invalid = || {
+            SiteApiError::new("The site sent an unexpected sign-in response.")
+                .status(raw.status)
+                .code("invalid_response")
+        };
+        let parsed: LoginBody = serde_json::from_slice(&raw.body).map_err(|_| invalid())?;
+
+        match (parsed.token, parsed.user.and_then(|u| u.username)) {
+            (Some(token), Some(username)) if !token.is_empty() && !username.is_empty() => {
+                Ok(LoginResult { token, username })
+            }
+            _ => Err(invalid()),
+        }
+    }
+
+    pub async fn logout(&self) -> Result<(), SiteApiError> {
+        let raw = self
+            .send(Method::POST, "/api/app/logout", true, None)
+            .await?;
+
+        if raw.status != 204 && raw.status != 200 {
+            return Err(Self::http_error(
+                &raw,
+                format!("Sign-out failed (HTTP {}).", raw.status),
+            ));
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_config(&self) -> Result<AppConfig, SiteApiError> {
+        let raw = self
+            .send(Method::GET, "/api/app/config", true, None)
+            .await?;
+
+        if raw.status != 200 {
+            return Err(Self::http_error(
+                &raw,
+                format!(
+                    "Could not load the site configuration (HTTP {}).",
+                    raw.status
+                ),
+            ));
+        }
+
+        let Some(config) = parse_app_config(raw.json()) else {
+            return Err(SiteApiError::new("The site sent an invalid configuration.")
+                .status(raw.status)
+                .code("invalid_response"));
+        };
+
+        if let Some(problem) = r2_location_problem(&config.r2, self.allow_insecure_r2_localhost) {
+            self.warn("Refusing the site config.", json!({ "problem": problem }));
+
+            return Err(SiteApiError::new(problem)
+                .status(raw.status)
+                .code("invalid_r2_location"));
+        }
+
+        Ok(config)
+    }
+
+    /// `POST /api/app/videos`. Any failure is a `RegisterRequestError`; the request body and
+    /// the token are never logged.
+    pub async fn register(
+        &self,
+        payload: &RegisterPayload,
+    ) -> Result<RegisteredVideo, RegisterRequestError> {
+        let body = serde_json::to_vec(payload)
+            .map_err(|_| RegisterRequestError::new(RegisterFailure::Network))?;
+        let raw = self
+            .send(
+                Method::POST,
+                "/api/app/videos",
+                true,
+                Some(Zeroizing::new(body)),
+            )
+            .await
+            .map_err(|error| RegisterRequestError::new(register_failure_of(&error)))?;
+
+        if raw.status == 200 || raw.status == 201 {
+            // A 2xx without a usable body: the API is idempotent, so retrying is safe.
+            return parse_registered(&raw.json()).ok_or_else(|| {
+                RegisterRequestError::with_message(
+                    RegisterFailure::Network,
+                    "invalid register response",
+                )
+            });
+        }
+
+        Err(RegisterRequestError::new(RegisterFailure::Http {
+            status: raw.status,
+            error_code: error_code_of(&raw.json()),
+            retry_after_seconds: raw.retry_after_seconds.map(|s| s as f64),
+        }))
+    }
+}
+
+#[async_trait::async_trait]
+impl RegisterClient for SiteClient {
+    async fn register(
+        &self,
+        payload: &RegisterPayload,
+    ) -> Result<RegisteredVideo, RegisterRequestError> {
+        SiteClient::register(self, payload).await
+    }
+}
+
+/// A site error that carries a 401 `not_signed_in` becomes an HTTP failure; everything else is
+/// "network" (no usable answer).
+fn register_failure_of(error: &SiteApiError) -> RegisterFailure {
+    if error.status == Some(401) && error.has_code("not_signed_in") {
+        return RegisterFailure::Http {
+            status: 401,
+            error_code: error.code.clone(),
+            retry_after_seconds: None,
+        };
+    }
+
+    RegisterFailure::Network
+}
+
+/// `{ id: integer, public_id: non-empty string, embed_url: non-empty string }`.
+fn parse_registered(body: &Value) -> Option<RegisteredVideo> {
+    let id = body.get("id")?.as_f64()?;
+    let public_id = body.get("public_id")?.as_str()?;
+    let embed_url = body.get("embed_url")?.as_str()?;
+
+    if id.fract() != 0.0 || !id.is_finite() || id.abs() > 9_007_199_254_740_991.0 {
+        return None;
+    }
+
+    if public_id.is_empty() || embed_url.is_empty() {
+        return None;
+    }
+
+    Some(RegisteredVideo {
+        id: id as i64,
+        public_id: public_id.to_string(),
+        embed_url: embed_url.to_string(),
+    })
+}
+
+/// Reads the body chunk by chunk and stops (dropping the connection) as soon as more than
+/// `MAX_BODY_BYTES` arrived, so a huge or endless response is never buffered.
+async fn read_limited(mut response: reqwest::Response) -> Result<Zeroizing<Vec<u8>>, String> {
+    let expected = response
+        .content_length()
+        .and_then(|n| usize::try_from(n).ok())
+        .unwrap_or(4096)
+        .min(MAX_BODY_BYTES);
+    let mut body = Zeroizing::new(Vec::with_capacity(expected));
+
+    while let Some(chunk) = response.chunk().await.map_err(|e| e.to_string())? {
+        if body.len() + chunk.len() > MAX_BODY_BYTES {
+            return Err("response too large".into());
+        }
+
+        push_wiped(&mut body, &chunk);
+    }
+
+    Ok(body)
+}
+
+#[async_trait::async_trait]
+impl crate::auth::AuthClient for SiteClient {
+    async fn login(
+        &self,
+        username: &str,
+        password: &Secret,
+        device_name: &str,
+    ) -> Result<LoginResult, SiteApiError> {
+        SiteClient::login(self, username, password, device_name).await
+    }
+
+    async fn logout(&self) -> Result<(), SiteApiError> {
+        SiteClient::logout(self).await
+    }
+}
+
+#[async_trait::async_trait]
+impl crate::config::ConfigFetcher for SiteClient {
+    async fn get_config(&self) -> Result<AppConfig, SiteApiError> {
+        SiteClient::get_config(self).await
+    }
+}
+
+#[cfg(test)]
+#[path = "site_client_tests.rs"]
+mod tests;

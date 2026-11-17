@@ -1,0 +1,89 @@
+name: Desktop app Rust (Tauri)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "desktop-app-rs/**"
+      - ".github/workflows/desktop-app-rs.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "desktop-app-rs/**"
+      - ".github/workflows/desktop-app-rs.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-app-rs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Cheap formatting gate on Linux (no WebView/system libraries needed for rustfmt).
+  fmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: desktop-app-rs/src-tauri
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: rustfmt
+
+      - run: cargo fmt --check
+
+  # Build and test on the target platform. No `tauri build` / release step yet: a release build
+  # needs HLS_SITE_URL and belongs to a later milestone.
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: desktop-app-rs
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop-app-rs/package-lock.json
+
+      - run: npm ci --ignore-scripts
+
+      - run: npm run typecheck
+      - run: npm test
+
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: desktop-app-rs/src-tauri
+
+      # tauri::generate_context! embeds `frontendDist` (../dist), so it must exist before cargo
+      # compiles the app (it is not checked in).
+      - name: Build the web frontend (needed by the Rust build)
+        run: npm run build:web
+
+      - name: cargo fmt --check
+        working-directory: desktop-app-rs/src-tauri
+        run: cargo fmt --check
+
+      - name: cargo clippy
+        working-directory: desktop-app-rs/src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo test
+        working-directory: desktop-app-rs/src-tauri
+        run: cargo test
