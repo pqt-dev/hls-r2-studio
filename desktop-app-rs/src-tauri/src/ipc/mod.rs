@@ -12,7 +12,9 @@ mod app;
 mod auth;
 pub mod guard;
 mod jobs;
+mod logs;
 pub mod notices;
+mod overview;
 mod settings;
 pub mod validate;
 mod videos;
@@ -20,6 +22,8 @@ mod videos;
 pub use app::*;
 pub use auth::*;
 pub use jobs::*;
+pub use logs::*;
+pub use overview::*;
 pub use settings::*;
 pub use videos::*;
 
@@ -109,6 +113,8 @@ register_commands!(
     videos_bulk_delete,
     videos_set_image,
     videos_remove_image,
+    overview_get,
+    logs_get,
 );
 
 #[cfg(test)]
@@ -150,6 +156,8 @@ mod tests {
         "videos:bulk-delete",
         "videos:set-image",
         "videos:remove-image",
+        "overview:get",
+        "logs:get",
     ];
 
     fn command_of(channel: &str) -> String {

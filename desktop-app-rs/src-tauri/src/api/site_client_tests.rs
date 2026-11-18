@@ -8,6 +8,7 @@ use serde_json::{json, Value};
 
 use super::*;
 use crate::api::app_config::Resolution;
+use crate::api::logs::{LogType, LogsReply};
 use crate::api::test_server::{closed_port_url, Recorded, Reply, TestServer};
 use crate::api::videos::{BulkDeleteOutcome, DeleteStatus, VideoStatus};
 use crate::logger::testing::RecordingLogger;
@@ -1584,4 +1585,309 @@ async fn delete_video_image_succeeds_and_maps_failures() {
 
     expired.client.delete_video_image(9).await.unwrap_err();
     assert_eq!(expired.unauthorized.load(Ordering::SeqCst), 1);
+}
+
+// ---- overview + logs ------------------------------------------------------------------------
+
+fn overview_body() -> Value {
+    json!({
+        "videos": { "total": 5, "ready": 2, "processing": 2, "failed": 1 },
+        // The site may still send this: it must simply be ignored.
+        "system": { "cpu_percent": 12, "future_field": 1 },
+    })
+}
+
+#[tokio::test]
+async fn get_overview_parses_the_documented_answer() {
+    let t = setup(|_| Reply::json(200, overview_body())).await;
+    let overview = t.client.get_overview().await.unwrap();
+
+    assert_eq!(overview.videos.total, 5);
+    assert_eq!(overview.videos.processing, 2);
+
+    assert_eq!(overview.videos.ready, 2);
+    assert_eq!(overview.videos.failed, 1);
+
+    let calls = t.server.requests();
+
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].method, "GET");
+    assert_eq!(calls[0].path, "/api/app/overview");
+    assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+}
+
+#[tokio::test]
+async fn get_overview_maps_failures_to_safe_errors() {
+    let t = setup(|_| Reply::json(401, json!({ "message": "Unauthenticated." }))).await;
+    let error = t.client.get_overview().await.unwrap_err();
+
+    assert_eq!(error.status, Some(401));
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 1);
+
+    let busy = setup(|_| {
+        Reply::json_with(
+            429,
+            json!({ "message": "secret server text" }),
+            &[("Retry-After", "9")],
+        )
+    })
+    .await;
+    let error = busy.client.get_overview().await.unwrap_err();
+
+    assert_eq!(error.status, Some(429));
+    assert_eq!(error.retry_after_seconds, Some(9));
+    assert!(!error.message.contains("secret"));
+
+    let broken = setup(|_| Reply::text(500, "<html>stack trace /var/www tok-123</html>")).await;
+    let error = broken.client.get_overview().await.unwrap_err();
+
+    assert_eq!(error.message, "Could not load the overview (HTTP 500).");
+    assert!(!broken.logger.text().contains("stack trace"));
+    assert!(!broken.logger.text().contains("tok-123"));
+
+    for body in [
+        json!({ "videos": { "total": -1, "ready": 0, "processing": 0, "failed": 0 } }),
+        json!({ "videos": null }),
+        json!([]),
+    ] {
+        let t = setup(move |_| Reply::json(200, body.clone())).await;
+        let error = t.client.get_overview().await.unwrap_err();
+
+        assert_eq!(error.code.as_deref(), Some("invalid_response"));
+        assert_eq!(error.message, "The site sent an unexpected overview.");
+    }
+
+    let signed_out = setup_with(
+        Opts {
+            token: None,
+            ..Opts::default()
+        },
+        |_, _| Reply::json(200, overview_body()),
+    )
+    .await;
+    let error = signed_out.client.get_overview().await.unwrap_err();
+
+    assert!(error.has_code("not_signed_in"));
+    assert!(signed_out.server.requests().is_empty());
+}
+
+fn log_item(id: i64, status: &str) -> Value {
+    json!({
+        "id": id,
+        "public_id": format!("abcdefghij{id:02}"),
+        "title": "My clip",
+        "original_filename": "my clip.mp4",
+        "status": status,
+        "stage": status,
+        "progress": 40,
+        "error_message": null,
+        "error_detail": null,
+        "failed_at": null,
+        "created_at": "2026-11-03T10:00:00+00:00",
+        "updated_at": "2026-11-03T10:05:00+00:00",
+        "future_field": { "ignored": true },
+    })
+}
+
+fn log_counts() -> Value {
+    json!({ "total": 6, "success": 3, "error": 2, "processing": 1 })
+}
+
+fn summary_body() -> Value {
+    json!({
+        "counts": log_counts(),
+        "success": [log_item(1, "ready")],
+        "error": [log_item(2, "failed"), log_item(3, "failed")],
+        "processing": [log_item(4, "processing")],
+    })
+}
+
+fn page_body(items: Vec<Value>) -> Value {
+    json!({
+        "counts": log_counts(),
+        "data": items,
+        "meta": { "page": 2, "per_page": 10, "total": 12, "last_page": 2 },
+    })
+}
+
+#[tokio::test]
+async fn get_logs_without_type_returns_the_summary_and_sends_no_paging() {
+    let t = setup(|_| Reply::json(200, summary_body())).await;
+    let reply = t.client.get_logs(None, Some(3), Some(9)).await.unwrap();
+    let LogsReply::Summary(summary) = reply else {
+        panic!("expected the summary shape");
+    };
+
+    assert_eq!(summary.counts.total, 6);
+    assert_eq!(summary.counts.error, 2);
+    assert_eq!(summary.success.len(), 1);
+    assert_eq!(summary.error.len(), 2);
+    assert_eq!(summary.processing[0].progress, Some(40));
+    assert_eq!(summary.success[0].status, VideoStatus::Ready);
+
+    let calls = t.server.requests();
+
+    assert_eq!(calls[0].method, "GET");
+    assert_eq!(calls[0].path, "/api/app/logs");
+    assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+}
+
+#[tokio::test]
+async fn get_logs_with_a_type_returns_the_paginated_shape_for_each_type() {
+    for log_type in [LogType::Success, LogType::Error, LogType::Processing] {
+        let t = setup(|_| Reply::json(200, page_body(vec![log_item(1, "ready")]))).await;
+        let reply = t.client.get_logs(Some(log_type), Some(2), Some(10)).await;
+        let Ok(LogsReply::Page(page)) = reply else {
+            panic!("expected the paginated shape");
+        };
+
+        assert_eq!(page.meta.total, 12);
+        assert_eq!(page.meta.per_page, 10);
+        assert_eq!(page.data.len(), 1);
+        assert_eq!(
+            t.server.requests()[0].path,
+            format!(
+                "/api/app/logs?type={}&page=2&per_page=10",
+                log_type.as_str()
+            )
+        );
+    }
+
+    let t = setup(|_| Reply::json(200, page_body(vec![]))).await;
+
+    t.client
+        .get_logs(Some(LogType::Error), None, None)
+        .await
+        .unwrap();
+    assert_eq!(t.server.requests()[0].path, "/api/app/logs?type=error");
+}
+
+#[tokio::test]
+async fn get_logs_rejects_the_wrong_shape_for_the_request() {
+    let t = setup(|_| Reply::json(200, summary_body())).await;
+    let error = t
+        .client
+        .get_logs(Some(LogType::Error), None, None)
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.code.as_deref(), Some("invalid_response"));
+
+    let t = setup(|_| Reply::json(200, page_body(vec![]))).await;
+    let error = t.client.get_logs(None, None, None).await.unwrap_err();
+
+    assert_eq!(error.code.as_deref(), Some("invalid_response"));
+    assert_eq!(error.message, "The site sent an unexpected logs response.");
+
+    let t = setup(|_| Reply::json(200, json!({ "counts": { "total": -1 } }))).await;
+
+    assert!(t.client.get_logs(None, None, None).await.is_err());
+}
+
+#[tokio::test]
+async fn get_logs_tolerates_unknown_status_and_sanitizes_text() {
+    let mut item = log_item(1, "brand_new_status\u{7}");
+    item["title"] = json!(format!("T\u{0}itle{}", "x".repeat(400)));
+    item["original_filename"] = json!("f".repeat(400));
+    item["error_message"] = json!("m".repeat(2500));
+    item["error_detail"] = json!(format!("line1\nline2\u{1b}[0m\t{}", "d".repeat(2500)));
+    item["progress"] = json!(180.7);
+
+    let t = setup(move |_| Reply::json(200, page_body(vec![item.clone()]))).await;
+    let Ok(LogsReply::Page(page)) = t.client.get_logs(Some(LogType::Error), None, None).await
+    else {
+        panic!("expected the paginated shape");
+    };
+    let row = &page.data[0];
+
+    assert_eq!(row.status, VideoStatus::Unknown("brand_new_status".into()));
+    assert!(row.title.starts_with("Titlexx"));
+    assert_eq!(row.title.chars().count(), 255);
+    assert_eq!(row.original_filename.as_deref().map(str::len), Some(255));
+    assert_eq!(row.error_message.as_deref().map(str::len), Some(2000));
+    assert_eq!(row.progress, Some(100));
+
+    let detail = row.error_detail.as_deref().unwrap();
+
+    assert!(detail.starts_with("line1\nline2[0m\tddd"));
+    assert_eq!(detail.chars().count(), 2000);
+    assert!(!detail.contains('\u{1b}'));
+}
+
+#[tokio::test]
+async fn get_logs_enforces_the_list_size_caps() {
+    let many = |count: i64| -> Vec<Value> { (1..=count).map(|id| log_item(id, "ready")).collect() };
+
+    let mut over = summary_body();
+    over["processing"] = json!(many(51));
+    let t = setup(move |_| Reply::json(200, over.clone())).await;
+
+    assert_eq!(
+        t.client
+            .get_logs(None, None, None)
+            .await
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("invalid_response")
+    );
+
+    let mut at_limit = summary_body();
+    at_limit["processing"] = json!(many(50));
+    let t = setup(move |_| Reply::json(200, at_limit.clone())).await;
+
+    assert!(t.client.get_logs(None, None, None).await.is_ok());
+
+    let t = setup(move |_| Reply::json(200, page_body(many(51)))).await;
+
+    assert_eq!(
+        t.client
+            .get_logs(Some(LogType::Success), None, Some(50))
+            .await
+            .unwrap_err()
+            .code
+            .as_deref(),
+        Some("invalid_response")
+    );
+}
+
+#[tokio::test]
+async fn get_logs_maps_failures_to_safe_errors_without_leaking_secrets() {
+    let t = setup(|_| Reply::json(401, json!({ "message": "Unauthenticated." }))).await;
+
+    t.client.get_logs(None, None, None).await.unwrap_err();
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 1);
+
+    let busy = setup(|_| {
+        Reply::json_with(
+            429,
+            json!({ "message": "secret server text" }),
+            &[("Retry-After", "4")],
+        )
+    })
+    .await;
+    let error = busy
+        .client
+        .get_logs(Some(LogType::Error), Some(1), Some(5))
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.retry_after_seconds, Some(4));
+    assert!(!error.message.contains("secret"));
+
+    let broken =
+        setup(|_| Reply::text(500, "<html>trace /var/www tok-123 secret-body</html>")).await;
+    let error = broken
+        .client
+        .get_logs(Some(LogType::Success), None, None)
+        .await
+        .unwrap_err();
+    let base_url = broken.server.base_url.clone();
+
+    assert_eq!(error.message, "Could not load the logs (HTTP 500).");
+    assert!(!error.message.contains(&base_url));
+
+    let logs = broken.logger.text();
+
+    assert!(!logs.contains("tok-123") && !logs.contains("secret-body"));
 }

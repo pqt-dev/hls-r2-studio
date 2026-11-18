@@ -26,6 +26,8 @@ use zeroize::Zeroizing;
 use super::app_config::{parse_app_config, r2_location_problem, AppConfig};
 use super::error::SiteApiError;
 use super::image_upload::{build_multipart, ImageKind};
+use super::logs::{LogType, LogsPage, LogsReply, LogsSummary};
+use super::overview::Overview;
 use super::videos::{
     clean_url, normalize_video_title, BulkDeleteOutcome, VideoDeleteOutcome, VideoDetail,
     VideoPage, MAX_BULK_DELETE, MAX_LIST_ITEMS, TITLE_INVALID,
@@ -541,6 +543,70 @@ impl SiteClient {
         Ok(parsed)
     }
 
+    /// `GET /api/app/overview`: video counts (tolerant parsing, see
+    /// `Overview::parse`).
+    pub async fn get_overview(&self) -> Result<Overview, SiteApiError> {
+        let raw = self
+            .send(Method::GET, "/api/app/overview", true, None)
+            .await?;
+
+        Self::video_status_check(
+            &raw,
+            "Could not load the overview",
+            "Could not load the overview.",
+        )?;
+
+        Overview::parse(&raw.json()).ok_or_else(|| {
+            SiteApiError::new("The site sent an unexpected overview.")
+                .status(raw.status)
+                .code("invalid_response")
+        })
+    }
+
+    /// `GET /api/app/logs`. Without `log_type` the summary shape is returned (`page` and
+    /// `per_page` are not sent); with it, one paginated page. A body of the other shape is an
+    /// invalid response.
+    pub async fn get_logs(
+        &self,
+        log_type: Option<LogType>,
+        page: Option<u32>,
+        per_page: Option<u32>,
+    ) -> Result<LogsReply, SiteApiError> {
+        let path = logs_path(log_type, page, per_page);
+        let raw = self.send(Method::GET, &path, true, None).await?;
+
+        Self::video_status_check(&raw, "Could not load the logs", "Could not load the logs.")?;
+
+        let invalid = || {
+            SiteApiError::new("The site sent an unexpected logs response.")
+                .status(raw.status)
+                .code("invalid_response")
+        };
+
+        if log_type.is_some() {
+            let mut parsed: LogsPage = serde_json::from_slice(&raw.body).map_err(|_| invalid())?;
+
+            if !parsed.within_limits() {
+                return Err(invalid());
+            }
+
+            parsed.sanitize();
+
+            Ok(LogsReply::Page(parsed))
+        } else {
+            let mut parsed: LogsSummary =
+                serde_json::from_slice(&raw.body).map_err(|_| invalid())?;
+
+            if !parsed.within_limits() {
+                return Err(invalid());
+            }
+
+            parsed.sanitize();
+
+            Ok(LogsReply::Summary(parsed))
+        }
+    }
+
     /// `GET /api/app/videos/{id}`. `id` is a positive integer (validated by the caller).
     pub async fn get_video(&self, id: i64) -> Result<VideoDetail, SiteApiError> {
         let path = format!("/api/app/videos/{id}");
@@ -797,6 +863,26 @@ impl RegisterClient for SiteClient {
     ) -> Result<RegisteredVideo, RegisterRequestError> {
         SiteClient::register(self, payload).await
     }
+}
+
+/// `/api/app/logs` (summary) or `/api/app/logs?type=&page=&per_page=`.
+fn logs_path(log_type: Option<LogType>, page: Option<u32>, per_page: Option<u32>) -> String {
+    let Some(log_type) = log_type else {
+        return "/api/app/logs".to_string();
+    };
+    let mut params = url::form_urlencoded::Serializer::new(String::new());
+
+    params.append_pair("type", log_type.as_str());
+
+    if let Some(page) = page {
+        params.append_pair("page", &page.to_string());
+    }
+
+    if let Some(per_page) = per_page {
+        params.append_pair("per_page", &per_page.to_string());
+    }
+
+    format!("/api/app/logs?{}", params.finish())
 }
 
 /// `/api/app/videos?page=&per_page=[&q=]`; the search text is trimmed and form-encoded.

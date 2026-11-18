@@ -84,7 +84,7 @@ where
     })
 }
 
-fn cap_text(mut text: String, max_chars: usize) -> String {
+pub(crate) fn cap_text(mut text: String, max_chars: usize) -> String {
     if let Some((index, _)) = text.char_indices().nth(max_chars) {
         text.truncate(index);
     }

@@ -8,6 +8,7 @@ use std::fmt;
 
 use serde_json::{Map, Value};
 
+use crate::api::logs::LogType;
 use crate::api::videos::{normalize_video_title, MAX_BULK_DELETE, MAX_TITLE_CHARS};
 use crate::dto::{CopyKind, VideoLinkKind};
 use crate::secure::Secret;
@@ -294,6 +295,47 @@ pub fn parse_videos_list(payload: Option<Value>) -> Result<VideosListInput> {
         page,
         per_page,
         query,
+    })
+}
+
+/// Validated `logs:get` input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LogsGetInput {
+    pub log_type: Option<LogType>,
+    pub page: Option<u32>,
+    pub per_page: Option<u32>,
+}
+
+const LOG_TYPES: &[&str] = &["success", "error", "processing"];
+
+/// `logs:get`: `{ type?, page?, perPage? }` (no argument = the summary). `page` is 1.., `perPage`
+/// 1..=50; unknown keys are rejected.
+pub fn parse_logs_get(payload: Option<Value>) -> Result<LogsGetInput> {
+    let Some(payload) = payload else {
+        return Ok(LogsGetInput {
+            log_type: None,
+            page: None,
+            per_page: None,
+        });
+    };
+    let object = expect_single_object(Some(payload), "logs", &["type", "page", "perPage"])?;
+    let log_type = match object.get("type") {
+        None => None,
+        value => LogType::parse(expect_one_of(value, "type", LOG_TYPES)?),
+    };
+    let page = match object.get("page") {
+        None => None,
+        value => Some(expect_int(value, "page", 1, i64::from(u32::MAX))? as u32),
+    };
+    let per_page = match object.get("perPage") {
+        None => None,
+        value => Some(expect_int(value, "perPage", 1, i64::from(MAX_VIDEOS_PER_PAGE))? as u32),
+    };
+
+    Ok(LogsGetInput {
+        log_type,
+        page,
+        per_page,
     })
 }
 
@@ -649,6 +691,47 @@ mod tests {
         }
 
         assert!(parse_videos_list(Some(json!({ "q": "x".repeat(100) }))).is_ok());
+    }
+
+    #[test]
+    fn logs_get_validates_type_and_bounds() {
+        let none = LogsGetInput {
+            log_type: None,
+            page: None,
+            per_page: None,
+        };
+
+        assert_eq!(parse_logs_get(None).unwrap(), none);
+        assert_eq!(parse_logs_get(Some(json!({}))).unwrap(), none);
+        assert_eq!(
+            parse_logs_get(Some(json!({ "type": "error", "page": 2, "perPage": 50 }))).unwrap(),
+            LogsGetInput {
+                log_type: Some(LogType::Error),
+                page: Some(2),
+                per_page: Some(50),
+            }
+        );
+
+        for kind in ["success", "error", "processing"] {
+            assert!(parse_logs_get(Some(json!({ "type": kind }))).is_ok());
+        }
+
+        for bad in [
+            json!({ "type": "x" }),
+            json!({ "type": "Error" }),
+            json!({ "type": 5 }),
+            json!({ "type": null }),
+            json!({ "page": 0 }),
+            json!({ "page": 1.5 }),
+            json!({ "page": "1" }),
+            json!({ "perPage": 0 }),
+            json!({ "perPage": 51 }),
+            json!({ "type": "error", "extra": 1 }),
+            json!("error"),
+            json!([]),
+        ] {
+            assert!(parse_logs_get(Some(bad.clone())).is_err(), "{bad}");
+        }
     }
 
     #[test]

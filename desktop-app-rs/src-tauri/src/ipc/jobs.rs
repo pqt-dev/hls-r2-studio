@@ -205,7 +205,7 @@ impl<R: Runtime> JobsDesktop for TauriJobsDesktop<R> {
                 .dialog()
                 .file()
                 .set_parent(&parent)
-                .set_title("Add videos")
+                .set_title("Upload videos")
                 .add_filter("Videos", &VIDEO_EXTENSIONS)
                 .blocking_pick_files()?;
 
