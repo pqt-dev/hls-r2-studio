@@ -9,6 +9,7 @@ import type {
 } from '../../../shared/ipc';
 import { makeVideo, makeVideoDetail } from '../testing/fakeApi';
 import { renderApp } from '../testing/renderApp';
+import { waitForPage } from '../testing/pager';
 
 const SITE_EMBED = 'https://site.example.com/embed/abcdefghijkl';
 
@@ -69,11 +70,11 @@ describe('Video detail page', () => {
 
         const crumbs = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }));
 
+        // The back button is the only "Library" label; the breadcrumb shows just the title.
         expect(crumbs.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-            'Library',
             'Holiday',
         ]);
-        expect(screen.getByRole('button', { name: '← Library' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Library' })).toBeInTheDocument();
         await screen.findByText('Information');
         expect(get).toHaveBeenCalledTimes(1);
         expect(get).toHaveBeenCalledWith(7);
@@ -87,7 +88,7 @@ describe('Video detail page', () => {
         await screen.findByText('Information');
         expect(get).toHaveBeenCalledTimes(1);
 
-        await user.click(screen.getByRole('button', { name: '← Library' }));
+        await user.click(screen.getByRole('button', { name: 'Library' }));
         screen.getByRole('button', { name: /^Holiday/ }).focus();
         await user.keyboard(' ');
         await screen.findByText('Information');
@@ -104,9 +105,15 @@ describe('Video detail page', () => {
         });
 
         await screen.findByRole('button', { name: /^Holiday/ });
-        await user.click(screen.getByRole('button', { name: 'Next page' }));
-        await screen.findByText('Page 2 of 3 · 30 videos');
-        await user.type(screen.getByLabelText('Search videos'), 'ho');
+        // A submitted search always goes back to page 1, so let it settle first (wait for the
+        // request it triggers); only then go to page 2.
+        await user.type(screen.getByLabelText('Search videos'), 'ho{Enter}');
+        await waitFor(() =>
+            expect(list).toHaveBeenCalledWith(expect.objectContaining({ q: 'ho' })),
+        );
+        await waitForPage(1);
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
+        await waitForPage(2);
 
         const lists = list.mock.calls.length;
 
@@ -114,10 +121,10 @@ describe('Video detail page', () => {
         await screen.findByText('Information');
         expect(screen.queryByLabelText('Search videos')).not.toBeVisible();
 
-        await user.click(screen.getByRole('button', { name: '← Library' }));
+        await user.click(screen.getByRole('button', { name: 'Library' }));
         expect(screen.getByLabelText('Search videos')).toBeVisible();
         expect(screen.getByLabelText('Search videos')).toHaveValue('ho');
-        expect(screen.getByText('Page 2 of 3 · 30 videos')).toBeVisible();
+        expect(screen.getAllByRole('textbox', { name: 'Current page' })[0]!).toHaveValue('2');
         expect(screen.queryByText('Information')).toBeNull();
         // The focus goes back to the row that was opened.
         expect(screen.getByRole('button', { name: /^Holiday/ })).toHaveFocus();
@@ -128,9 +135,9 @@ describe('Video detail page', () => {
 
         expect(screen.queryByText('Information')).toBeNull();
         expect(screen.getByLabelText('Search videos')).toHaveValue('ho');
-        expect(screen.getByText('Page 2 of 3 · 30 videos')).toBeVisible();
-        // Only the typed search (after its debounce) may reload; opening/closing never does.
-        expect(list.mock.calls.length).toBeLessThanOrEqual(lists + 1);
+        expect(screen.getAllByRole('textbox', { name: 'Current page' })[0]!).toHaveValue('2');
+        // Opening and closing the detail page never reloads the list.
+        expect(list.mock.calls.length).toBe(lists);
     });
 
     it('shows loading, then the error with Retry', async () => {
@@ -280,13 +287,61 @@ describe('Video detail page', () => {
         expect(copyLink).toHaveBeenLastCalledWith(7, 'embed-url');
         expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'Copy playlist URL' }));
+        await user.click(screen.getByRole('button', { name: 'More actions' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Copy playlist URL' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'playlist-url');
         expect(await screen.findByText('Playlist URL copied.')).toBeInTheDocument();
 
         await user.click(screen.getByRole('button', { name: 'Open in browser' }));
         expect(openEmbed).toHaveBeenCalledWith(7);
         expect(await screen.findByText('Opened in your browser.')).toBeInTheDocument();
+    });
+
+    it('shows each embed value from the detail in its own block and copies through the main process', async () => {
+        const shortcode = '[hls_embed_vl id="abcdefghijkl"]';
+        const iframeCode =
+            '<iframe src="' +
+            SITE_EMBED +
+            '" style="width:100%; aspect-ratio:1920 / 800; max-height:75vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>';
+        const { user, copyLink } = await openLibrary(
+            detail({ embedUrl: SITE_EMBED, shortcode, iframeCode }),
+        );
+
+        await openFirst(user);
+
+        const card = within(await screen.findByLabelText('Embed'));
+
+        // The strings are shown exactly as the main process built them (nothing is built here).
+        expect(card.getByRole('heading', { name: 'Embed URL' })).toBeInTheDocument();
+        expect(card.getByText(SITE_EMBED)).toBeInTheDocument();
+        expect(card.getByText(iframeCode)).toBeInTheDocument();
+        expect(card.getByText(shortcode)).toBeInTheDocument();
+
+        await user.click(card.getByRole('button', { name: 'Copy Embed URL' }));
+        expect(copyLink).toHaveBeenLastCalledWith(7, 'embed-url');
+        expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
+
+        await user.click(card.getByRole('button', { name: 'Copy Iframe code' }));
+        expect(copyLink).toHaveBeenLastCalledWith(7, 'iframe-code');
+        expect(await screen.findByText('Iframe code copied.')).toBeInTheDocument();
+
+        await user.click(card.getByRole('button', { name: 'Copy Shortcode' }));
+        expect(copyLink).toHaveBeenLastCalledWith(7, 'shortcode');
+        expect(await screen.findByText('Shortcode copied.')).toBeInTheDocument();
+    });
+
+    it('hides the blocks the main process could not build', async () => {
+        const { user } = await openLibrary(
+            detail({ embedUrl: SITE_EMBED, shortcode: null, iframeCode: null }),
+        );
+
+        await openFirst(user);
+
+        const card = within(await screen.findByLabelText('Embed'));
+
+        expect(card.getByText(SITE_EMBED)).toBeInTheDocument();
+        expect(card.queryByRole('heading', { name: 'Iframe code' })).toBeNull();
+        expect(card.queryByRole('heading', { name: 'Shortcode' })).toBeNull();
     });
 
     it('shows a failure toast when an action fails', async () => {
@@ -339,7 +394,9 @@ describe('Video detail page', () => {
 
         expect(within(card).getByText('Transcoding failed.')).toBeInTheDocument();
         expect(within(card).getByText('ffmpeg exited with code 1')).toBeInTheDocument();
-        expect(screen.getByText('Failed')).toBeInTheDocument();
+        expect(
+            within(screen.getByLabelText('Video details')).getByText('Failed'),
+        ).toBeInTheDocument();
         expect(screen.queryByLabelText('Processing error')).toBe(card);
     });
 
@@ -393,7 +450,7 @@ describe('Video detail page', () => {
         await screen.findByText('Information');
         expect(panel.scrollTop).toBe(0);
 
-        fireEvent.click(screen.getByRole('button', { name: '← Library' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Library' }));
         await waitFor(() => expect(panel.scrollTop).toBe(240));
     });
 });

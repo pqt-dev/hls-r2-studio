@@ -171,13 +171,34 @@ export type CopyKind = 'embed-url' | 'shortcode';
 /** Unknown words can appear when the site adds a status, so treat any other value as "other". */
 export type VideoStatus = 'pending' | 'processing' | 'ready' | 'failed' | (string & {});
 
+/** Server-side sort orders of the video list (same whitelist as the site and the Rust side). */
+export const VIDEO_SORTS = [
+    'newest',
+    'oldest',
+    'title_asc',
+    'title_desc',
+    'duration_desc',
+    'size_desc',
+] as const;
+
+export type VideoSort = (typeof VIDEO_SORTS)[number];
+
+/** Server-side status filter of the video list (absent = every status). */
+export const VIDEO_STATUS_FILTERS = ['pending', 'processing', 'ready', 'failed'] as const;
+
+export type VideoStatusFilter = (typeof VIDEO_STATUS_FILTERS)[number];
+
 export interface VideoListParams {
     /** >= 1, default 1. */
     page?: number;
     /** 1..50, default 24. */
     perPage?: number;
-    /** Search text, trimmed, at most 100 characters. */
+    /** Search text, trimmed, at most 100 characters. Every word must match the title. */
     q?: string;
+    /** Default `newest`. */
+    sort?: VideoSort;
+    /** Only videos in this status; omitted = all. */
+    status?: VideoStatusFilter;
 }
 
 export interface VideoListMeta {
@@ -198,6 +219,14 @@ export interface VideoListItem {
     originalFilename: string | null;
     status: VideoStatus;
     duration: number | null;
+    /** Output resolution in pixels; null until the video is processed. */
+    width: number | null;
+    height: number | null;
+    /** Size of the original upload in bytes; null when the site does not report it. */
+    sizeBytes: number | null;
+    /** Frames per second and video bitrate in kilobits per second of the output; null if unknown. */
+    fps: number | null;
+    bitrateKbps: number | null;
     /** Custom image when present, else the generated thumbnail; null when unavailable. */
     thumbnailUrl: string | null;
     hasCustomImage: boolean;
@@ -246,6 +275,12 @@ export interface VideoDetail {
     outputCodec: string | null;
     embedUrl: string | null;
     playlistUrl: string | null;
+    /**
+     * Ready-made `[hls_embed_vl id="..."]` and iframe snippet, built by the main process with the
+     * same checks as the Copy buttons; null when they cannot be offered. Displayed as is.
+     */
+    shortcode: string | null;
+    iframeCode: string | null;
     thumbnailUrl: string | null;
     hasCustomImage: boolean;
     customImageUrl: string | null;
@@ -281,7 +316,7 @@ export type VideosSetImageResult =
     | { ok: false; error: string };
 
 /** Which URL of a video the main process copies (it fetches the video itself). */
-export type VideoLinkKind = 'embed-url' | 'playlist-url' | 'shortcode';
+export type VideoLinkKind = 'embed-url' | 'playlist-url' | 'shortcode' | 'iframe-code';
 
 // ---- overview + logs (site dashboard numbers) ----------------------------------------------
 

@@ -15,8 +15,8 @@ describe('queueGroup', () => {
         ['storyboard', 1],
         ['uploading', 1],
         ['registering', 1],
-        ['failed', 2],
-        ['interrupted', 2],
+        ['failed', 4],
+        ['interrupted', 4],
         ['upload_interrupted', 2],
         ['register_failed', 2],
         ['needs_sign_in', 2],
@@ -39,7 +39,7 @@ describe('sortJobsForQueue', () => {
         ]);
 
         // `done` and `cancel` share a group and a time: the larger id comes first.
-        expect(ids(sorted)).toEqual(['run', 'fail', 'wait', 'done', 'cancel']);
+        expect(ids(sorted)).toEqual(['run', 'wait', 'fail', 'done', 'cancel']);
     });
 
     it('keeps every state of a group together, newest first', () => {
@@ -53,7 +53,26 @@ describe('sortJobsForQueue', () => {
             job('g', 'register_failed', '2026-01-01T10:00:06.000Z'),
         ]);
 
+        // f (interrupted) is finished, so it comes last.
         expect(ids(sorted)).toEqual(['b', 'c', 'a', 'g', 'e', 'd', 'f']);
+    });
+
+    it('never lets a finished job jump above live work in a 1000-job list', () => {
+        const finished = Array.from({ length: 1000 }, (_, i) =>
+            job(
+                `f${i}`,
+                i % 3 === 0 ? 'failed' : 'done',
+                `2026-02-01T00:${String(i % 60).padStart(2, '0')}:00.000Z`,
+            ),
+        );
+        const live = [
+            job('r', 'uploading', '2026-01-01T00:00:00.000Z'),
+            job('w', 'waiting', '2026-01-01T00:00:00.000Z'),
+        ];
+        const sorted = sortJobsForQueue([...finished, ...live]);
+
+        expect(ids(sorted).slice(0, 2)).toEqual(['r', 'w']);
+        expect(sorted).toHaveLength(1002);
     });
 
     it('puts a newer job before an older one in the same group', () => {

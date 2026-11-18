@@ -1,8 +1,10 @@
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { VideosListResult } from '../../../shared/ipc';
 import { makeVideo } from '../testing/fakeApi';
 import { renderApp } from '../testing/renderApp';
+import { enterSelectMode } from '../testing/selectMode';
+import { waitForPage } from '../testing/pager';
 
 const LAST = 120;
 
@@ -19,7 +21,7 @@ async function openLibrary() {
     });
 
     await rendered.user.click(screen.getByRole('tab', { name: 'Library' }));
-    await screen.findByText(`Page 1 of ${LAST} · ${LAST * 24} videos`);
+    await waitForPage(1);
 
     return { ...rendered, list };
 }
@@ -28,49 +30,102 @@ const pagesRequested = (list: { mock: { calls: unknown[][] } }) =>
     list.mock.calls.map((call) => (call[0] as { page: number }).page);
 
 describe('Library pagination', () => {
-    it('uses the pager component with the numbers and the jump field', async () => {
+    it('uses the pager component with the count and the current-page field', async () => {
         await openLibrary();
 
-        expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Page 1' })).toHaveAttribute(
-            'aria-current',
-            'page',
-        );
-        expect(screen.getByRole('button', { name: 'First page' })).toBeDisabled();
-        expect(screen.getByRole('textbox', { name: 'Go to page' })).toBeInTheDocument();
+        expect(screen.getByRole('navigation', { name: 'Pagination, top' })).toBeInTheDocument();
+        expect(screen.getByRole('navigation', { name: 'Pagination, bottom' })).toBeInTheDocument();
+        expect(screen.getAllByRole('textbox', { name: 'Current page' })[0]!).toHaveValue('1');
+        expect(screen.getAllByText(`of ${LAST}`)).toHaveLength(2);
+        expect(screen.getAllByRole('button', { name: 'First page' })[0]!).toBeDisabled();
+        expect(screen.queryByRole('button', { name: 'Page 1' })).toBeNull();
     });
 
-    it('fetches the clicked page, and Last / First move to the ends', async () => {
+    it('renders two identical pagers (top and bottom), neither of them sticky', async () => {
+        await openLibrary();
+
+        const top = screen.getByRole('navigation', { name: 'Pagination, top' });
+        const bottom = screen.getByRole('navigation', { name: 'Pagination, bottom' });
+
+        // The top one sits above the list, the bottom one below it, both in normal flow.
+        const list = screen.getByRole('list', { name: 'Videos' });
+
+        expect(top.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(
+            list.compareDocumentPosition(bottom) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+
+        // Same content in both: count, nav buttons, current-page field (Per page lives in the toolbar).
+        expect(top.innerHTML.replace(/id="[^"]*"|for="[^"]*"|aria-describedby="[^"]*"/g, '')).toBe(
+            bottom.innerHTML.replace(/id="[^"]*"|for="[^"]*"|aria-describedby="[^"]*"/g, ''),
+        );
+        expect(within(top).getByRole('status')).toHaveTextContent('2880 videos');
+        expect(within(top).queryByRole('combobox')).toBeNull();
+        expect(within(bottom).queryByRole('combobox')).toBeNull();
+        expect(screen.getAllByRole('combobox', { name: 'Items per page' })).toHaveLength(1);
+        expect(top.className).toBe(bottom.className);
+        expect(top.className).not.toMatch(/sticky/);
+    });
+
+    it('keeps both pagers in sync: a page change in either one updates both, and a per-page change resets both to page 1', async () => {
+        const { user, list } = await openLibrary();
+        const top = () => screen.getByRole('navigation', { name: 'Pagination, top' });
+        const bottom = () => screen.getByRole('navigation', { name: 'Pagination, bottom' });
+
+        await user.click(within(top()).getByRole('button', { name: 'Next page' }));
+        await waitFor(() =>
+            expect(within(bottom()).getByRole('textbox', { name: 'Current page' })).toHaveValue(
+                '2',
+            ),
+        );
+
+        await user.selectOptions(screen.getByRole('combobox', { name: 'Items per page' }), '36');
+        await waitFor(() =>
+            expect(screen.getByRole('combobox', { name: 'Items per page' })).toHaveValue('36'),
+        );
+        await waitFor(() =>
+            expect(within(bottom()).getByRole('textbox', { name: 'Current page' })).toHaveValue(
+                '1',
+            ),
+        );
+        expect(list).toHaveBeenLastCalledWith({ page: 1, perPage: 36 });
+    });
+
+    it('fetches the next page, and Last / First move to the ends', async () => {
         const { user, list } = await openLibrary();
 
-        await user.click(screen.getByRole('button', { name: 'Page 3' }));
-        await screen.findByText(`Page 3 of ${LAST} · ${LAST * 24} videos`);
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
+        await waitForPage(2);
 
-        await user.click(screen.getByRole('button', { name: 'Last page' }));
-        await screen.findByText(`Page ${LAST} of ${LAST} · ${LAST * 24} videos`);
-        expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+        await user.click(screen.getAllByRole('button', { name: 'Last page' })[0]!);
+        await waitForPage(LAST);
+        expect(screen.getAllByRole('button', { name: 'Next page' })[0]!).toBeDisabled();
 
-        await user.click(screen.getByRole('button', { name: 'First page' }));
-        await screen.findByText(`Page 1 of ${LAST} · ${LAST * 24} videos`);
+        await user.click(screen.getAllByRole('button', { name: 'First page' })[0]!);
+        await waitForPage(1);
 
-        expect(pagesRequested(list).slice(-3)).toEqual([3, LAST, 1]);
+        expect(pagesRequested(list).slice(-3)).toEqual([2, LAST, 1]);
     });
 
     it('jumps with the field (clamped) and ignores invalid input', async () => {
         const { user, list } = await openLibrary();
-        const field = screen.getByRole('textbox', { name: 'Go to page' });
+        const field = screen.getAllByRole('textbox', { name: 'Current page' })[0]!;
         const calls = list.mock.calls.length;
 
+        await user.clear(field);
         await user.type(field, 'x{Enter}');
         expect(screen.getByRole('alert')).toHaveTextContent('Enter a page number from 1 to 120.');
         expect(list.mock.calls.length).toBe(calls);
 
         await user.clear(field);
         await user.type(field, '5000{Enter}');
-        await screen.findByText(`Page ${LAST} of ${LAST} · ${LAST * 24} videos`);
+        await waitForPage(LAST);
 
-        await user.type(screen.getByRole('textbox', { name: 'Go to page' }), '42{Enter}');
-        await screen.findByText(`Page 42 of ${LAST} · ${LAST * 24} videos`);
+        const again = screen.getAllByRole('textbox', { name: 'Current page' })[0]!;
+
+        await user.clear(again);
+        await user.type(again, '42{Enter}');
+        await waitForPage(42);
         await waitFor(() => expect(pagesRequested(list).slice(-2)).toEqual([LAST, 42]));
     });
 
@@ -83,24 +138,25 @@ describe('Library pagination', () => {
         expect(scroller).toBeTruthy();
         scroller!.scrollTop = 300;
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 1' }));
+        await enterSelectMode(user, 'Clip 1');
         expect(screen.getByText('1 selected')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'Next page' }));
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
         await screen.findByText('0 selected');
 
         expect(scroller!.scrollTop).toBe(0);
     });
 
-    it('colours the bulk delete button red and keeps Select and Refresh neutral', async () => {
+    it('colours the bulk delete button red and keeps Cancel and Refresh neutral', async () => {
         const { user } = await openLibrary();
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
+        await enterSelectMode(user, 'Clip 1');
         expect(screen.getByRole('button', { name: 'Delete selected' })).toHaveClass(
             'btn-accent-danger',
         );
-        expect(screen.getByRole('button', { name: 'Select' }).className).not.toContain('accent');
+        expect(screen.getByRole('button', { name: 'Exit select mode' }).className).not.toContain(
+            'accent',
+        );
         expect(screen.getAllByRole('button', { name: 'Refresh' })[0]!.className).not.toContain(
             'accent',
         );

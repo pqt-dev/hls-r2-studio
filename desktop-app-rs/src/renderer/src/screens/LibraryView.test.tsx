@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VideoListItem, VideosListResult } from '../../../shared/ipc';
 import { makeVideo, makeVideoDetail } from '../testing/fakeApi';
 import { renderApp } from '../testing/renderApp';
+import { enterSelectMode } from '../testing/selectMode';
+import { waitForPage } from '../testing/pager';
 
 const KEY = 'hls-r2-studio:library-view';
 
@@ -113,18 +115,21 @@ describe('Library view toggle', () => {
             return Promise.resolve(ok([makeVideo({ id: page, title: `Page ${page}` })], page, 3));
         });
 
-        await user.click(screen.getByRole('button', { name: 'Next page' }));
+        // A submitted search resets the page and the selection, so let it settle (wait for its
+        // request) before going to page 2 and selecting.
+        await user.type(screen.getByLabelText('Search videos'), 'ab{Enter}');
+        await waitFor(() => expect(spy).toHaveBeenCalledWith(expect.objectContaining({ q: 'ab' })));
+        await screen.findByText('Page 1');
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
         await screen.findByText('Page 2');
-        await user.type(screen.getByLabelText('Search videos'), 'ab');
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Select Page 2' }));
+        await enterSelectMode(user, 'Page 2');
 
         const calls = spy.mock.calls.length;
 
         await user.click(viewButton('List'));
 
         expect(screen.getByLabelText('Search videos')).toHaveValue('ab');
-        expect(screen.getByText('Page 2 of 3 · 1 video')).toBeInTheDocument();
+        expect(screen.getAllByRole('textbox', { name: 'Current page' })[0]!).toHaveValue('2');
         expect(screen.getByRole('checkbox', { name: 'Select Page 2' })).toBeChecked();
         expect(screen.getByText('1 selected')).toBeInTheDocument();
         expect(spy.mock.calls.length).toBe(calls);
@@ -159,12 +164,12 @@ describe('Library List view', () => {
         expect(within(rows[0]!).getByText('Holiday')).toHaveAttribute('title', 'Holiday');
         expect(within(rows[0]!).getByText('Ready')).toBeInTheDocument();
         expect(within(rows[0]!).getByText('1:15')).toBeInTheDocument();
-        expect(within(rows[0]!).getByText('Jan 1, 2026')).toBeInTheDocument();
+        expect(within(rows[0]!).getByText(/Jan 1, 2026/)).toBeInTheDocument();
         expect(rows[0]!.querySelector('img')).toHaveAttribute(
             'src',
             'https://cdn.example.com/a.jpg',
         );
-        expect(within(rows[1]!).getByText('No preview')).toBeInTheDocument();
+        expect(within(rows[1]!).getByText('No thumbnail')).toBeInTheDocument();
         expect(within(rows[1]!).getByText('Failed')).toBeInTheDocument();
 
         // The narrow-width hiding is CSS only: every cell stays in the DOM.
@@ -183,7 +188,7 @@ describe('Library List view', () => {
         fireEvent.error(row.querySelector('img')!);
 
         expect(row.querySelector('img')).toBeNull();
-        expect(within(row).getByText('No preview')).toBeInTheDocument();
+        expect(within(row).getByText('No thumbnail')).toBeInTheDocument();
     });
 
     it('opens the detail page by click and by keyboard, and returns focus after Back', async () => {
@@ -214,10 +219,10 @@ describe('Library List view', () => {
 
         const { user, bulkDelete } = await openLibrary(() => Promise.resolve(ok(clips(3))));
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
+        await enterSelectMode(user, 'Clip 1');
         expect(screen.queryByRole('button', { name: /^Clip 1/ })).toBeNull();
+        expect(screen.getByRole('checkbox', { name: 'Select Clip 1' })).toBeChecked();
 
-        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 1' }));
         await user.click(screen.getByText('Clip 2'));
 
         expect(screen.getByRole('checkbox', { name: 'Select Clip 2' })).toBeChecked();

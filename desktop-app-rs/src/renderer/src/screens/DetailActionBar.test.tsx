@@ -49,29 +49,49 @@ describe('Video detail action bar', () => {
         // The sticky rule itself is in styles.css (jsdom does not load it): the class is the hook.
     });
 
-    it('orders the buttons: copy embed, copy playlist, open, rename, then delete at the end', async () => {
+    it('orders the buttons: open, copy embed, rename, then the overflow menu at the end', async () => {
         await openDetail();
 
         expect(
             bar()
                 .getAllByRole('button')
-                .map((button) => button.textContent),
-        ).toEqual(['Copy embed URL', 'Copy playlist URL', 'Open in browser', 'Rename', 'Delete']);
+                .map((button) => button.getAttribute('aria-label') ?? button.textContent),
+        ).toEqual(['Open in browser', 'Copy embed URL', 'Rename', 'More actions']);
 
         const spacer = document.querySelector('.detail-actionbar .action-spacer');
 
-        expect(spacer?.nextElementSibling).toBe(bar().getByRole('button', { name: 'Delete' }));
+        expect(spacer?.nextElementSibling).toBe(
+            bar().getByRole('button', { name: 'More actions' }).parentElement,
+        );
+    });
+
+    it('puts playlist, shortcode and a danger-styled Delete in the overflow menu', async () => {
+        const { user } = await openDetail();
+
+        await user.click(bar().getByRole('button', { name: 'More actions' }));
+
+        const menu = within(screen.getByRole('menu', { name: 'More actions' }));
+
+        expect(menu.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+            'Copy playlist URL',
+            'Copy shortcode',
+            'Delete',
+        ]);
+        expect(menu.getByRole('menuitem', { name: 'Delete' })).toHaveClass('video-menu-danger');
+
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(bar().getByRole('button', { name: 'More actions' })).toHaveFocus();
     });
 
     it('colours the buttons by meaning', async () => {
         await openDetail();
 
-        for (const name of ['Copy embed URL', 'Copy playlist URL', 'Open in browser']) {
+        for (const name of ['Copy embed URL', 'Open in browser']) {
             expect(bar().getByRole('button', { name })).toHaveClass('btn-accent-share');
         }
 
         expect(bar().getByRole('button', { name: 'Rename' })).toHaveClass('btn-accent-edit');
-        expect(bar().getByRole('button', { name: 'Delete' })).toHaveClass('btn-accent-danger');
         expect(screen.getByRole('button', { name: 'Choose image…' })).toHaveClass(
             'btn-accent-create',
         );
@@ -84,39 +104,51 @@ describe('Video detail action bar', () => {
         expect(screen.queryByRole('heading', { name: 'Actions' })).toBeNull();
         expect(screen.getAllByRole('button', { name: 'Copy embed URL' })).toHaveLength(1);
         expect(screen.getAllByRole('button', { name: 'Rename' })).toHaveLength(1);
-        expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1);
     });
 
-    it('hides the copy and open buttons without URLs', async () => {
-        await openDetail({ embedUrl: null, playlistUrl: null });
+    it('hides the copy and open buttons without URLs, and the empty menu entries', async () => {
+        const { user } = await openDetail({
+            embedUrl: null,
+            playlistUrl: null,
+            shortcode: null,
+            iframeCode: null,
+        });
 
         expect(
             bar()
                 .getAllByRole('button')
-                .map((button) => button.textContent),
-        ).toEqual(['Rename', 'Delete']);
+                .map((button) => button.getAttribute('aria-label') ?? button.textContent),
+        ).toEqual(['Rename', 'More actions']);
+
+        await user.click(bar().getByRole('button', { name: 'More actions' }));
+        expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual(['Delete']);
     });
 
-    it('hides only the playlist button without a playlist URL', async () => {
-        await openDetail({ playlistUrl: null });
+    it('hides only the playlist entry without a playlist URL', async () => {
+        const { user } = await openDetail({ playlistUrl: null });
 
-        expect(bar().queryByRole('button', { name: 'Copy playlist URL' })).toBeNull();
         expect(bar().getByRole('button', { name: 'Copy embed URL' })).toBeInTheDocument();
+        await user.click(bar().getByRole('button', { name: 'More actions' }));
+        expect(screen.queryByRole('menuitem', { name: 'Copy playlist URL' })).toBeNull();
     });
 
-    it('copies and opens from the bar', async () => {
+    it('copies and opens from the bar and its menu', async () => {
         const { user, copyLink, openEmbed } = await openDetail();
 
         await user.click(bar().getByRole('button', { name: 'Copy embed URL' }));
-        await user.click(bar().getByRole('button', { name: 'Copy playlist URL' }));
+        await user.click(bar().getByRole('button', { name: 'More actions' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Copy playlist URL' }));
+        await user.click(bar().getByRole('button', { name: 'More actions' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Copy shortcode' }));
         await user.click(bar().getByRole('button', { name: 'Open in browser' }));
 
         expect(copyLink).toHaveBeenNthCalledWith(1, 7, 'embed-url');
         expect(copyLink).toHaveBeenNthCalledWith(2, 7, 'playlist-url');
+        expect(copyLink).toHaveBeenNthCalledWith(3, 7, 'shortcode');
         await waitFor(() => expect(openEmbed).toHaveBeenCalledWith(7));
     });
 
-    it('deletes from the bar after confirming, and Rename keeps its inline editor and focus', async () => {
+    it('deletes from the menu after confirming, and Rename keeps its inline editor and focus', async () => {
         const { user, remove } = await openDetail();
 
         await user.click(bar().getByRole('button', { name: 'Rename' }));
@@ -125,7 +157,8 @@ describe('Video detail action bar', () => {
         await user.keyboard('{Escape}');
         expect(bar().getByRole('button', { name: 'Rename' })).toHaveFocus();
 
-        await user.click(bar().getByRole('button', { name: 'Delete' }));
+        await user.click(bar().getByRole('button', { name: 'More actions' }));
+        await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
         await user.click(
             within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
@@ -136,22 +169,29 @@ describe('Video detail action bar', () => {
         'disables Delete while the video is %s and explains why',
         async (status) => {
             const { user, remove } = await openDetail({ status } as Partial<VideoDetail>);
-            const button = bar().getByRole('button', { name: 'Delete' });
 
-            expect(button).toBeDisabled();
-            expect(button).toHaveAccessibleDescription(/cannot be deleted/);
+            await user.click(bar().getByRole('button', { name: 'More actions' }));
+
+            const item = screen.getByRole('menuitem', { name: 'Delete' });
+
+            expect(item).toHaveAttribute('aria-disabled', 'true');
+            expect(item).toHaveAccessibleDescription(/cannot be deleted/);
             expect(document.getElementById('video-delete-blocked')).toBeInTheDocument();
             // The explanation is outside the sticky bar so the bar keeps one line.
             expect(document.querySelector('.detail-actionbar #video-delete-blocked')).toBeNull();
-            await user.click(button);
+            await user.click(item);
+            expect(screen.queryByRole('alertdialog')).toBeNull();
             expect(remove).not.toHaveBeenCalled();
         },
     );
 
     it('keeps Delete enabled for a ready video, with no explanation', async () => {
-        await openDetail();
+        const { user } = await openDetail();
 
-        expect(bar().getByRole('button', { name: 'Delete' })).toBeEnabled();
+        await user.click(bar().getByRole('button', { name: 'More actions' }));
+        expect(screen.getByRole('menuitem', { name: 'Delete' })).not.toHaveAttribute(
+            'aria-disabled',
+        );
         expect(document.getElementById('video-delete-blocked')).toBeNull();
     });
 });

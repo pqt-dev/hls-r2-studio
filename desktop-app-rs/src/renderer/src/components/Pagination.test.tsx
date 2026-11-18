@@ -16,41 +16,29 @@ function setup(page: number, lastPage: number, total = lastPage * 24) {
 
 const nav = () => within(screen.getByRole('navigation', { name: 'Pagination' }));
 
+const field = () => nav().getByRole('textbox', { name: 'Current page' });
+
 describe('Pagination', () => {
-    it('shows the summary and the numbers with gaps for many pages', () => {
+    it('shows the count, the current page input and "of LAST"', () => {
         setup(6, 1000, 24000);
 
-        expect(nav().getByText('Page 6 of 1000 · 24000 videos')).toBeInTheDocument();
-        expect(
-            nav()
-                .getAllByRole('button', { name: /^Page \d+$/ })
-                .map((button) => button.textContent),
-        ).toEqual(['1', '4', '5', '6', '7', '8', '1000']);
-        expect(nav().getByRole('button', { name: 'Page 6' })).toHaveAttribute(
-            'aria-current',
-            'page',
-        );
-        expect(
-            nav()
-                .getAllByRole('button', { name: /^Page \d+$/ })
-                .filter((b) => b.hasAttribute('aria-current')),
-        ).toHaveLength(1);
-        // The gaps are not interactive and not announced.
-        expect(document.querySelectorAll('.pager-gap')).toHaveLength(2);
-        expect(nav().queryByRole('button', { name: '…' })).toBeNull();
+        expect(nav().getByRole('status')).toHaveTextContent('24000 videos');
+        expect(field()).toHaveValue('6');
+        expect(nav().getByText('of 1000')).toBeInTheDocument();
+        // No numbered buttons, no text labels, no Go to page form.
+        expect(nav().queryByRole('button', { name: /^Page \d+$/ })).toBeNull();
+        expect(nav().queryByRole('button', { name: 'Go' })).toBeNull();
+        expect(nav().queryByText(/Go to page/)).toBeNull();
     });
 
     it('labels the controls', () => {
         setup(3, 9);
 
-        for (const name of ['First page', 'Previous page', 'Next page', 'Last page', 'Go']) {
+        for (const name of ['First page', 'Previous page', 'Next page', 'Last page']) {
             expect(nav().getByRole('button', { name })).toBeInTheDocument();
         }
 
-        expect(nav().getByRole('textbox', { name: 'Go to page' })).toHaveAttribute(
-            'inputmode',
-            'numeric',
-        );
+        expect(field()).toHaveAttribute('inputmode', 'numeric');
     });
 
     it('disables First and Previous on the first page, Next and Last on the last', () => {
@@ -70,42 +58,58 @@ describe('Pagination', () => {
         expect(nav().getByRole('button', { name: 'First page' })).toBeEnabled();
     });
 
-    it('goes to First, Previous, a number, Next and Last', async () => {
+    it('goes to First, Previous, Next and Last', async () => {
         const { onPageChange, user } = setup(6, 20);
 
         await user.click(nav().getByRole('button', { name: 'First page' }));
         await user.click(nav().getByRole('button', { name: 'Previous page' }));
-        await user.click(nav().getByRole('button', { name: 'Page 8' }));
         await user.click(nav().getByRole('button', { name: 'Next page' }));
         await user.click(nav().getByRole('button', { name: 'Last page' }));
 
-        expect(onPageChange.mock.calls.map((call) => call[0])).toEqual([1, 5, 8, 7, 20]);
+        expect(onPageChange.mock.calls.map((call) => call[0])).toEqual([1, 5, 7, 20]);
     });
 
-    it('does nothing when the current page is clicked', async () => {
-        const { onPageChange, user } = setup(6, 20);
-
-        await user.click(nav().getByRole('button', { name: 'Page 6' }));
-        expect(onPageChange).not.toHaveBeenCalled();
-    });
-
-    it('jumps to a valid page with the Go button and clears the field', async () => {
+    it('jumps to a typed page with Enter', async () => {
         const { onPageChange, user } = setup(1, 50);
-        const field = nav().getByRole('textbox', { name: 'Go to page' });
 
-        await user.type(field, '12');
-        await user.click(nav().getByRole('button', { name: 'Go' }));
+        await user.clear(field());
+        await user.type(field(), '12{Enter}');
 
         expect(onPageChange).toHaveBeenCalledExactlyOnceWith(12);
-        expect(field).toHaveValue('');
         expect(nav().queryByRole('alert')).toBeNull();
     });
 
-    it('submits with Enter', async () => {
-        const { onPageChange, user } = setup(1, 50);
+    it('does nothing when Enter is pressed on the unchanged current page', async () => {
+        const { onPageChange, user } = setup(6, 20);
 
-        await user.type(nav().getByRole('textbox', { name: 'Go to page' }), '7{Enter}');
-        expect(onPageChange).toHaveBeenCalledExactlyOnceWith(7);
+        await user.click(field());
+        await user.keyboard('{Enter}');
+
+        expect(onPageChange).not.toHaveBeenCalled();
+        expect(nav().queryByRole('alert')).toBeNull();
+    });
+
+    it('follows the page prop and reverts an abandoned edit on blur', async () => {
+        const onPageChange = vi.fn();
+        const user = userEvent.setup();
+        const { rerender } = render(
+            <Pagination page={2} lastPage={9} total={216} onPageChange={onPageChange} />,
+        );
+
+        expect(field()).toHaveValue('2');
+
+        await user.clear(field());
+        await user.type(field(), '7');
+        await user.tab();
+        expect(field()).toHaveValue('2');
+        expect(onPageChange).not.toHaveBeenCalled();
+
+        await user.clear(field());
+        await user.tab();
+        expect(field()).toHaveValue('2');
+
+        rerender(<Pagination page={3} lastPage={9} total={216} onPageChange={onPageChange} />);
+        expect(field()).toHaveValue('3');
     });
 
     it.each([
@@ -114,38 +118,46 @@ describe('Pagination', () => {
     ])('clamps %s into 1..last', async (text, expected) => {
         const { onPageChange, user } = setup(10, 50);
 
-        await user.type(nav().getByRole('textbox', { name: 'Go to page' }), `${text}{Enter}`);
+        await user.clear(field());
+        await user.type(field(), `${text}{Enter}`);
         expect(onPageChange).toHaveBeenCalledExactlyOnceWith(expected);
     });
 
     it.each(['', 'abc', '-2', '1.5'])('ignores %j with an inline hint', async (text) => {
         const { onPageChange, user } = setup(3, 50);
-        const field = nav().getByRole('textbox', { name: 'Go to page' });
 
-        if (text !== '') await user.type(field, text);
+        await user.clear(field());
 
-        await user.click(nav().getByRole('button', { name: 'Go' }));
+        if (text !== '') await user.type(field(), text);
+
+        await user.keyboard('{Enter}');
 
         expect(onPageChange).not.toHaveBeenCalled();
         expect(nav().getByRole('alert')).toHaveTextContent('Enter a page number from 1 to 50.');
-        expect(field).toHaveAttribute('aria-invalid', 'true');
+        expect(field()).toHaveAttribute('aria-invalid', 'true');
 
         // Typing again clears the hint.
-        await user.type(field, '4');
+        await user.type(field(), '4');
         expect(nav().queryByRole('alert')).toBeNull();
     });
 
-    it('shows only the summary for a single page', () => {
+    it('shows only the count for a single page', () => {
         setup(1, 1, 5);
 
-        expect(nav().getByText('Page 1 of 1 · 5 videos')).toBeInTheDocument();
+        expect(nav().getByRole('status')).toHaveTextContent('5 videos');
         expect(nav().queryAllByRole('button')).toHaveLength(0);
         expect(nav().queryByRole('textbox')).toBeNull();
     });
 
     it('treats lastPage 0 like a single page', () => {
         setup(1, 0, 0);
-        expect(nav().getByText('Page 1 of 1 · 0 videos')).toBeInTheDocument();
+        expect(nav().getByRole('status')).toHaveTextContent('0 videos');
         expect(nav().queryAllByRole('button')).toHaveLength(0);
+    });
+
+    it('does not render a Per page select', () => {
+        setup(1, 3, 60);
+        expect(nav().queryByText('Per page')).toBeNull();
+        expect(nav().queryByRole('combobox')).toBeNull();
     });
 });

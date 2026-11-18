@@ -1,13 +1,30 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent } from 'react';
+import {
+    useEffect,
+    useLayoutEffect,
+    useMemo,
+    useRef,
+    useState,
+    type FocusEvent,
+    type ReactNode,
+} from 'react';
 import type { ActionResult, JobDto } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { DetailsDialog } from '../components/DetailsDialog';
 import { DropZone } from '../components/DropZone';
+import { ChevronDownIcon, ChevronRightIcon } from '../components/icons';
 import { JobRow, useNow, type JobAction } from '../components/JobRow';
 import { QueueBanners } from '../components/QueueBanners';
 import { plural } from '../lib/format';
 import { isRunning } from '../lib/jobState';
-import { sortJobsForQueue } from '../lib/queueOrder';
+import {
+    FINISHED_COLLAPSE_THRESHOLD,
+    QUEUE_GROUP_ATTENTION,
+    QUEUE_GROUP_FINISHED,
+    QUEUE_GROUP_RUNNING,
+    QUEUE_GROUP_WAITING,
+    queueGroup,
+    sortJobsForQueue,
+} from '../lib/queueOrder';
 import { finishedCount, useApp } from '../state/AppProvider';
 import { useNavigation } from '../state/Navigation';
 import { useToast } from '../state/Toasts';
@@ -36,6 +53,21 @@ export function QueueScreen() {
     const finished = finishedCount(jobs);
     // Display order only; `details` above and the footer counts use the original list.
     const ordered = useMemo(() => sortJobsForQueue(jobs), [jobs]);
+    // The finished group is collapsible: collapsed by default when it is long, so a 1000-item
+    // history never pushes the live jobs away. `null` = no choice yet (follow the default).
+    const [finishedChoice, setFinishedChoice] = useState<boolean | null>(null);
+    const finishedTotal = useMemo(
+        () => ordered.filter((job) => queueGroup(job.state) === QUEUE_GROUP_FINISHED).length,
+        [ordered],
+    );
+    const finishedOpen = finishedChoice ?? finishedTotal <= FINISHED_COLLAPSE_THRESHOLD;
+    const visible = useMemo(
+        () =>
+            finishedOpen
+                ? ordered
+                : ordered.filter((job) => queueGroup(job.state) !== QUEUE_GROUP_FINISHED),
+        [ordered, finishedOpen],
+    );
 
     // Rows are keyed by job id, so a job that changes group is moved, not recreated. Moving a DOM
     // node can drop its focus: give it back when it vanished with the reorder (not when the user
@@ -159,6 +191,79 @@ export function QueueScreen() {
         }
     }
 
+    const GROUP_TITLE: Record<number, string> = {
+        [QUEUE_GROUP_RUNNING]: 'Running',
+        [QUEUE_GROUP_ATTENTION]: 'Needs attention',
+        [QUEUE_GROUP_WAITING]: 'Waiting',
+        [QUEUE_GROUP_FINISHED]: 'Finished',
+    };
+
+    /** Heading of a group; the finished one is a button that collapses/expands its jobs. */
+    function groupHeading(group: number, counts: Map<number, number>): ReactNode {
+        const count = counts.get(group) ?? 0;
+
+        return (
+            <li key={`group-${group}`} className="job-group" role="presentation" data-group={group}>
+                {group === QUEUE_GROUP_FINISHED ? (
+                    <button
+                        type="button"
+                        className="job-group-toggle"
+                        aria-expanded={finishedOpen}
+                        onClick={() => setFinishedChoice(!finishedOpen)}
+                    >
+                        {finishedOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
+                        <span className="job-group-title">{GROUP_TITLE[group]}</span>
+                        <span className="num job-group-count">{count}</span>
+                    </button>
+                ) : (
+                    <>
+                        <span className="job-group-title">{GROUP_TITLE[group]}</span>
+                        <span className="num job-group-count">{count}</span>
+                    </>
+                )}
+            </li>
+        );
+    }
+
+    /** Rows in display order with a heading before each non-empty group. */
+    function groupedRows(): ReactNode[] {
+        const counts = new Map<number, number>();
+
+        for (const job of ordered) {
+            const group = queueGroup(job.state);
+
+            counts.set(group, (counts.get(group) ?? 0) + 1);
+        }
+
+        const nodes: ReactNode[] = [];
+        let previous = 0;
+
+        for (const job of visible) {
+            const group = queueGroup(job.state);
+
+            if (group !== previous) {
+                previous = group;
+                nodes.push(groupHeading(group, counts));
+            }
+
+            nodes.push(
+                <JobRow
+                    key={job.id}
+                    job={job}
+                    now={now}
+                    pending={pending.has(job.id)}
+                    onAction={onAction}
+                />,
+            );
+        }
+
+        // Collapsed: no finished row is rendered, but the heading stays to expand them again.
+        if (!finishedOpen && finishedTotal > 0)
+            nodes.push(groupHeading(QUEUE_GROUP_FINISHED, counts));
+
+        return nodes;
+    }
+
     function clearFinished(): void {
         if (finished > 0) setConfirm({ kind: 'clear', count: finished });
     }
@@ -191,15 +296,7 @@ export function QueueScreen() {
                         onFocus={trackFocus}
                         onBlur={releaseFocus}
                     >
-                        {ordered.map((job) => (
-                            <JobRow
-                                key={job.id}
-                                job={job}
-                                now={now}
-                                pending={pending.has(job.id)}
-                                onAction={onAction}
-                            />
-                        ))}
+                        {groupedRows()}
                     </ul>
                 )}
             </section>

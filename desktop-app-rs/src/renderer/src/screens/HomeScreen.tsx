@@ -3,15 +3,31 @@ import type { LogCounts, LogItem, Overview, RendererApi, VideoListItem } from '.
 import { useNow } from '../components/JobRow';
 import { Thumbnail } from '../components/Thumbnail';
 import { useAddFiles } from '../components/useAddFiles';
-import { QuickActionButtons, useQuickActions } from '../components/VideoQuickActions';
 import {
+    ChevronRightIcon,
+    ClockIcon,
+    ErrorIcon,
+    LibraryIcon,
+    RefreshIcon,
+    StorageIcon,
+    SuccessIcon,
+} from '../components/icons';
+import {
+    QuickActionButtons,
+    useQuickActions,
+    type QuickAction,
+} from '../components/VideoQuickActions';
+import {
+    formatBytes,
+    formatDate,
     formatDateTime,
     formatDuration,
     formatRelativeTime,
     plural,
     siteHost,
+    stageLabel,
 } from '../lib/format';
-import { queueGroup } from '../lib/queueOrder';
+import { needsAttention, queueGroup } from '../lib/queueOrder';
 import { useApp } from '../state/AppProvider';
 import { useNavigation } from '../state/Navigation';
 import { useJobFinished } from '../state/useJobFinished';
@@ -66,21 +82,16 @@ const LOADING = { kind: 'loading' } as const;
 function CardShell({
     title,
     action,
-    wide = false,
     children,
 }: {
     title: string;
     action?: ReactNode;
-    wide?: boolean;
     children: ReactNode;
 }) {
     const id = useId();
 
     return (
-        <section
-            className={wide ? 'card home-card home-card-wide' : 'card home-card'}
-            aria-labelledby={id}
-        >
+        <section className="card home-card" aria-labelledby={id}>
             <div className="home-card-head">
                 <h3 id={id}>{title}</h3>
                 {action}
@@ -122,11 +133,18 @@ function CardBody<T>({
     return <>{children(state.value)}</>;
 }
 
-const TILES = [
-    { key: 'total', label: 'Total' },
-    { key: 'ready', label: 'Ready' },
-    { key: 'processing', label: 'Processing on server' },
-    { key: 'failed', label: 'Failed' },
+const STATS = [
+    { key: 'total', label: 'Total', caption: 'Total videos', color: 'blue', icon: <LibraryIcon /> },
+    { key: 'ready', label: 'Ready', caption: 'Ready', color: 'green', icon: <SuccessIcon /> },
+    {
+        key: 'processing',
+        label: 'Processing on server',
+        caption: 'Processing',
+        sub: 'on server',
+        color: 'amber',
+        icon: <ClockIcon />,
+    },
+    { key: 'failed', label: 'Failed', caption: 'Failed', color: 'red', icon: <ErrorIcon /> },
 ] as const;
 
 function eventTime(item: LogItem): string | null {
@@ -215,7 +233,7 @@ export function HomeScreen() {
     const greeting = greetingFor(new Date().getHours());
     const running = jobs.filter((job) => queueGroup(job.state) === 1).length;
     const waiting = jobs.filter((job) => queueGroup(job.state) === 3).length;
-    const attention = jobs.filter((job) => queueGroup(job.state) === 2).length;
+    const attention = jobs.filter((job) => needsAttention(job.state)).length;
     const done = jobs.filter((job) => job.state === 'done').length;
 
     async function addVideos(): Promise<void> {
@@ -224,225 +242,400 @@ export function HomeScreen() {
         if (result !== null && result.added > 0) openTab('queue');
     }
 
+    const statsId = useId();
     const retryOverview = () => load({ overview: true }, false);
 
     return (
         <section className="home" aria-labelledby="home-heading">
-            <div className="home-head">
-                <div className="home-greeting">
+            <div className="home-hero card">
+                <button
+                    type="button"
+                    className="btn btn-sm btn-text home-refresh"
+                    aria-label="Refresh"
+                    title="Refresh"
+                    onClick={() => loadAll(false)}
+                >
+                    <RefreshIcon />
+                </button>
+                <div className="home-hero-text">
                     <h2 id="home-heading">
                         {auth.username === undefined ? greeting : `${greeting}, ${auth.username}`}
                     </h2>
-                    <p className="muted">{host === '' ? 'Signed in' : `${host} · Signed in`}</p>
+                    <p className="home-hero-sub">
+                        {host === '' ? 'Signed in' : `${host} · Signed in`}
+                    </p>
+                    <div className="row home-hero-actions">
+                        <button
+                            type="button"
+                            className="btn btn-primary"
+                            disabled={adding}
+                            onClick={() => void addVideos()}
+                        >
+                            Upload videos
+                        </button>
+                        <button type="button" className="btn" onClick={() => openTab('library')}>
+                            Open Library
+                        </button>
+                    </div>
                 </div>
-                <div className="row">
-                    <button
-                        type="button"
-                        className="btn btn-primary"
-                        disabled={adding}
-                        onClick={() => void addVideos()}
-                    >
-                        Upload videos
-                    </button>
-                    <button type="button" className="btn" onClick={() => openTab('library')}>
-                        Open Library
-                    </button>
-                    <button type="button" className="btn" onClick={() => loadAll(false)}>
-                        Refresh
-                    </button>
-                </div>
+                <HeroArt />
             </div>
 
-            <div className="home-grid">
-                <CardShell title="Videos" wide>
-                    <CardBody state={overview} onRetry={retryOverview}>
-                        {(value) => (
-                            <ul className="tiles">
-                                {TILES.map((tile) => (
-                                    <li key={tile.key}>
-                                        <button
-                                            type="button"
-                                            className={`tile tile-${tile.key}`}
-                                            aria-label={`${tile.label}: ${value.videos[tile.key]}`}
-                                            onClick={() => openTab('library')}
-                                        >
-                                            <span className="tile-value num">
-                                                {value.videos[tile.key]}
-                                            </span>
-                                            <span className="tile-label">{tile.label}</span>
-                                        </button>
-                                    </li>
-                                ))}
-                            </ul>
+            <section className="home-stats" aria-labelledby={statsId}>
+                <h3 id={statsId} className="visually-hidden">
+                    Videos
+                </h3>
+                {overview.kind === 'error' ? (
+                    <div className="card home-error">
+                        <p role="alert">{overview.message}</p>
+                        <button type="button" className="btn btn-sm" onClick={retryOverview}>
+                            Retry
+                        </button>
+                    </div>
+                ) : (
+                    <>
+                        {overview.kind === 'loading' && (
+                            <p className="visually-hidden" role="status" aria-busy="true">
+                                {'Loading…'}
+                            </p>
                         )}
-                    </CardBody>
-                </CardShell>
+                        <ul className="stat-cards">
+                            {STATS.map((stat) => {
+                                const body = (
+                                    <>
+                                        <span className={`icon-tile icon-tile-${stat.color}`}>
+                                            {stat.icon}
+                                        </span>
+                                        <span className="stat-text">
+                                            <span className="stat-value num">
+                                                {overview.kind === 'ready'
+                                                    ? overview.value.videos[stat.key]
+                                                    : '\u2014'}
+                                            </span>
+                                            <span className="stat-label">{stat.caption}</span>
+                                            {'sub' in stat && (
+                                                <span className="stat-sub">{stat.sub}</span>
+                                            )}
+                                        </span>
+                                    </>
+                                );
 
-                <CardShell
-                    title="This computer"
-                    wide
-                    action={
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => openTab('queue')}
-                        >
-                            Go to Queue
-                        </button>
-                    }
-                >
-                    <dl className="stats">
-                        <div>
-                            <dt>Running</dt>
-                            <dd className="num">{running}</dd>
-                        </div>
-                        <div>
-                            <dt>Waiting</dt>
-                            <dd className="num">{waiting}</dd>
-                        </div>
-                        <div>
-                            <dt>Needs attention</dt>
-                            <dd className="num">{attention}</dd>
-                        </div>
-                        <div>
-                            <dt>Done</dt>
-                            <dd className="num">{done}</dd>
-                        </div>
-                    </dl>
-                </CardShell>
-
-                <CardShell
-                    title="Recent videos"
-                    action={
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => openTab('library')}
-                        >
-                            View all
-                        </button>
-                    }
-                >
-                    <CardBody state={recent} onRetry={() => load({ recent: true }, false)}>
-                        {(items) =>
-                            items.length === 0 ? (
-                                <p className="muted">No videos yet</p>
-                            ) : (
-                                <ul className="recent" aria-label="Recent videos">
-                                    {items.map((video) => (
-                                        <li key={video.id} className="recent-row">
-                                            <Thumbnail
-                                                key={video.thumbnailUrl ?? ''}
-                                                url={video.thumbnailUrl}
-                                            />
+                                return (
+                                    <li key={stat.key}>
+                                        {overview.kind === 'ready' ? (
                                             <button
                                                 type="button"
-                                                className="recent-title"
-                                                title={video.title}
-                                                onClick={() => openLibraryVideo(video.id)}
+                                                className={`stat-card stat-${stat.key}`}
+                                                aria-label={`${stat.label}: ${overview.value.videos[stat.key]}`}
+                                                onClick={() => openTab('library')}
                                             >
-                                                {video.title}
+                                                {body}
                                             </button>
-                                            <StatusBadge status={video.status} />
-                                            <span className="recent-duration num muted small">
-                                                {formatDuration(video.duration)}
+                                        ) : (
+                                            <div className={`stat-card stat-${stat.key}`}>
+                                                {body}
+                                            </div>
+                                        )}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    </>
+                )}
+            </section>
+
+            <div className="home-grid">
+                <div className="home-main">
+                    <CardShell
+                        title="Recent videos"
+                        action={
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-text"
+                                onClick={() => openTab('library')}
+                            >
+                                View all
+                                <ChevronRightIcon />
+                            </button>
+                        }
+                    >
+                        <CardBody state={recent} onRetry={() => load({ recent: true }, false)}>
+                            {(items) =>
+                                items.length === 0 ? (
+                                    <p className="muted">No videos yet</p>
+                                ) : (
+                                    <div className="recent-table">
+                                        <div className="recent-grid recent-head" aria-hidden="true">
+                                            <span />
+                                            <span>Title</span>
+                                            <span className="recent-center">Status</span>
+                                            <span className="recent-center recent-col-duration">
+                                                Duration
                                             </span>
-                                            {video.status === 'ready' && (
-                                                <QuickActionButtons
-                                                    title={video.title}
+                                            <span className="recent-center recent-col-size">
+                                                Size
+                                            </span>
+                                            <span />
+                                        </div>
+                                        <ul className="recent" aria-label="Recent videos">
+                                            {items.map((video) => (
+                                                <RecentRow
+                                                    key={video.id}
+                                                    video={video}
                                                     busy={quick.busyIds.has(video.id)}
+                                                    onOpen={() => openLibraryVideo(video.id)}
                                                     onQuick={(action) =>
                                                         quick.run(video.id, action)
                                                     }
                                                 />
-                                            )}
-                                        </li>
-                                    ))}
-                                </ul>
-                            )
-                        }
-                    </CardBody>
-                </CardShell>
-
-                <CardShell
-                    title="Needs attention"
-                    action={
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            onClick={() => openTab('logs')}
-                        >
-                            View logs
-                        </button>
-                    }
-                >
-                    <CardBody state={logs} onRetry={() => load({ logs: true }, false)}>
-                        {(slice) => {
-                            const failed = slice.errors.slice(0, ATTENTION_COUNT);
-
-                            if (failed.length === 0 && attention === 0) {
-                                return <p className="muted">Nothing needs attention.</p>;
-                            }
-
-                            return (
-                                <>
-                                    {failed.length > 0 && (
-                                        <ul className="attention" aria-label="Failed videos">
-                                            {failed.map((item) => {
-                                                const time = eventTime(item);
-
-                                                return (
-                                                    <li key={item.id} className="attention-row">
-                                                        <button
-                                                            type="button"
-                                                            className="attention-title"
-                                                            title={item.title}
-                                                            onClick={() =>
-                                                                openLibraryVideo(item.id)
-                                                            }
-                                                        >
-                                                            {item.title}
-                                                        </button>
-                                                        {item.errorMessage !== null && (
-                                                            <span className="attention-message small">
-                                                                {item.errorMessage}
-                                                            </span>
-                                                        )}
-                                                        {time !== null && (
-                                                            <time
-                                                                className="muted small"
-                                                                dateTime={time}
-                                                                title={formatDateTime(time)}
-                                                            >
-                                                                {formatRelativeTime(time, now)}
-                                                            </time>
-                                                        )}
-                                                    </li>
-                                                );
-                                            })}
+                                            ))}
                                         </ul>
-                                    )}
-                                    {attention > 0 && (
-                                        <p className="attention-local">
-                                            <span>
-                                                {plural(attention, 'local video')} on this computer{' '}
-                                                {attention === 1 ? 'needs' : 'need'} attention.
-                                            </span>
-                                            <button
-                                                type="button"
-                                                className="btn btn-sm"
-                                                onClick={() => openTab('queue')}
-                                            >
-                                                View in Queue
-                                            </button>
-                                        </p>
-                                    )}
-                                </>
-                            );
-                        }}
-                    </CardBody>
-                </CardShell>
+                                    </div>
+                                )
+                            }
+                        </CardBody>
+                    </CardShell>
+                </div>
+
+                <div className="home-side">
+                    <CardShell
+                        title="Queue status"
+                        action={
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-text"
+                                onClick={() => openTab('queue')}
+                            >
+                                Go to Queue
+                            </button>
+                        }
+                    >
+                        <dl className="stat-rows">
+                            {(
+                                [
+                                    ['Running', running, 'blue'],
+                                    ['Waiting', waiting, 'amber'],
+                                    ['Needs attention', attention, 'red'],
+                                    ['Done', done, 'green'],
+                                ] as const
+                            ).map(([label, count, color]) => (
+                                <div key={label} className={`stat-row tint-${color}`}>
+                                    <dt>
+                                        <button
+                                            type="button"
+                                            className="stat-link"
+                                            onClick={() => openTab('queue')}
+                                        >
+                                            {label}
+                                        </button>
+                                    </dt>
+                                    <dd className="num">{count}</dd>
+                                </div>
+                            ))}
+                        </dl>
+                    </CardShell>
+
+                    <CardShell
+                        title="Needs your attention"
+                        action={
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-text"
+                                onClick={() => openTab('logs')}
+                            >
+                                View logs
+                            </button>
+                        }
+                    >
+                        <CardBody state={logs} onRetry={() => load({ logs: true }, false)}>
+                            {(slice) => {
+                                const failed = slice.errors.slice(0, ATTENTION_COUNT);
+                                const local = jobs
+                                    .filter((job) => needsAttention(job.state))
+                                    .slice(0, ATTENTION_COUNT);
+
+                                if (failed.length === 0 && attention === 0) {
+                                    return (
+                                        <div className="all-clear">
+                                            <p className="all-clear-title">All caught up</p>
+                                            <p className="muted">Nothing needs attention.</p>
+                                        </div>
+                                    );
+                                }
+
+                                return (
+                                    <>
+                                        {failed.length > 0 && (
+                                            <ul className="attention" aria-label="Failed videos">
+                                                {failed.map((item) => {
+                                                    const time = eventTime(item);
+
+                                                    return (
+                                                        <li key={item.id} className="attention-row">
+                                                            <button
+                                                                type="button"
+                                                                className="attention-title"
+                                                                title={item.title}
+                                                                onClick={() =>
+                                                                    openLibraryVideo(item.id)
+                                                                }
+                                                            >
+                                                                {item.title}
+                                                            </button>
+                                                            {item.errorMessage !== null && (
+                                                                <span className="attention-message small">
+                                                                    {item.errorMessage}
+                                                                </span>
+                                                            )}
+                                                            {time !== null && (
+                                                                <time
+                                                                    className="muted small"
+                                                                    dateTime={time}
+                                                                    title={formatDateTime(time)}
+                                                                >
+                                                                    {formatRelativeTime(time, now)}
+                                                                </time>
+                                                            )}
+                                                        </li>
+                                                    );
+                                                })}
+                                            </ul>
+                                        )}
+                                        {attention > 0 && (
+                                            <>
+                                                <ul
+                                                    className="attention"
+                                                    aria-label="Local videos needing attention"
+                                                >
+                                                    {local.map((job) => (
+                                                        <li key={job.id} className="attention-row">
+                                                            <span
+                                                                className="attention-file"
+                                                                title={job.fileName}
+                                                            >
+                                                                {job.fileName}
+                                                            </span>
+                                                            <span className="muted small">
+                                                                {stageLabel(job.state)}
+                                                            </span>
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                                <p className="attention-local">
+                                                    <span>
+                                                        {plural(attention, 'local video')} on this
+                                                        computer{' '}
+                                                        {attention === 1 ? 'needs' : 'need'}{' '}
+                                                        attention.
+                                                    </span>
+                                                    <button
+                                                        type="button"
+                                                        className="btn btn-sm"
+                                                        onClick={() => openTab('queue')}
+                                                    >
+                                                        View in Queue
+                                                    </button>
+                                                </p>
+                                            </>
+                                        )}
+                                    </>
+                                );
+                            }}
+                        </CardBody>
+                    </CardShell>
+                </div>
             </div>
         </section>
+    );
+}
+
+/** Decorative inline illustration of the hero card (cloud, video and document shapes). */
+function HeroArt() {
+    return (
+        <svg className="home-hero-art" viewBox="0 0 220 140" aria-hidden="true" focusable="false">
+            <rect x="52" y="22" width="112" height="84" rx="12" className="art-card" />
+            <rect x="64" y="34" width="60" height="8" rx="4" className="art-line" />
+            <rect x="64" y="50" width="88" height="6" rx="3" className="art-line-soft" />
+            <rect x="64" y="62" width="76" height="6" rx="3" className="art-line-soft" />
+            <rect x="64" y="78" width="40" height="18" rx="6" className="art-accent" />
+            <path d="M80 82.5v9l8-4.5z" className="art-play" />
+            <path
+                d="M150 118h-60a22 22 0 0 1-3-43.8A28 28 0 0 1 140 66a20 20 0 0 1 10 52z"
+                className="art-cloud"
+            />
+            <path
+                d="M118 108V88m0 0-8 8m8-8 8 8"
+                className="art-arrow"
+                fill="none"
+                strokeWidth="5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+            />
+            <circle cx="184" cy="36" r="8" className="art-dot-a" />
+            <circle cx="36" cy="92" r="6" className="art-dot-b" />
+        </svg>
+    );
+}
+
+function RecentRow({
+    video,
+    busy,
+    onOpen,
+    onQuick,
+}: {
+    video: VideoListItem;
+    busy: boolean;
+    onOpen: () => void;
+    onQuick: (action: QuickAction) => void;
+}) {
+    const duration = formatDuration(video.duration);
+    const added = formatDate(video.createdAt);
+
+    return (
+        // The whole row opens the video; the title is the keyboard-reachable button and the
+        // quick actions keep their own behavior.
+        <li
+            className="recent-grid recent-row"
+            onClick={(event) => {
+                if (!(event.target as HTMLElement).closest('button')) onOpen();
+            }}
+        >
+            <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />
+            <div className="recent-text">
+                <button type="button" className="recent-title" title={video.title} onClick={onOpen}>
+                    {video.title}
+                </button>
+                {added !== '' && <span className="recent-date">{added}</span>}
+            </div>
+            <span className="recent-cell recent-status">
+                <StatusBadge status={video.status} />
+            </span>
+            <span className="recent-cell recent-col-duration">
+                {duration !== '' && (
+                    <span className="spec spec-duration num" title="Duration">
+                        <ClockIcon />
+                        {duration}
+                    </span>
+                )}
+            </span>
+            <span className="recent-cell recent-col-size">
+                {video.sizeBytes !== null && (
+                    <span className="spec spec-size num" title="File size">
+                        <StorageIcon />
+                        {formatBytes(video.sizeBytes)}
+                    </span>
+                )}
+            </span>
+            {video.status === 'ready' ? (
+                <QuickActionButtons
+                    variant="ghost"
+                    title={video.title}
+                    busy={busy}
+                    onQuick={onQuick}
+                />
+            ) : (
+                <span />
+            )}
+        </li>
     );
 }

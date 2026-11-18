@@ -1,10 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { JobDto } from '../../../shared/ipc';
 import { formatBytes, formatDateTime, formatRelativeTime, stageLabel } from '../lib/format';
-import { hasDetailsView, isRunning, STATUS_ICON, statusKind } from '../lib/jobState';
-
-/** Accent group of a button (see the accent tokens): meaning, not position. */
-type Accent = 'share' | 'recover' | 'danger';
+import { ActionMenu, type ActionMenuItem } from './ActionMenu';
+import { StatusIcon, VideoFileIcon } from './icons';
+import { hasDetailsView, isRunning, statusKind } from '../lib/jobState';
 
 export type JobAction =
     | 'cancel'
@@ -91,18 +90,37 @@ export function JobRow({
     const paused = job.state === 'upload_interrupted';
     const stage = job.waitingForNetwork ? 'Waiting for network…' : stageLabel(job.state);
 
-    const button = (action: JobAction, label: string, accent: Accent, enabled = true) =>
-        enabled ? (
-            <button
-                type="button"
-                className={`btn btn-sm btn-accent-${accent}`}
-                disabled={pending}
-                aria-label={`${label}: ${job.fileName}`}
-                onClick={() => onAction(action, job)}
-            >
-                {label}
-            </button>
-        ) : null;
+    const name = job.fileName;
+    const item = (
+        action: JobAction,
+        label: string,
+        enabled: boolean,
+        danger = false,
+    ): ActionMenuItem[] =>
+        enabled
+            ? [
+                  {
+                      key: action,
+                      label,
+                      ariaLabel: `${label}: ${name}`,
+                      danger,
+                      onSelect: () => onAction(action, job),
+                  },
+              ]
+            : [];
+    const done = job.state === 'done';
+    // Everything except the one shortcut on the row lives in the kebab menu.
+    const items: ActionMenuItem[] = [
+        ...item('resume', 'Resume', job.canResume),
+        ...item('retry', paused ? 'Start over' : 'Retry', job.canRetry),
+        ...item('retry-register', 'Retry register', job.canRetryRegister),
+        ...item('copy-url', 'Copy embed URL', done && job.embedUrl !== null),
+        ...item('open', 'Open on site', done && job.embedUrl !== null),
+        ...item('view-library', 'View in Library', done),
+        ...item('details', 'View details', hasDetailsView(job.state)),
+        ...item('cancel', 'Cancel', job.canCancel, true),
+        ...item('remove', 'Remove', job.canRemove, true),
+    ];
 
     return (
         <li
@@ -111,6 +129,9 @@ export function JobRow({
             data-job-id={job.id}
             data-network-wait={job.waitingForNetwork ? 'true' : undefined}
         >
+            <span className="job-icon" aria-hidden="true">
+                <VideoFileIcon />
+            </span>
             <div className="job-main">
                 <p className="job-name" title={job.fileName}>
                     {job.fileName}
@@ -127,7 +148,7 @@ export function JobRow({
             <div className="job-status">
                 <span className={`chip chip-${kind}`}>
                     <span className="chip-icon" aria-hidden="true">
-                        {STATUS_ICON[kind]}
+                        <StatusIcon kind={kind} />
                     </span>
                     {stage}
                 </span>
@@ -157,20 +178,24 @@ export function JobRow({
             </div>
 
             <div className="job-actions">
-                {button('resume', 'Resume', 'recover', job.canResume)}
-                {button('cancel', 'Cancel', 'danger', job.canCancel)}
-                {button('retry', paused ? 'Start over' : 'Retry', 'recover', job.canRetry)}
-                {button('retry-register', 'Retry register', 'recover', job.canRetryRegister)}
-                {job.state === 'done' && job.embedUrl !== null && (
-                    <>
-                        {button('copy-url', 'Copy embed URL', 'share')}
-                        {button('copy-shortcode', 'Copy shortcode', 'share')}
-                        {button('open', 'Open on site', 'share')}
-                    </>
+                {done && job.embedUrl !== null && (
+                    <button
+                        type="button"
+                        className="btn btn-sm btn-accent-share"
+                        disabled={pending}
+                        aria-label={`Copy shortcode: ${name}`}
+                        onClick={() => onAction('copy-shortcode', job)}
+                    >
+                        Copy shortcode
+                    </button>
                 )}
-                {job.state === 'done' && button('view-library', 'View in Library', 'share')}
-                {hasDetailsView(job.state) && button('details', 'View details', 'share')}
-                {button('remove', 'Remove', 'danger', job.canRemove)}
+                {items.length > 0 && (
+                    <ActionMenu
+                        label={`More actions for ${name}`}
+                        items={items}
+                        disabled={pending}
+                    />
+                )}
             </div>
         </li>
     );

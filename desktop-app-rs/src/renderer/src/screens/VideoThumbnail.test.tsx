@@ -112,7 +112,7 @@ describe('Custom thumbnail (video detail)', () => {
         expect(get.mock.calls.length).toBe(loads + 1);
         expect(card().getByRole('button', { name: 'Choose image…' })).toHaveFocus();
 
-        await user.click(screen.getByRole('button', { name: '← Library' }));
+        await user.click(screen.getByRole('button', { name: 'Library' }));
 
         // The row got the fresh (cache-busted) URL without reloading the list.
         expect(list.mock.calls.length).toBe(lists);

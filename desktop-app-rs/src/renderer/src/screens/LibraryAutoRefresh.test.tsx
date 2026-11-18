@@ -83,17 +83,16 @@ describe('Library auto-refresh on a finished job', () => {
     });
 
     it('shows a notice instead of reloading when there is search text', async () => {
-        const { fake, spy } = await openLibrary(() => Promise.resolve(ok([makeVideo()])));
+        const { fake, spy, user } = await openLibrary(() => Promise.resolve(ok([makeVideo()])));
 
-        // Fake timers keep the 400 ms search debounce from firing on a slow machine, which
-        // would turn the typed text into a real search (and a second list call) mid-test.
-        vi.useFakeTimers();
-        fireEvent.change(screen.getByLabelText('Search videos'), { target: { value: 'abc' } });
+        // An applied search (Enter) means the finished job may not belong to this list.
+        await user.type(screen.getByLabelText('Search videos'), 'abc{Enter}');
+        await waitFor(() => expect(spy).toHaveBeenCalledTimes(2));
         push(() => fake.emitJobs([RUNNING]));
         push(() => fake.emitJobs([DONE]));
 
         expect(screen.getByText(NOTICE)).toBeInTheDocument();
-        expect(spy).toHaveBeenCalledTimes(1);
+        expect(spy).toHaveBeenCalledTimes(2);
     });
 
     it('shows a notice on page 2 and the notice Refresh goes back to page 1', async () => {
@@ -105,7 +104,7 @@ describe('Library auto-refresh on a finished job', () => {
             );
         });
 
-        await user.click(screen.getByRole('button', { name: 'Next page' }));
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
         await screen.findByText('Page 2');
         expect(spy).toHaveBeenCalledTimes(2);
 

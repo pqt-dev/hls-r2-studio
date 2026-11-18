@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VideoListItem, VideoListMeta, VideosListResult } from '../../../shared/ipc';
 import { makeVideo } from '../testing/fakeApi';
 import { renderApp } from '../testing/renderApp';
+import { waitForPage } from '../testing/pager';
 
 function meta(partial: Partial<VideoListMeta> = {}): VideoListMeta {
     return { page: 1, perPage: 24, total: 1, lastPage: 1, ...partial };
@@ -50,7 +51,7 @@ describe('Library screen', () => {
         expect(within(rows[0]!).getByText('Holiday')).toBeInTheDocument();
         expect(within(rows[0]!).getByText('Ready')).toBeInTheDocument();
         expect(within(rows[0]!).getByText('1:15')).toBeInTheDocument();
-        expect(within(rows[0]!).getByText('Jan 1, 2026')).toBeInTheDocument();
+        expect(within(rows[0]!).getByText(/^Added Jan 1, 2026/)).toBeInTheDocument();
         expect(rows[0]!.querySelector('img')).toHaveAttribute(
             'src',
             'https://cdn.example.com/a.jpg',
@@ -58,10 +59,10 @@ describe('Library screen', () => {
         expect(within(rows[1]!).getByText('Processing')).toBeInTheDocument();
         expect(within(rows[1]!).getByText('1:02:05')).toBeInTheDocument();
         expect(rows[1]!.querySelector('img')).toBeNull();
-        expect(within(rows[1]!).getByText('No preview')).toBeInTheDocument();
+        expect(within(rows[1]!).getByText('No thumbnail')).toBeInTheDocument();
         expect(within(rows[2]!).getByText('Failed')).toBeInTheDocument();
         expect(within(rows[3]!).getByText('Unknown')).toBeInTheDocument();
-        expect(screen.getByText('Page 1 of 1 · 4 videos')).toBeInTheDocument();
+        expect(screen.getAllByText('4 videos')[0]!).toBeInTheDocument();
     });
 
     it('falls back to the placeholder when the image fails to load', async () => {
@@ -74,11 +75,11 @@ describe('Library screen', () => {
         fireEvent.error(row.querySelector('img')!);
 
         expect(row.querySelector('img')).toBeNull();
-        expect(within(row).getByText('No preview')).toBeInTheDocument();
+        expect(within(row).getByText('No thumbnail')).toBeInTheDocument();
     });
 
-    it('searches after the debounce and resets to page 1', async () => {
-        const { spy } = await openLibrary((params) => {
+    it('searches only on submit (Enter or the Search button) and resets to page 1', async () => {
+        const { spy, user } = await openLibrary((params) => {
             const { page } = params as { page: number };
 
             return Promise.resolve(ok([makeVideo()], { page, lastPage: 3, total: 50 }));
@@ -86,24 +87,48 @@ describe('Library screen', () => {
 
         await screen.findAllByRole('listitem');
         await act(async () => {
-            fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+            fireEvent.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
         });
         await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ page: 2, perPage: 24 }));
 
-        vi.useFakeTimers();
-        fireEvent.change(screen.getByLabelText('Search videos'), { target: { value: ' cat ' } });
-
+        const box = screen.getByLabelText('Search videos');
         const calls = spy.mock.calls.length;
 
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(300);
-        });
+        // Typing alone never calls the API, however long we wait.
+        await user.type(box, ' cat ');
+        await new Promise((resolve) => setTimeout(resolve, 400));
         expect(spy.mock.calls.length).toBe(calls);
 
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(150);
-        });
-        expect(spy).toHaveBeenLastCalledWith({ page: 1, perPage: 24, q: 'cat' });
+        await user.type(box, '{Enter}');
+        await waitFor(() =>
+            expect(spy).toHaveBeenLastCalledWith({ page: 1, perPage: 24, q: 'cat' }),
+        );
+
+        // The Search button does the same.
+        await user.clear(box);
+        await user.type(box, 'dog');
+        await user.click(screen.getByRole('button', { name: 'Search' }));
+        await waitFor(() =>
+            expect(spy).toHaveBeenLastCalledWith({ page: 1, perPage: 24, q: 'dog' }),
+        );
+    });
+
+    it('clears the box and applies the empty search at once', async () => {
+        const { spy, user } = await openLibrary(() => Promise.resolve(ok([makeVideo()])));
+        const box = screen.getByLabelText('Search videos');
+
+        await screen.findAllByRole('listitem');
+        expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
+
+        await user.type(box, 'cat{Enter}');
+        await waitFor(() =>
+            expect(spy).toHaveBeenLastCalledWith({ page: 1, perPage: 24, q: 'cat' }),
+        );
+
+        await user.click(screen.getByRole('button', { name: 'Clear search' }));
+        expect(box).toHaveValue('');
+        await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ page: 1, perPage: 24 }));
+        expect(screen.queryByRole('button', { name: 'Clear search' })).toBeNull();
     });
 
     it('moves between pages with Previous and Next', async () => {
@@ -115,16 +140,16 @@ describe('Library screen', () => {
             );
         });
 
-        await screen.findByText('Page 1 of 2 · 30 videos');
-        expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled();
+        await waitForPage(1);
+        expect(screen.getAllByRole('button', { name: 'Previous page' })[0]!).toBeDisabled();
 
-        await user.click(screen.getByRole('button', { name: 'Next page' }));
-        await screen.findByText('Page 2 of 2 · 30 videos');
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
+        await waitForPage(2);
         expect(spy).toHaveBeenLastCalledWith({ page: 2, perPage: 24 });
-        expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
+        expect(screen.getAllByRole('button', { name: 'Next page' })[0]!).toBeDisabled();
 
-        await user.click(screen.getByRole('button', { name: 'Previous page' }));
-        await screen.findByText('Page 1 of 2 · 30 videos');
+        await user.click(screen.getAllByRole('button', { name: 'Previous page' })[0]!);
+        await waitForPage(1);
         expect(spy).toHaveBeenLastCalledWith({ page: 1, perPage: 24 });
     });
 
@@ -152,17 +177,13 @@ describe('Library screen', () => {
     });
 
     it('shows the empty states', async () => {
-        await openLibrary(() => Promise.resolve(ok([])));
+        const { user } = await openLibrary(() => Promise.resolve(ok([])));
 
         expect(await screen.findByText('No videos yet')).toBeInTheDocument();
 
-        vi.useFakeTimers();
-        fireEvent.change(screen.getByLabelText('Search videos'), { target: { value: 'zzz' } });
-        await act(async () => {
-            await vi.advanceTimersByTimeAsync(450);
-        });
+        await user.type(screen.getByLabelText('Search videos'), 'zzz{Enter}');
 
-        expect(screen.getByText('No videos match your search')).toBeInTheDocument();
+        expect(await screen.findByText('No videos match your search')).toBeInTheDocument();
     });
 
     it('ignores a stale answer when a newer request was made', async () => {
@@ -175,13 +196,13 @@ describe('Library screen', () => {
         expect(resolvers).toHaveLength(2);
 
         await act(async () => {
-            resolvers[1]!(ok([makeVideo({ title: 'Newest' })]));
+            resolvers[1]!(ok([makeVideo({ title: 'Latest upload' })]));
         });
         await act(async () => {
             resolvers[0]!(ok([makeVideo({ title: 'Stale' })]));
         });
 
-        expect(screen.getByText('Newest')).toBeInTheDocument();
+        expect(screen.getByText('Latest upload')).toBeInTheDocument();
         expect(screen.queryByText('Stale')).toBeNull();
     });
 });

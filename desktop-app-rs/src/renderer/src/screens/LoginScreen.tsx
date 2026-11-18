@@ -52,7 +52,7 @@ export function LoginScreen() {
         <main className="login">
             <form className="card login-card" onSubmit={(event) => void submit(event)} noValidate>
                 <div className="login-brand">
-                    <BrandMark size={36} />
+                    <BrandMark size={2.25} />
                     <p className="wordmark">HLS R2 Studio</p>
                 </div>
                 <h1 className="login-title">Sign in</h1>

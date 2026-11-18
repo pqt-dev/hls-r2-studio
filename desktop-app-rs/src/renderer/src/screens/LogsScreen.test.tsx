@@ -178,8 +178,8 @@ describe('Logs screen filters and pagination', () => {
         expect(screen.getByRole('button', { name: item.title })).toBeVisible();
         // The sections of the summary are gone.
         expect(screen.queryByRole('heading', { name: 'Recent successes' })).toBeNull();
-        // One page: only the summary text of the pager.
-        expect(screen.getByText(/Page 1 of 1/)).toBeVisible();
+        // One page: only the count of the pager (no nav buttons or page field).
+        expect(screen.queryByRole('textbox', { name: 'Current page' })).toBeNull();
         expect(screen.getByText(/1 log$/)).toBeVisible();
     });
 
@@ -221,7 +221,8 @@ describe('Logs screen filters and pagination', () => {
         await screen.findByRole('heading', { name: 'Recent errors' });
         await user.click(screen.getByRole('button', { name: /^Success/ }));
         expect(await screen.findByRole('button', { name: 'Row page 1' })).toBeVisible();
-        expect(screen.getByText(/Page 1 of 3/)).toBeVisible();
+        expect(screen.getByRole('textbox', { name: 'Current page' })).toHaveValue('1');
+        expect(screen.getByText('of 3')).toBeVisible();
         expect(screen.getByText(/50 logs/)).toBeVisible();
 
         const panel = document.querySelector<HTMLElement>('.panel');
@@ -252,7 +253,7 @@ describe('Logs screen filters and pagination', () => {
         await screen.findByRole('heading', { name: 'Recent errors' });
         await user.click(screen.getByRole('button', { name: /^Success/ }));
         await screen.findByRole('button', { name: 'Some row' });
-        await user.click(screen.getByRole('button', { name: 'Page 3' }));
+        await user.click(screen.getByRole('button', { name: 'Last page' }));
         await waitFor(() =>
             expect(get).toHaveBeenLastCalledWith({ type: 'success', page: 3, perPage: 24 }),
         );

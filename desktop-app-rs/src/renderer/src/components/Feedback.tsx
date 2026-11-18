@@ -1,3 +1,5 @@
+import { ErrorIcon, SuccessIcon } from './icons';
+
 export interface FeedbackMessage {
     kind: 'success' | 'error';
     text: string;
@@ -12,7 +14,7 @@ export function Feedback({ message }: { message: FeedbackMessage | null }) {
             className={`feedback feedback-${message.kind}`}
             role={message.kind === 'error' ? 'alert' : 'status'}
         >
-            <span aria-hidden="true">{message.kind === 'success' ? '✓ ' : '! '}</span>
+            {message.kind === 'success' ? <SuccessIcon /> : <ErrorIcon />}
             {message.text}
         </p>
     );

@@ -1,8 +1,13 @@
 import type { ReactNode } from 'react';
+import { ErrorIcon, InfoIcon, WarningIcon } from './icons';
 
 export type BannerTone = 'info' | 'warning' | 'danger';
 
-const ICON: Record<BannerTone, string> = { info: 'i', warning: '!', danger: '✕' };
+const ICON: Record<BannerTone, ReactNode> = {
+    info: <InfoIcon />,
+    warning: <WarningIcon />,
+    danger: <ErrorIcon />,
+};
 
 export function Banner({
     tone,

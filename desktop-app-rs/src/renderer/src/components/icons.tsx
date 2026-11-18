@@ -1,179 +1,115 @@
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef } from 'react';
+import { STATUS_ICON, type StatusKind } from '../lib/jobState';
+import { FLUENT, type FluentName } from './fluentIcons';
 
-/** Small hand-written 20px icons, drawn with currentColor so they follow the theme. */
-function Icon({ children }: { children: ReactNode }) {
-    return (
+/**
+ * 20px Fluent System Icons (MIT, see LICENSES/fluent-system-icons) drawn with currentColor so they
+ * follow the theme and forced-colors. `duo` also renders the filled style: CSS shows it instead
+ * of the regular one while a `.tab` parent is selected (active sidebar item).
+ */
+function Glyph({ name, duo = false }: { name: FluentName; duo?: boolean }) {
+    const glyph = FLUENT[name];
+    const svg = (style: 'regular' | 'filled') => (
         <svg
-            className="icon"
-            width="20"
-            height="20"
+            className={`icon icon-${style}`}
             viewBox="0 0 20 20"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+            fill="currentColor"
             aria-hidden="true"
             focusable="false"
         >
-            {children}
+            {glyph[style].map((d) => (
+                <path key={d} d={d} />
+            ))}
         </svg>
     );
-}
 
-export function HomeIcon() {
-    return (
-        <Icon>
-            <path d="M3.5 9.5 10 4l6.5 5.5" />
-            <path d="M5 8.5V16h10V8.5M8.5 16v-4h3v4" />
-        </Icon>
+    return duo ? (
+        <>
+            {svg('regular')}
+            {svg('filled')}
+        </>
+    ) : (
+        svg('regular')
     );
 }
 
-export function QueueIcon() {
-    return (
-        <Icon>
-            <path d="M4 5.5h12M4 10h12M4 14.5h7" />
-        </Icon>
-    );
+interface IconProps {
+    /** Also render the filled style, shown while the parent `.tab` is selected. */
+    duo?: boolean;
 }
 
-export function LibraryIcon() {
-    return (
-        <Icon>
-            <rect x="3" y="4" width="14" height="12" rx="2" />
-            <path d="M8.5 7.5v5l4-2.5z" />
-        </Icon>
-    );
-}
+export const HomeIcon = ({ duo }: IconProps) => <Glyph name="home" duo={duo} />;
+export const QueueIcon = ({ duo }: IconProps) => <Glyph name="queue" duo={duo} />;
+export const LibraryIcon = ({ duo }: IconProps) => <Glyph name="library" duo={duo} />;
+export const LogsIcon = ({ duo }: IconProps) => <Glyph name="logs" duo={duo} />;
+export const SettingsIcon = ({ duo }: IconProps) => <Glyph name="settings" duo={duo} />;
+export const AboutIcon = ({ duo }: IconProps) => <Glyph name="about" duo={duo} />;
+export const SearchIcon = () => <Glyph name="search" />;
+export const GridViewIcon = () => <Glyph name="grid" />;
+export const ListViewIcon = () => <Glyph name="list" />;
+export const LinkIcon = () => <Glyph name="link" />;
+export const ShortcodeIcon = () => <Glyph name="code" />;
+export const PlaylistIcon = () => <Glyph name="playlist" />;
+export const OpenExternalIcon = () => <Glyph name="open" />;
+export const PencilIcon = () => <Glyph name="edit" />;
+export const TrashIcon = () => <Glyph name="delete" />;
+export const MoreIcon = () => <Glyph name="more" />;
+export const VideoFileIcon = () => <Glyph name="video" />;
+export const UploadIcon = () => <Glyph name="upload" />;
+export const RefreshIcon = () => <Glyph name="refresh" />;
+export const CopyIcon = () => <Glyph name="copy" />;
+export const ImageIcon = () => <Glyph name="image" />;
+export const SuccessIcon = () => <Glyph name="success" />;
+export const ErrorIcon = () => <Glyph name="failure" />;
+export const WarningIcon = () => <Glyph name="warning" />;
+export const InfoIcon = () => <Glyph name="about" />;
+export const ArrowLeftIcon = () => <Glyph name="arrowLeft" />;
+/** Icon of a queue status kind (shown next to the status text). */
+export const StatusIcon = ({ kind }: { kind: StatusKind }) => <Glyph name={STATUS_ICON[kind]} />;
+export const ClockIcon = () => <Glyph name="clock" />;
+export const StorageIcon = () => <Glyph name="drive" />;
+export const RulerIcon = () => <Glyph name="ruler" />;
+export const QualityIcon = () => <Glyph name="hd" />;
+export const CheckIcon = () => <Glyph name="check" />;
+export const CloseIcon = () => <Glyph name="close" />;
+export const ChevronLeftIcon = () => <Glyph name="chevronLeft" />;
+export const ChevronRightIcon = () => <Glyph name="chevronRight" />;
+export const ChevronDownIcon = () => <Glyph name="chevronDown" />;
+export const FirstPageIcon = () => <Glyph name="first" />;
+export const LastPageIcon = () => <Glyph name="last" />;
+export const SortIcon = () => <Glyph name="sort" />;
+export const CheckboxIcon = ({ state }: { state: 'none' | 'some' | 'all' }) => (
+    <Glyph name={state === 'all' ? 'boxChecked' : state === 'some' ? 'boxPartial' : 'boxEmpty'} />
+);
 
-/** A page with text lines: the site's processing logs. */
-export function LogsIcon() {
-    return (
-        <Icon>
-            <path d="M5.5 3.5h6l3.5 3.5v9a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z" />
-            <path d="M11.5 3.5V7H15M7.5 10.5h5M7.5 13.5h5" />
-        </Icon>
-    );
-}
+/**
+ * Path of the gear in the app mark: a cog with 8 trapezoid teeth (outer radius 10.4, root radius
+ * 7.9 on a 32 grid) and a round centre hole, cut out with the even-odd rule.
+ */
+const GEAR_PATH =
+    'M13.80 8.41 L14.37 5.73 L17.63 5.73 L18.20 8.41 L19.81 9.08 L22.11 7.59 L24.41 9.89 L22.92 12.19 L23.59 13.80 L26.27 14.37 L26.27 17.63 L23.59 18.20 L22.92 19.81 L24.41 22.11 L22.11 24.41 L19.81 22.92 L18.20 23.59 L17.63 26.27 L14.37 26.27 L13.80 23.59 L12.19 22.92 L9.89 24.41 L7.59 22.11 L9.08 19.81 L8.41 18.20 L5.73 17.63 L5.73 14.37 L8.41 13.80 L9.08 12.19 L7.59 9.89 L9.89 7.59 L12.19 9.08 Z M19.30 16 A3.3 3.3 0 1 0 12.70 16 A3.3 3.3 0 1 0 19.30 16 Z';
 
-export function SettingsIcon() {
-    return (
-        <Icon>
-            <path d="M3.5 6h8M15.5 6h1M3.5 14h1M8.5 14h8" />
-            <circle cx="13.5" cy="6" r="2" />
-            <circle cx="6.5" cy="14" r="2" />
-        </Icon>
-    );
-}
+/**
+ * App mark: a brand-blue rounded tile with a white gear. A gear says "tool / processing" (this app
+ * builds and uploads videos), not "player": there is no play triangle anywhere. `size` is in rem.
+ */
+export function BrandMark({ size = 1.75 }: { size?: number }) {
+    const ref = useRef<SVGSVGElement>(null);
 
-export function AboutIcon() {
-    return (
-        <Icon>
-            <circle cx="10" cy="10" r="7" />
-            <path d="M10 9v4.5M10 6.6v.1" />
-        </Icon>
-    );
-}
+    useLayoutEffect(() => {
+        ref.current?.style.setProperty('--brand-size', `${size}rem`);
+    }, [size]);
 
-export function SearchIcon() {
-    return (
-        <Icon>
-            <circle cx="9" cy="9" r="5" />
-            <path d="m13 13 3.5 3.5" />
-        </Icon>
-    );
-}
-
-export function GridViewIcon() {
-    return (
-        <Icon>
-            <rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1" />
-            <rect x="11" y="3.5" width="5.5" height="5.5" rx="1" />
-            <rect x="3.5" y="11" width="5.5" height="5.5" rx="1" />
-            <rect x="11" y="11" width="5.5" height="5.5" rx="1" />
-        </Icon>
-    );
-}
-
-export function ListViewIcon() {
-    return (
-        <Icon>
-            <path d="M3.5 5.5h1M3.5 10h1M3.5 14.5h1M7.5 5.5h9M7.5 10h9M7.5 14.5h9" />
-        </Icon>
-    );
-}
-
-/** Two chain links: copy the embed URL. */
-export function LinkIcon() {
-    return (
-        <Icon>
-            <path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.8.8" />
-            <path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l.8-.8" />
-        </Icon>
-    );
-}
-
-/** Square brackets: copy the `[shortcode]`. */
-export function ShortcodeIcon() {
-    return (
-        <Icon>
-            <path d="M7.5 4.5h-2v11h2M12.5 4.5h2v11h-2" />
-            <path d="M9 10h2" />
-        </Icon>
-    );
-}
-
-/** A list with a play triangle: copy the playlist URL. */
-export function PlaylistIcon() {
-    return (
-        <Icon>
-            <path d="M3.5 5.5h9M3.5 9.5h6M3.5 13.5h4" />
-            <path d="M12.5 11v5l4-2.5z" />
-        </Icon>
-    );
-}
-
-/** A box with an arrow leaving it: open outside the app. */
-export function OpenExternalIcon() {
-    return (
-        <Icon>
-            <path d="M8 4.5H5.5a1.5 1.5 0 0 0-1.5 1.5v8.5A1.5 1.5 0 0 0 5.5 16H14a1.5 1.5 0 0 0 1.5-1.5V12" />
-            <path d="M11.5 3.5h5v5M16.5 3.5 9.5 10.5" />
-        </Icon>
-    );
-}
-
-export function PencilIcon() {
-    return (
-        <Icon>
-            <path d="m12.5 4.5 3 3L7 16H4v-3z" />
-            <path d="m11 6 3 3" />
-        </Icon>
-    );
-}
-
-export function TrashIcon() {
-    return (
-        <Icon>
-            <path d="M4 6h12M8 6V4.5h4V6M5.5 6l.7 9.5h7.6l.7-9.5M8.5 9v4M11.5 9v4" />
-        </Icon>
-    );
-}
-
-/** Placeholder brand mark: a rounded tile with a play triangle. */
-export function BrandMark({ size = 28 }: { size?: number }) {
     return (
         <svg
+            ref={ref}
             className="brand-mark"
-            width={size}
-            height={size}
-            viewBox="0 0 28 28"
+            viewBox="0 0 32 32"
             aria-hidden="true"
             focusable="false"
         >
-            <rect width="28" height="28" rx="8" fill="var(--primary)" />
-            <path d="M11 8.5v11l9-5.5z" fill="var(--on-primary)" />
+            <rect className="brand-tile" width="32" height="32" rx="8" />
+            <path className="brand-gear" d={GEAR_PATH} fillRule="evenodd" />
         </svg>
     );
 }

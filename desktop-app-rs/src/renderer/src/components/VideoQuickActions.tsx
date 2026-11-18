@@ -5,7 +5,7 @@ import { useToast } from '../state/Toasts';
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
-/** Quick actions of a ready video: Rust fetches the detail and copies/opens, never the renderer. */
+/** Quick actions of a ready video: Rust builds the text and copies/opens, never the renderer. */
 export type QuickAction = 'shortcode' | 'embed-url' | 'open';
 
 /**
@@ -50,12 +50,40 @@ export function useQuickActions(): {
     return { busyIds, run };
 }
 
+/** The one quick action kept on a card footer: copy the shortcode (the rest live in the kebab menu). */
+export function QuickShortcodeButton({
+    title,
+    busy,
+    onQuick,
+}: {
+    title: string;
+    busy: boolean;
+    onQuick: (action: QuickAction) => void;
+}) {
+    return (
+        <button
+            type="button"
+            className="btn btn-sm btn-text video-quick video-quick-ghost"
+            aria-label={`Copy shortcode for ${title}`}
+            title="Copy shortcode"
+            aria-busy={busy}
+            disabled={busy}
+            onClick={() => onQuick('shortcode')}
+        >
+            <ShortcodeIcon />
+        </button>
+    );
+}
+
 /** The three icon buttons (copy shortcode, copy embed URL, open) of one ready video. */
 export function QuickActionButtons({
     title,
     busy,
     onQuick,
+    variant = 'accent',
 }: {
+    /** `ghost`: quiet transparent icon buttons for dense rows (Home). */
+    variant?: 'accent' | 'ghost';
     title: string;
     /** A quick action of this video is in flight: its buttons are disabled. */
     busy: boolean;
@@ -64,7 +92,11 @@ export function QuickActionButtons({
     const button = (action: QuickAction, label: string, icon: ReactNode) => (
         <button
             type="button"
-            className="btn btn-sm btn-accent-share video-quick"
+            className={
+                variant === 'ghost'
+                    ? 'btn btn-sm btn-text video-quick video-quick-ghost'
+                    : 'btn btn-sm btn-accent-share video-quick'
+            }
             aria-label={`${label} for ${title}`}
             title={label}
             aria-busy={busy}

@@ -25,7 +25,7 @@
  *     |resume|remove|open-embed         jobs_retry_register|...
  *   jobs:clear-finished               jobs_clear_finished      -
  *   jobs:copy                         jobs_copy                { payload: {id,kind} }
- *   videos:list                       videos_list              { payload: {page?,perPage?,q?} }
+ *   videos:list                       videos_list              { payload: {page?,perPage?,q?,sort?,status?} }
  *   videos:get                        videos_get               { payload: {id} }
  *   videos:copy-link                  videos_copy_link         { payload: {id,kind} }
  *   videos:open-embed                 videos_open_embed        { payload: {id} }

@@ -18,13 +18,19 @@ import { LogsScreen } from './LogsScreen';
 import { QueueScreen } from './QueueScreen';
 import { SettingsScreen } from './SettingsScreen';
 
-const TABS: ReadonlyArray<{ id: Tab; label: string; icon: ReactNode }> = [
-    { id: 'home', label: 'Home', icon: <HomeIcon /> },
-    { id: 'queue', label: 'Queue', icon: <QueueIcon /> },
-    { id: 'library', label: 'Library', icon: <LibraryIcon /> },
-    { id: 'logs', label: 'Logs', icon: <LogsIcon /> },
-    { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
-    { id: 'about', label: 'About', icon: <AboutIcon /> },
+const TABS: ReadonlyArray<{
+    id: Tab;
+    label: string;
+    icon: ReactNode;
+    /** Sidebar group heading shown above this tab (the first tab of a group). */
+    group?: string;
+}> = [
+    { id: 'home', label: 'Home', icon: <HomeIcon duo />, group: 'Workspace' },
+    { id: 'queue', label: 'Queue', icon: <QueueIcon duo /> },
+    { id: 'library', label: 'Library', icon: <LibraryIcon duo /> },
+    { id: 'logs', label: 'Logs', icon: <LogsIcon duo /> },
+    { id: 'settings', label: 'Settings', icon: <SettingsIcon duo />, group: 'System' },
+    { id: 'about', label: 'About', icon: <AboutIcon duo /> },
 ];
 
 export function MainScreen() {
@@ -99,7 +105,16 @@ export function MainScreen() {
                         aria-orientation="vertical"
                         onKeyDown={onKeyDown}
                     >
-                        {TABS.map((item) => (
+                        {TABS.map((item) => [
+                            item.group === undefined ? null : (
+                                <p
+                                    key={`group-${item.id}`}
+                                    className="nav-group"
+                                    role="presentation"
+                                >
+                                    {item.group}
+                                </p>
+                            ),
                             <button
                                 key={item.id}
                                 ref={(node) => {
@@ -119,8 +134,8 @@ export function MainScreen() {
                                 {item.id === 'queue' && active > 0 && (
                                     <span className="tab-count num">{active}</span>
                                 )}
-                            </button>
-                        ))}
+                            </button>,
+                        ])}
                     </div>
 
                     <div

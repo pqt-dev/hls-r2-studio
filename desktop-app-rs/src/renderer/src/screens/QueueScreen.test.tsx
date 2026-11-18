@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { JobDto } from '../../../shared/ipc';
 import type { JobState } from '../../../shared/types';
 import { makeJob, makeSummary } from '../testing/fakeApi';
+import { clickJobAction, actionsOfRow } from '../testing/jobMenu';
 import { push, renderQueue } from '../testing/renderApp';
 
 const EMBED = 'https://site.example.com/embed/abc123';
@@ -119,12 +120,6 @@ const ALL_ACTIONS = [
     'View details',
 ];
 
-function actionsIn(item: HTMLElement): string[] {
-    return within(item)
-        .queryAllByRole('button')
-        .map((button) => (button.getAttribute('aria-label') ?? '').split(':')[0] ?? '');
-}
-
 describe('Queue screen', () => {
     it('shows the empty state and the drop zone', async () => {
         await renderQueue();
@@ -137,16 +132,30 @@ describe('Queue screen', () => {
     });
 
     it.each(CASES)('renders a $state job with the right stage and actions', async (c) => {
-        await renderQueue({ jobs: [makeJob({ id: 'x', state: c.state, ...c.job })] });
+        const { user } = await renderQueue({
+            jobs: [makeJob({ id: 'x', state: c.state, ...c.job })],
+        });
 
         const item = screen.getByRole('listitem');
 
         expect(within(item).getByText(c.stage)).toBeInTheDocument();
-        expect(actionsIn(item)).toEqual(c.buttons);
+        // Visible buttons plus the items of the kebab menu: every action is still reachable.
+        const actions = await actionsOfRow(user, item);
+
+        expect(actions).toEqual([...c.buttons].sort());
 
         for (const action of ALL_ACTIONS.filter((name) => !c.buttons.includes(name))) {
-            expect(actionsIn(item)).not.toContain(action);
+            expect(actions).not.toContain(action);
         }
+
+        // Only the shortcode shortcut sits on the row itself; it needs a registered video.
+        const direct = within(item)
+            .queryAllByRole('button')
+            .map((button) => button.getAttribute('aria-label') ?? '')
+            .filter((label) => !label.startsWith('More actions for'));
+
+        expect(direct).toHaveLength(c.state === 'done' ? 1 : 0);
+        expect(direct.every((label) => label.startsWith('Copy shortcode'))).toBe(true);
 
         const running = ['transcoding', 'thumbnail', 'storyboard', 'uploading', 'registering'];
 
@@ -175,7 +184,8 @@ describe('Queue screen', () => {
         const item = screen.getByRole('listitem');
 
         expect(item).toHaveClass('job-paused');
-        expect(item.querySelector('.chip-icon')).toHaveTextContent('‖');
+        expect(item.querySelector('.chip-icon svg.icon')).not.toBeNull();
+        expect(item.querySelector('.chip-icon')).toHaveTextContent('');
         expect(within(item).getByText(/closed during upload/)).toBeInTheDocument();
         expect(
             within(item).getByText(/kept on disk until you resume or remove/),
@@ -185,7 +195,7 @@ describe('Queue screen', () => {
     });
 
     it('shows "Waiting for network" while an upload retries, keeping the progress bar', async () => {
-        const { fake } = await renderQueue({
+        const { fake, user } = await renderQueue({
             jobs: [
                 makeJob({
                     state: 'uploading',
@@ -202,7 +212,7 @@ describe('Queue screen', () => {
         expect(within(item).queryByText('Uploading')).not.toBeInTheDocument();
         expect(within(item).getByText('Retrying automatically')).toBeInTheDocument();
         expect(within(item).getByRole('progressbar')).toHaveValue(72);
-        expect(actionsIn(item)).toEqual(['Cancel']);
+        expect(await actionsOfRow(user, item)).toEqual(['Cancel']);
 
         push(() =>
             fake.emitJobs([
@@ -233,7 +243,7 @@ describe('Queue screen', () => {
             const { fake, user } = await renderQueue({ jobs: [paused()] });
             const resume = vi.spyOn(fake.api.jobs, 'resume');
 
-            await user.click(screen.getByRole('button', { name: /^Resume:/ }));
+            await clickJobAction(user, /^Resume:/);
             expect(resume).toHaveBeenCalledWith('p');
             expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
         });
@@ -259,7 +269,7 @@ describe('Queue screen', () => {
             const { fake, user } = await renderQueue({ jobs: [paused()] });
             const spy = vi.spyOn(fake.api.jobs, c.api);
 
-            await user.click(screen.getByRole('button', { name: c.button }));
+            await clickJobAction(user, c.button);
 
             const dialog = screen.getByRole('alertdialog', { name: c.title });
 
@@ -279,7 +289,7 @@ describe('Queue screen', () => {
             const { fake, user } = await renderQueue({ jobs: [paused()] });
             const spy = vi.spyOn(fake.api.jobs, c.api);
 
-            await user.click(screen.getByRole('button', { name: c.button }));
+            await clickJobAction(user, c.button);
             await user.click(screen.getByRole('button', { name: c.cancel }));
 
             expect(spy).not.toHaveBeenCalled();
@@ -292,9 +302,10 @@ describe('Queue screen', () => {
                 const { fake, user } = await renderQueue({ jobs: [paused()] });
                 const retry = vi.spyOn(fake.api.jobs, 'retry');
                 const remove = vi.spyOn(fake.api.jobs, 'remove');
-                const opener = screen.getByRole('button', { name: c.button });
+                // The action sits in the kebab menu: the focus returns to that menu button.
+                const opener = screen.getByRole('button', { name: /^More actions for/ });
 
-                await user.click(opener);
+                await clickJobAction(user, c.button);
                 await user.keyboard('{Escape}');
 
                 expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
@@ -311,8 +322,8 @@ describe('Queue screen', () => {
             const retry = vi.spyOn(fake.api.jobs, 'retry');
             const remove = vi.spyOn(fake.api.jobs, 'remove');
 
-            await user.click(screen.getByRole('button', { name: /^Retry:/ }));
-            await user.click(screen.getByRole('button', { name: /^Remove:/ }));
+            await clickJobAction(user, /^Retry:/);
+            await clickJobAction(user, /^Remove:/);
 
             expect(retry).toHaveBeenCalledWith('f');
             expect(remove).toHaveBeenCalledWith('f');
@@ -329,7 +340,7 @@ describe('Queue screen', () => {
             ok: false,
             error: 'Sign in to resume this upload.',
         });
-        await user.click(screen.getByRole('button', { name: /^Resume:/ }));
+        await clickJobAction(user, /^Resume:/);
         expect(await screen.findByText(/Sign in to resume this upload\./)).toBeInTheDocument();
     });
 
@@ -545,11 +556,11 @@ describe('Queue screen', () => {
             });
             const copy = vi.spyOn(fake.api.jobs, 'copy');
 
-            await user.click(screen.getByRole('button', { name: /^Copy embed URL/ }));
+            await clickJobAction(user, /^Copy embed URL/);
             expect(copy).toHaveBeenCalledWith('j', 'embed-url');
             expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
 
-            await user.click(screen.getByRole('button', { name: /^Copy shortcode/ }));
+            await clickJobAction(user, /^Copy shortcode/);
             expect(copy).toHaveBeenCalledWith('j', 'shortcode');
             expect(await screen.findByText('Shortcode copied.')).toBeInTheDocument();
         });
@@ -560,7 +571,7 @@ describe('Queue screen', () => {
             });
             const open = vi.spyOn(fake.api.jobs, 'openEmbed');
 
-            await user.click(screen.getByRole('button', { name: /^Open on site/ }));
+            await clickJobAction(user, /^Open on site/);
             expect(open).toHaveBeenCalledWith('j');
         });
 
@@ -573,7 +584,7 @@ describe('Queue screen', () => {
                 ok: false,
                 error: 'Disk is full.',
             });
-            await user.click(screen.getByRole('button', { name: /^Retry:/ }));
+            await clickJobAction(user, /^Retry:/);
 
             const region = document.querySelector('.toasts');
 
@@ -589,7 +600,7 @@ describe('Queue screen', () => {
             });
 
             vi.spyOn(fake.api.jobs, 'remove').mockRejectedValue(new Error('boom'));
-            await user.click(screen.getByRole('button', { name: /^Remove:/ }));
+            await clickJobAction(user, /^Remove:/);
             expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
         });
 
@@ -599,7 +610,7 @@ describe('Queue screen', () => {
             });
             const cancel = vi.spyOn(fake.api.jobs, 'cancel');
 
-            await user.click(screen.getByRole('button', { name: /^Cancel:/ }));
+            await clickJobAction(user, /^Cancel:/);
 
             const dialog = screen.getByRole('alertdialog', { name: 'Cancel this video?' });
 
@@ -618,7 +629,7 @@ describe('Queue screen', () => {
             });
             const cancel = vi.spyOn(fake.api.jobs, 'cancel');
 
-            await user.click(screen.getByRole('button', { name: /^Cancel:/ }));
+            await clickJobAction(user, /^Cancel:/);
             expect(cancel).toHaveBeenCalledWith('w');
             expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
         });
@@ -674,7 +685,7 @@ describe('Queue screen', () => {
         it('shows message, failing step, exit code and the stderr tail', async () => {
             const { user } = await renderQueue({ jobs: [failed] });
 
-            await user.click(screen.getByRole('button', { name: /^View details/ }));
+            await clickJobAction(user, /^View details/);
 
             const dialog = screen.getByRole('dialog', { name: 'Job details' });
 
@@ -702,7 +713,7 @@ describe('Queue screen', () => {
                 ],
             });
 
-            await user.click(screen.getByRole('button', { name: /^View details/ }));
+            await clickJobAction(user, /^View details/);
 
             const dialog = screen.getByRole('dialog', { name: 'Job details' });
 
@@ -714,9 +725,9 @@ describe('Queue screen', () => {
 
         it('copies the details and closes with Escape, restoring focus', async () => {
             const { user } = await renderQueue({ jobs: [failed] });
-            const opener = screen.getByRole('button', { name: /^View details/ });
+            const opener = screen.getByRole('button', { name: /^More actions for/ });
 
-            await user.click(opener);
+            await clickJobAction(user, /^View details/);
             await user.click(screen.getByRole('button', { name: 'Copy details' }));
 
             expect(await screen.findByText('Details copied.')).toBeInTheDocument();
@@ -736,7 +747,7 @@ describe('Queue screen', () => {
             const { user } = await renderQueue({ jobs: [failed] });
 
             vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
-            await user.click(screen.getByRole('button', { name: /^View details/ }));
+            await clickJobAction(user, /^View details/);
             await user.click(screen.getByRole('button', { name: 'Copy details' }));
             expect(await screen.findByText(/Could not copy the details\./)).toBeInTheDocument();
         });
@@ -777,7 +788,7 @@ describe('Queue screen', () => {
 
 describe('Queue "View in Library"', () => {
     it('is offered for done jobs only', async () => {
-        await renderQueue({
+        const { user } = await renderQueue({
             jobs: [
                 makeJob({ id: 'a', state: 'done', canRemove: true }),
                 makeJob({ id: 'b', state: 'uploading', canCancel: true }),
@@ -785,7 +796,15 @@ describe('Queue "View in Library"', () => {
             ],
         });
 
-        expect(screen.getAllByRole('button', { name: /^View in Library/ })).toHaveLength(1);
+        let offered = 0;
+
+        for (const kebab of screen.getAllByRole('button', { name: /^More actions for/ })) {
+            await user.click(kebab);
+            offered += screen.queryAllByRole('menuitem', { name: /^View in Library/ }).length;
+            await user.keyboard('{Escape}');
+        }
+
+        expect(offered).toBe(1);
     });
 
     it('opens the video detail page when the cloud id is known', async () => {
@@ -794,7 +813,7 @@ describe('Queue "View in Library"', () => {
         });
         const get = vi.spyOn(fake.api.videos, 'get');
 
-        await user.click(screen.getByRole('button', { name: 'View in Library: clip.mp4' }));
+        await clickJobAction(user, 'View in Library: clip.mp4');
 
         const tab = screen.getByRole('tab', { name: 'Library' });
 
@@ -811,7 +830,7 @@ describe('Queue "View in Library"', () => {
         const list = vi.spyOn(fake.api.videos, 'list');
         const get = vi.spyOn(fake.api.videos, 'get');
 
-        await user.click(screen.getByRole('button', { name: 'View in Library: clip.mp4' }));
+        await clickJobAction(user, 'View in Library: clip.mp4');
 
         expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute(
             'aria-selected',

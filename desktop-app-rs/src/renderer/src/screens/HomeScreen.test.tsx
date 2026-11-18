@@ -258,9 +258,9 @@ describe('Home screen cards', () => {
             expect(within(videos).getByRole('button', { name })).toBeInTheDocument();
         }
 
-        expect(within(videos).getByRole('button', { name: 'Ready: 85' })).toHaveClass('tile-ready');
+        expect(within(videos).getByRole('button', { name: 'Ready: 85' })).toHaveClass('stat-ready');
         expect(within(videos).getByRole('button', { name: 'Failed: 5' })).toHaveClass(
-            'tile-failed',
+            'stat-failed',
         );
     });
 
@@ -289,9 +289,9 @@ describe('Home screen cards', () => {
             makeJob({ id: 'g', state: 'cancelled' }),
         ];
         const { user } = await openHome({}, { jobs });
-        const computer = card('This computer');
+        const computer = card('Queue status');
         const value = (term: string) =>
-            within(computer).getByText(term).parentElement?.querySelector('dd')?.textContent;
+            within(computer).getByText(term).closest('div')?.querySelector('dd')?.textContent;
 
         expect(value('Running')).toBe('2');
         expect(value('Waiting')).toBe('1');
@@ -307,8 +307,8 @@ describe('Home screen cards', () => {
 
     it('updates the local counts from jobs:updated events', async () => {
         const { fake } = await openHome();
-        const computer = card('This computer');
-        const running = () => within(computer).getByText('Running').parentElement?.textContent;
+        const computer = card('Queue status');
+        const running = () => within(computer).getByText('Running').closest('div')?.textContent;
 
         expect(running()).toBe('Running0');
         push(() => fake.emitJobs([makeJob({ id: 'a', state: 'transcoding' })]));
@@ -330,7 +330,11 @@ describe('Home screen cards', () => {
             'Copy embed URL for Alpha',
             'Open in browser for Alpha',
         ]) {
-            expect(within(recent).getByRole('button', { name })).toHaveClass('btn-accent-share');
+            // Quiet ghost icon buttons in this dense list (not the teal accent used on cards).
+            expect(within(recent).getByRole('button', { name })).toHaveClass('video-quick-ghost');
+            expect(within(recent).getByRole('button', { name })).not.toHaveClass(
+                'btn-accent-share',
+            );
         }
 
         expect(within(recent).queryByRole('button', { name: /for Beta/ })).toBeNull();
@@ -396,7 +400,7 @@ describe('Home screen layout', () => {
     it('shows the four cards and no server health card', async () => {
         await openHome();
 
-        for (const name of ['Videos', 'This computer', 'Recent videos', 'Needs attention']) {
+        for (const name of ['Videos', 'Queue status', 'Recent videos', 'Needs your attention']) {
             expect(card(name)).toBeInTheDocument();
         }
 
@@ -428,7 +432,7 @@ describe('Home screen needs attention', () => {
         const get = vi.fn((id: number) =>
             Promise.resolve({ ok: true as const, video: makeVideoDetail({ id }) }),
         );
-        const attention = card('Needs attention');
+        const attention = card('Needs your attention');
 
         fake.api.videos.get = get;
 
@@ -448,7 +452,7 @@ describe('Home screen needs attention', () => {
     it('shows the message and a relative time for each failure', async () => {
         await openHome({ failed: FAILED });
 
-        const attention = card('Needs attention');
+        const attention = card('Needs your attention');
 
         expect(within(attention).getByText('Transcode failed.')).toBeInTheDocument();
         expect(within(attention).getByText('5 minutes ago')).toBeInTheDocument();
@@ -466,7 +470,7 @@ describe('Home screen needs attention', () => {
             ],
         });
 
-        const attention = card('Needs attention');
+        const attention = card('Needs your attention');
 
         expect(within(attention).getByText('<img src=x onerror=alert(1)>')).toBeInTheDocument();
         expect(attention.querySelector('img, b')).toBeNull();
@@ -475,7 +479,9 @@ describe('Home screen needs attention', () => {
     it('shows the empty state when nothing failed and no local job needs attention', async () => {
         await openHome({ failed: [] });
 
-        expect(within(card('Needs attention')).getByText('Nothing needs attention.')).toBeVisible();
+        expect(
+            within(card('Needs your attention')).getByText('Nothing needs attention.'),
+        ).toBeVisible();
     });
 
     it('links the local jobs that need attention to the Queue', async () => {
@@ -483,7 +489,7 @@ describe('Home screen needs attention', () => {
             { failed: [] },
             { jobs: [makeJob({ id: 'x', state: 'needs_sign_in' })] },
         );
-        const attention = card('Needs attention');
+        const attention = card('Needs your attention');
 
         expect(within(attention).queryByText('Nothing needs attention.')).toBeNull();
         expect(
@@ -501,7 +507,7 @@ describe('Home screen needs attention', () => {
         const { user } = await openHome();
 
         await user.click(
-            within(card('Needs attention')).getByRole('button', { name: 'View logs' }),
+            within(card('Needs your attention')).getByRole('button', { name: 'View logs' }),
         );
 
         expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
@@ -521,7 +527,7 @@ describe('Home screen loading and failures', () => {
         // The overview is pending: its card loads, the others are already filled.
         expect(within(card('Videos')).getByRole('status')).toHaveAttribute('aria-busy', 'true');
         expect(await within(card('Recent videos')).findByText('Alpha')).toBeInTheDocument();
-        expect(within(card('Needs attention')).getByText('Broken one')).toBeInTheDocument();
+        expect(within(card('Needs your attention')).getByText('Broken one')).toBeInTheDocument();
 
         await act(async () => {
             slow.resolve({ ok: true, overview: OVERVIEW });
@@ -548,8 +554,8 @@ describe('Home screen loading and failures', () => {
         );
         // The other cards are untouched.
         expect(within(card('Recent videos')).getByText('Alpha')).toBeInTheDocument();
-        expect(within(card('Needs attention')).getByText('Broken one')).toBeInTheDocument();
-        expect(within(card('This computer')).getByText('Running')).toBeInTheDocument();
+        expect(within(card('Needs your attention')).getByText('Broken one')).toBeInTheDocument();
+        expect(within(card('Queue status')).getByText('Running')).toBeInTheDocument();
 
         // Retry loads only the overview again.
         mocks.list.mockClear();
@@ -577,7 +583,7 @@ describe('Home screen loading and failures', () => {
         );
         expect(screen.queryByText(/secret internal text/)).toBeNull();
         expect(screen.getByRole('button', { name: 'Ready: 85' })).toBeInTheDocument();
-        expect(within(card('Needs attention')).getByText('Broken one')).toBeInTheDocument();
+        expect(within(card('Needs your attention')).getByText('Broken one')).toBeInTheDocument();
     });
 
     it('a failing logs source only affects the Needs attention card', async () => {
@@ -586,7 +592,7 @@ describe('Home screen loading and failures', () => {
 
             mocks.logs.mockResolvedValueOnce({ ok: false, error: 'Could not load the logs.' });
         });
-        const attention = card('Needs attention');
+        const attention = card('Needs your attention');
 
         expect(await within(attention).findByRole('alert')).toHaveTextContent(
             'Could not load the logs.',
@@ -704,6 +710,200 @@ describe('Home screen auto refresh', () => {
         await waitFor(() => expect(mocks.overview).toHaveBeenCalledTimes(2));
         expect(screen.getByRole('button', { name: 'Ready: 85' })).toBeInTheDocument();
         expect(screen.queryByRole('alert')).toBeNull();
+    });
+});
+
+describe('Home bento dashboard', () => {
+    it('shows the hero with the host and an illustration that is hidden from assistive tech', async () => {
+        await openHome();
+
+        const hero = document.querySelector('.home-hero') as HTMLElement;
+
+        expect(within(hero).getByRole('heading', { level: 2 })).toHaveTextContent(/alice/);
+        expect(within(hero).getByText('site.example.com · Signed in')).toBeInTheDocument();
+        expect(hero.querySelector('svg.home-hero-art')).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('has no quick-action tile row, only a compact Refresh control in the hero', async () => {
+        await openHome();
+
+        expect(screen.queryByRole('list', { name: 'Quick actions' })).toBeNull();
+        expect(document.querySelector('.quick-tile')).toBeNull();
+
+        const hero = document.querySelector('.home-hero') as HTMLElement;
+        const refresh = within(hero).getByRole('button', { name: 'Refresh' });
+
+        expect(refresh.querySelector('svg.icon path')).not.toBeNull();
+        expect(refresh).toHaveTextContent('');
+        expect(screen.getAllByRole('button', { name: 'Refresh' })).toHaveLength(1);
+    });
+
+    it('opens the Queue from a status row', async () => {
+        const { user } = await openHome({}, { jobs: [makeJob({ id: 'a', state: 'waiting' })] });
+
+        await user.click(within(card('Queue status')).getByRole('button', { name: 'Waiting' }));
+        expect(screen.getByRole('tab', { name: /^Queue/ })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+    });
+
+    it('lists the local jobs that need attention and links to the Queue', async () => {
+        await openHome(
+            { failed: [] },
+            { jobs: [makeJob({ id: 'a', fileName: 'stuck.mp4', state: 'needs_sign_in' })] },
+        );
+
+        const list = within(card('Needs your attention')).getByRole('list', {
+            name: 'Local videos needing attention',
+        });
+
+        expect(within(list).getByText('stuck.mp4')).toBeInTheDocument();
+        expect(within(list).getByText('Sign-in needed')).toBeInTheDocument();
+    });
+
+    it('says "All caught up" when nothing needs attention', async () => {
+        await openHome({ failed: [] });
+
+        expect(within(card('Needs your attention')).getByText('All caught up')).toBeVisible();
+    });
+
+    it('shows duration and size as colored chips and the date under the title, omitting missing values', async () => {
+        await openHome({
+            videos: [
+                makeVideo({ id: 1, title: 'Alpha', duration: 75, sizeBytes: 5 * 1024 * 1024 }),
+                makeVideo({
+                    id: 2,
+                    title: 'Beta',
+                    status: 'processing',
+                    duration: null,
+                    sizeBytes: null,
+                }),
+            ],
+        });
+
+        const [first, second] = within(card('Recent videos')).getAllByRole('listitem');
+
+        expect(within(first!).getByText('5.0 MB').closest('.spec')).toHaveClass('spec-size');
+        expect(within(first!).getByText('1:15').closest('.spec')).toHaveClass('spec-duration');
+        expect(within(first!).getByText('Jan 1, 2026')).toHaveClass('recent-date');
+        // Missing values: no chip and no dash.
+        expect(second!.querySelector('.spec')).toBeNull();
+        expect(within(second!).queryByText('\u2014')).toBeNull();
+    });
+});
+
+describe('Home recent videos list', () => {
+    it('uses one shared grid for the header and every row so the columns line up', async () => {
+        await openHome();
+
+        const table = card('Recent videos').querySelector('.recent-table') as HTMLElement;
+        const head = table.querySelector('.recent-head') as HTMLElement;
+        const rows = Array.from(table.querySelectorAll('li.recent-row'));
+
+        expect(head).toHaveClass('recent-grid');
+        expect(head).toHaveAttribute('aria-hidden', 'true');
+        expect(rows.length).toBeGreaterThan(0);
+
+        // Same number of cells in the header and in every row (one grid template for all).
+        for (const row of rows) {
+            expect(row).toHaveClass('recent-grid');
+            expect(row.children).toHaveLength(head.children.length);
+        }
+
+        // No separate "Created" column any more: the date lives under the title.
+        expect(within(head).queryByText('Created')).toBeNull();
+        expect(head).toHaveTextContent('Title');
+        expect(head).toHaveTextContent('Status');
+    });
+
+    it('opens the video from the whole row, but not when a quick action is used', async () => {
+        const { user } = await openHome();
+        const recent = card('Recent videos');
+        const row = within(recent).getAllByRole('listitem')[0]!;
+
+        await user.click(within(row).getByRole('button', { name: /^Copy shortcode for/ }));
+        expect(screen.getByRole('tab', { name: 'Home' })).toHaveAttribute('aria-selected', 'true');
+
+        await user.click(row.querySelector('.recent-date') as HTMLElement);
+        expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+    });
+
+    it('shows a plain title button and a View all button with a chevron icon', async () => {
+        await openHome();
+
+        const recent = card('Recent videos');
+        const title = within(recent).getByRole('button', { name: 'Alpha' });
+
+        expect(title).toHaveClass('recent-title');
+        expect(title.closest('.recent-text')?.querySelector('.recent-date')).not.toBeNull();
+        expect(
+            within(recent).getByRole('button', { name: 'View all' }).querySelector('svg.icon'),
+        ).not.toBeNull();
+    });
+});
+
+describe('Home statistics row', () => {
+    it('sits right under the hero, before the cards', async () => {
+        await openHome();
+
+        const hero = document.querySelector('.home-hero') as HTMLElement;
+        const stats = card('Videos');
+        const recent = card('Recent videos');
+        const before = (a: Node, b: Node) =>
+            Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+        expect(before(hero, stats)).toBe(true);
+        expect(before(stats, recent)).toBe(true);
+        // No second "Videos" card at the bottom: the numbers appear once.
+        expect(screen.getAllByRole('button', { name: 'Total: 100' })).toHaveLength(1);
+    });
+
+    it('shows four stat cards with a colored Fluent icon tile each and big numbers', async () => {
+        await openHome();
+
+        const cards = within(card('Videos')).getAllByRole('listitem');
+
+        expect(cards).toHaveLength(4);
+        expect(
+            cards.map((item) => item.querySelector('.icon-tile')?.className.split(' ').pop()),
+        ).toEqual(['icon-tile-blue', 'icon-tile-green', 'icon-tile-amber', 'icon-tile-red']);
+
+        for (const item of cards)
+            expect(item.querySelector('.icon-tile svg.icon path')).not.toBeNull();
+
+        expect(within(cards[0]!).getByText('100')).toHaveClass('stat-value');
+        expect(within(cards[0]!).getByText('Total videos')).toBeInTheDocument();
+        // Only the Processing card carries the muted "on server" line, so it is not mixed up with
+        // the local queue; its label stays "Processing".
+        expect(within(cards[2]!).getByText('Processing')).toHaveClass('stat-label');
+        expect(within(cards[2]!).getByText('on server')).toHaveClass('stat-sub');
+        expect(document.querySelectorAll('.stat-sub')).toHaveLength(1);
+        expect(within(cards[2]!).getByRole('button')).toHaveAccessibleName(
+            'Processing on server: 10',
+        );
+    });
+
+    it('shows dashes (not buttons) while loading', async () => {
+        const gate = deferred<OverviewGetResult>();
+        const rendered = await renderApp({}, (fake) => {
+            stub(fake);
+            fake.api.overview.get = vi.fn(() => gate.promise);
+        });
+
+        void rendered;
+
+        const stats = card('Videos');
+
+        expect(within(stats).getByRole('status')).toHaveAttribute('aria-busy', 'true');
+        expect(within(stats).getAllByText('\u2014')).toHaveLength(4);
+        expect(within(stats).queryAllByRole('button')).toHaveLength(0);
+
+        await act(async () => gate.resolve({ ok: true, overview: OVERVIEW }));
+        expect(await screen.findByRole('button', { name: 'Total: 100' })).toBeInTheDocument();
     });
 });
 

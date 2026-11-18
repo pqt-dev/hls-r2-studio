@@ -1,23 +1,66 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { VideoDetail, VideoListItem, VideoListMeta } from '../../../shared/ipc';
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type ChangeEvent,
+    type FormEvent,
+} from 'react';
+import {
+    VIDEO_SORTS,
+    type VideoDetail,
+    type VideoListItem,
+    type VideoListMeta,
+    type VideoSort,
+} from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { Pagination } from '../components/Pagination';
-import { GridViewIcon, ListViewIcon, SearchIcon } from '../components/icons';
-import { Thumbnail } from '../components/Thumbnail';
 import {
-    QuickActionButtons,
+    CheckboxIcon,
+    CheckIcon,
+    GridViewIcon,
+    ListViewIcon,
+    RefreshIcon,
+    SearchIcon,
+    CloseIcon,
+} from '../components/icons';
+import { SelectBox } from '../components/SelectBox';
+import { Thumbnail } from '../components/Thumbnail';
+import { VideoMenu } from '../components/VideoMenu';
+import {
+    QuickShortcodeButton,
     useQuickActions,
     type QuickAction,
 } from '../components/VideoQuickActions';
-import { formatDate, formatDuration, plural } from '../lib/format';
+import {
+    formatBitrate,
+    formatBytes,
+    formatDate,
+    formatDateTime,
+    formatDuration,
+    formatFps,
+    formatQuality,
+    formatResolution,
+    plural,
+} from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
 import { useJobFinished } from '../state/useJobFinished';
 import { StatusBadge } from './videoStatus';
 import { VideoDetailPage } from './VideoDetailPage';
 
-const SEARCH_DEBOUNCE_MS = 400;
-const PAGE_SIZE = 24;
+const PAGE_SIZES = [12, 24, 36, 48] as const;
+const DEFAULT_PAGE_SIZE = 24;
+
+const SORT_LABELS: Record<VideoSort, string> = {
+    newest: 'Newest',
+    oldest: 'Oldest',
+    title_asc: 'Title A-Z',
+    title_desc: 'Title Z-A',
+    duration_desc: 'Longest duration',
+    size_desc: 'Largest size',
+};
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
 type ViewMode = 'grid' | 'list';
@@ -41,6 +84,34 @@ function saveView(view: ViewMode): void {
     }
 }
 
+/** Query of one list request; `q` and `sort` are sent only when they are not the default. */
+function listParams(page: number, perPage: number, q: string, sort: VideoSort) {
+    return {
+        page,
+        perPage,
+        ...(q === '' ? {} : { q }),
+        ...(sort === 'newest' ? {} : { sort }),
+    };
+}
+
+/** Placeholder cards shown while a page loads (same square media and text bars as a card). */
+function SkeletonGrid({ count }: { count: number }) {
+    return (
+        <ul className="videos videos-skeleton" aria-hidden="true">
+            {Array.from({ length: count }, (_, index) => (
+                <li key={index} className="video-row video-skeleton">
+                    <div className="thumb-frame skeleton-block" />
+                    <div className="video-main">
+                        <span className="skeleton-bar skeleton-bar-title" />
+                        <span className="skeleton-bar" />
+                        <span className="skeleton-bar skeleton-bar-short" />
+                    </div>
+                </li>
+            ))}
+        </ul>
+    );
+}
+
 type Load =
     | { kind: 'loading' }
     | { kind: 'error'; message: string }
@@ -56,7 +127,12 @@ function VideoRow({
     view,
     quickBusy,
     onQuick,
+    onDelete,
+    onSelect,
 }: {
+    onDelete: (video: VideoListItem) => void;
+    /** Enters select mode with this video already picked (offered in the item menu). */
+    onSelect: (video: VideoListItem) => void;
     view: ViewMode;
     /** A quick action of this row is in flight: its buttons are disabled. */
     quickBusy: boolean;
@@ -70,48 +146,105 @@ function VideoRow({
     onToggle: (id: number) => void;
 }) {
     const duration = formatDuration(video.duration);
+    const added = video.createdAt === null ? '' : formatDateTime(video.createdAt);
     const created = formatDate(video.createdAt);
+    const quality = formatQuality(video.width, video.height);
+    const size = video.sizeBytes === null ? '' : formatBytes(video.sizeBytes);
+    const resolution = formatResolution(video.width, video.height);
+    const encoding = [formatFps(video.fps), formatBitrate(video.bitrateKbps)].filter(
+        (part) => part !== '',
+    );
+    const facts = [size, resolution].filter((part) => part !== '');
+    const thumb = <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />;
+    // A ready video needs no chip; its state stays available to assistive technology.
+    const status =
+        video.status === 'ready' ? (
+            <span className="visually-hidden">Ready</span>
+        ) : (
+            <StatusBadge status={video.status} />
+        );
+    // Select mode: a round check control (native checkbox on top, invisible) in the corner.
+    const check = selecting ? (
+        <span className="video-check-box">
+            <input
+                type="checkbox"
+                className="video-check"
+                aria-label={`Select ${video.title}`}
+                checked={picked}
+                disabled={disabled}
+                onChange={() => onToggle(video.id)}
+            />
+            <CheckIcon />
+        </span>
+    ) : null;
     const content =
         view === 'list' ? (
             <>
-                <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />
+                {check}
+                {thumb}
                 <span className="video-title" title={video.title}>
                     {video.title}
                 </span>
                 <StatusBadge status={video.status} />
                 <span className="video-cell video-duration num">{duration}</span>
-                <span className="video-cell video-created">{created}</span>
+                <span className="video-cell video-created">{added}</span>
             </>
         ) : (
             <>
-                <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />
+                <span className="video-media">
+                    {thumb}
+                    {quality !== '' && (
+                        <span
+                            className="video-badge video-badge-quality num"
+                            title="Quality"
+                            aria-hidden="true"
+                        >
+                            {quality}
+                        </span>
+                    )}
+                    {duration !== '' && (
+                        <span
+                            className="video-badge video-badge-duration num"
+                            title="Duration"
+                            aria-hidden="true"
+                        >
+                            {duration}
+                        </span>
+                    )}
+                </span>
                 <span className="video-main">
                     <span className="video-title" title={video.title}>
                         {video.title}
                     </span>
-                    <span className="video-meta">
-                        {duration !== '' && <span className="num">{duration}</span>}
-                        {created !== '' && <span>{created}</span>}
-                    </span>
+                    {facts.length > 0 && (
+                        <span className="video-meta num">{facts.join(' \u00b7 ')}</span>
+                    )}
+                    {encoding.length > 0 && (
+                        <span className="video-meta num">{encoding.join(' \u00b7 ')}</span>
+                    )}
+                    {created !== '' && (
+                        <span className="video-meta video-added" title="When the video was added">
+                            Added {added}
+                        </span>
+                    )}
                 </span>
-                <StatusBadge status={video.status} />
+                {/* After the title in the DOM (the accessible name starts with it); drawn over the media. */}
+                {(duration !== '' || quality !== '') && (
+                    <span className="visually-hidden">
+                        {[duration !== '' ? `Duration ${duration}` : '', quality]
+                            .filter((part) => part !== '')
+                            .join(', ')}
+                    </span>
+                )}
+                {status}
+                {check}
             </>
         );
 
     if (selecting) {
         return (
             <li className={picked ? 'video-row is-picked' : 'video-row'}>
-                <label className="video-open">
-                    <input
-                        type="checkbox"
-                        className="video-check"
-                        aria-label={`Select ${video.title}`}
-                        checked={picked}
-                        disabled={disabled}
-                        onChange={() => onToggle(video.id)}
-                    />
-                    {content}
-                </label>
+                <label className="video-open">{content}</label>
             </li>
         );
     }
@@ -125,13 +258,26 @@ function VideoRow({
             >
                 {content}
             </button>
-            {video.status === 'ready' && (
-                <QuickActionButtons
+            <div className="video-tools">
+                {video.status === 'ready' ? (
+                    <QuickShortcodeButton
+                        title={video.title}
+                        busy={quickBusy}
+                        onQuick={(action) => onQuick(video, action)}
+                    />
+                ) : (
+                    <span />
+                )}
+                <VideoMenu
                     title={video.title}
                     busy={quickBusy}
+                    ready={video.status === 'ready'}
                     onQuick={(action) => onQuick(video, action)}
+                    onEdit={(opener) => onOpen(video, opener)}
+                    onDelete={() => onDelete(video)}
+                    onSelect={() => onSelect(video)}
                 />
-            )}
+            </div>
         </li>
     );
 }
@@ -143,6 +289,9 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const [input, setInput] = useState('');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+    const [sort, setSort] = useState<VideoSort>('newest');
+    const [confirmDelete, setConfirmDelete] = useState<VideoListItem | null>(null);
     const [reloads, setReloads] = useState(0);
     const [load, setLoad] = useState<Load>({ kind: 'loading' });
     const latest = useRef(0);
@@ -160,10 +309,11 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const [viewMode, setViewMode] = useState<ViewMode>(readView);
     const [confirmBulk, setConfirmBulk] = useState(false);
     const [bulkBusy, setBulkBusy] = useState(false);
-    const pendingFocus = useRef<'toggle' | 'bulk' | 'heading' | null>(null);
-    const toggleRef = useRef<HTMLButtonElement>(null);
+    const pendingFocus = useRef<'leave' | 'enter' | 'bulk' | 'heading' | null>(null);
+    const cancelRef = useRef<HTMLButtonElement>(null);
     const bulkRef = useRef<HTMLButtonElement>(null);
     const headingRef = useRef<HTMLHeadingElement>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
     const rootRef = useRef<HTMLElement>(null);
     const openerRef = useRef<HTMLButtonElement | null>(null);
     const savedScroll = useRef(0);
@@ -229,7 +379,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                 event.preventDefault();
                 setSelectMode(false);
                 setPicked(new Set());
-                pendingFocus.current = 'toggle';
+                pendingFocus.current = 'leave';
             }
         }
 
@@ -245,34 +395,23 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
 
     // Puts the focus back on a control that was disabled or removed while an action ran.
     useEffect(() => {
-        if (pendingFocus.current === 'toggle' && !selectMode) {
+        if (pendingFocus.current === 'leave' && !selectMode) {
+            // The Select entry lives in each item menu (gone after leaving): focus the region heading.
             pendingFocus.current = null;
-            toggleRef.current?.focus();
+            headingRef.current?.focus();
+        } else if (pendingFocus.current === 'enter' && selectMode) {
+            pendingFocus.current = null;
+            cancelRef.current?.focus();
         } else if (pendingFocus.current === 'bulk' && !bulkBusy && !confirmBulk) {
             pendingFocus.current = null;
             bulkRef.current?.focus();
         }
     });
 
-    // Typing is applied after a pause and always goes back to the first page.
-    useEffect(() => {
-        const timer = setTimeout(() => {
-            const next = input.trim();
-
-            if (next !== search) {
-                setSearch(next);
-                setPage(1);
-            }
-        }, SEARCH_DEBOUNCE_MS);
-
-        return () => clearTimeout(timer);
-    }, [input, search]);
-
     useEffect(() => {
         // A newer request wins: answers of older ones are ignored.
         const request = ++latest.current;
-        const params =
-            search === '' ? { page, perPage: PAGE_SIZE } : { page, perPage: PAGE_SIZE, q: search };
+        const params = listParams(page, pageSize, search, sort);
 
         setLoad({ kind: 'loading' });
 
@@ -292,7 +431,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
             .catch(() => {
                 if (request === latest.current) setLoad({ kind: 'error', message: GENERIC_ERROR });
             });
-    }, [api, search, page, reloads]);
+    }, [api, search, page, pageSize, sort, reloads]);
 
     // Ignore an answer that arrives after the screen is gone.
     useEffect(
@@ -305,15 +444,30 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const refresh = useCallback(() => setReloads((count) => count + 1), []);
 
     // The latest view state, read by the job listener below (which is subscribed only once).
-    const view = useRef({ page, search, input, selected, kind: load.kind });
+    const view = useRef({
+        page,
+        search,
+        selected,
+        kind: load.kind,
+        pageSize,
+        sort,
+    });
 
-    view.current = { page, search, input, selected, kind: load.kind };
+    view.current = {
+        page,
+        search,
+        selected,
+        kind: load.kind,
+        pageSize,
+        sort,
+    };
 
     // A job that newly becomes `done` adds a video at the top of the list. This screen is
     // unmounted while another tab is active, so it loads fresh data when the tab is opened again.
     useJobFinished(() => {
         const now = view.current;
-        const atTop = now.page === 1 && now.search === '' && now.input.trim() === '';
+        // A new video shows at the top only for the default order.
+        const atTop = now.page === 1 && now.search === '' && now.sort === 'newest';
 
         if (!atTop || now.selected !== null) {
             setStale(true);
@@ -331,7 +485,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         const request = ++latest.current;
 
         api.videos
-            .list({ page: 1, perPage: PAGE_SIZE })
+            .list(listParams(1, now.pageSize, '', 'newest'))
             .then((result) => {
                 if (request === latest.current && result.ok) {
                     setLoad({ kind: 'ready', items: result.data, meta: result.meta });
@@ -398,13 +552,63 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         if (panel !== null) panel.scrollTop = 0;
     }
 
+    function chooseSort(next: VideoSort): void {
+        setSort(next);
+        setPage(1);
+    }
+
+    function choosePageSize(next: number): void {
+        setPageSize(next);
+        setPage(1);
+    }
+
+    function askDelete(video: VideoListItem): void {
+        setConfirmDelete(video);
+    }
+
+    /** Deletes one video from its card menu (same server call and messages as the detail page). */
+    function deleteOne(): void {
+        const video = confirmDelete;
+
+        if (video === null) return;
+
+        setConfirmDelete(null);
+        api.videos
+            .delete(video.id)
+            .then((result) => {
+                if (!result.ok) toast.show('error', result.error);
+                else if (result.status === 'deleted') {
+                    toast.show('success', result.message);
+                    setPicked((current) => {
+                        const next = new Set(current);
+
+                        next.delete(video.id);
+
+                        return next;
+                    });
+                    reloadAfterRemoval(1);
+                } else if (result.status === 'skipped') {
+                    toast.show('info', 'The video is still processing; try again later.');
+                } else toast.show('error', result.message);
+            })
+            .catch(() => toast.show('error', GENERIC_ERROR));
+    }
+
     function chooseView(next: ViewMode): void {
         setViewMode(next);
         saveView(next);
     }
 
-    function toggleSelectMode(): void {
-        setSelectMode((on) => !on);
+    /** Item menu "Select": enters select mode with that video already picked. */
+    function startSelecting(video: VideoListItem): void {
+        pendingFocus.current = 'enter';
+        setSelectMode(true);
+        setPicked(new Set([video.id]));
+    }
+
+    function leaveSelectMode(): void {
+        pendingFocus.current = 'leave';
+        setSelectMode(false);
         setPicked(new Set());
     }
 
@@ -421,6 +625,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
 
     const items = load.kind === 'ready' ? load.items : [];
     const pickedIds = items.filter((item) => picked.has(item.id)).map((item) => item.id);
+    const allPicked = items.length > 0 && pickedIds.length === items.length;
 
     function deleteSelected(): void {
         const ids = pickedIds;
@@ -441,7 +646,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                     result.failed > 0 ? 'error' : result.deleted > 0 ? 'success' : 'info',
                     result.message,
                 );
-                pendingFocus.current = 'toggle';
+                pendingFocus.current = 'leave';
                 setSelectMode(false);
                 setPicked(new Set());
                 reloadAfterRemoval(result.deleted);
@@ -458,11 +663,40 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         refresh();
     }
 
+    /** The search term only changes on submit (button or Enter); it always goes back to page 1. */
+    function applySearch(term: string): void {
+        setSearch(term);
+        setPage(1);
+    }
+
+    function submitSearch(event: FormEvent): void {
+        event.preventDefault();
+        applySearch(input.trim());
+    }
+
+    function clearSearch(): void {
+        setInput('');
+        applySearch('');
+        searchRef.current?.focus();
+    }
+
     function onSearch(event: ChangeEvent<HTMLInputElement>): void {
         setInput(event.target.value);
     }
 
     const meta = load.kind === 'ready' ? load.meta : null;
+    // Two identical pagers (above and below the list) share the same state and handlers.
+    const pager = (label: string, value: VideoListMeta) => (
+        <Pagination
+            label={label}
+            page={value.page}
+            lastPage={value.lastPage}
+            total={value.total}
+            onPageChange={changePage}
+        />
+    );
+    const pagerTop = meta === null ? null : pager('Pagination, top', meta);
+    const pagerBottom = meta === null ? null : pager('Pagination, bottom', meta);
 
     return (
         <section ref={rootRef} className="library" aria-labelledby="library-heading">
@@ -479,92 +713,116 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
             )}
 
             <div hidden={selected !== null}>
-                <div className="section-head">
-                    <h2 id="library-heading" ref={headingRef} tabIndex={-1}>
-                        Library
-                    </h2>
-                    <div className="row">
+                <div className="library-toolbar">
+                    <div className="library-title">
+                        {/* The visible page title is the top bar's; this heading names the region. */}
+                        <h2
+                            id="library-heading"
+                            ref={headingRef}
+                            tabIndex={-1}
+                            className="visually-hidden"
+                        >
+                            Library
+                        </h2>
+                    </div>
+                    <form className="library-search" role="search" onSubmit={submitSearch}>
+                        <label htmlFor="library-search" className="visually-hidden">
+                            Search videos
+                        </label>
+                        <div className="search-field">
+                            <input
+                                ref={searchRef}
+                                id="library-search"
+                                type="text"
+                                maxLength={100}
+                                value={input}
+                                placeholder="Search by title"
+                                onChange={onSearch}
+                            />
+                            {input !== '' && (
+                                <button
+                                    type="button"
+                                    className="btn btn-text search-clear"
+                                    aria-label="Clear search"
+                                    title="Clear search"
+                                    onClick={clearSearch}
+                                >
+                                    <CloseIcon />
+                                </button>
+                            )}
+                        </div>
+                        <button type="submit" className="btn btn-primary search-submit">
+                            <SearchIcon />
+                            Search
+                        </button>
+                    </form>
+                    <div className="library-sort">
+                        <label htmlFor="library-sort" className="visually-hidden">
+                            Sort by
+                        </label>
+                        <span className="select-prefix" aria-hidden="true">
+                            Sort:
+                        </span>
+                        <SelectBox
+                            id="library-sort"
+                            className="select-inline"
+                            value={sort}
+                            onChange={(event) => chooseSort(event.target.value as VideoSort)}
+                        >
+                            {VIDEO_SORTS.map((value) => (
+                                <option key={value} value={value}>
+                                    {SORT_LABELS[value]}
+                                </option>
+                            ))}
+                        </SelectBox>
+                    </div>
+                    <div className="library-size">
+                        <label htmlFor="library-page-size">Per page</label>
+                        <SelectBox
+                            id="library-page-size"
+                            aria-label="Items per page"
+                            value={pageSize}
+                            onChange={(event) => choosePageSize(Number(event.target.value))}
+                        >
+                            {PAGE_SIZES.map((size) => (
+                                <option key={size} value={size}>
+                                    {size}
+                                </option>
+                            ))}
+                        </SelectBox>
+                    </div>
+                    <div className="library-actions">
                         <div className="segmented" role="group" aria-label="View">
                             <button
                                 type="button"
                                 className="btn btn-sm"
+                                aria-label="Grid"
+                                title="Grid"
                                 aria-pressed={viewMode === 'grid'}
                                 onClick={() => chooseView('grid')}
                             >
                                 <GridViewIcon />
-                                Grid
                             </button>
                             <button
                                 type="button"
                                 className="btn btn-sm"
+                                aria-label="List"
+                                title="List"
                                 aria-pressed={viewMode === 'list'}
                                 onClick={() => chooseView('list')}
                             >
                                 <ListViewIcon />
-                                List
                             </button>
                         </div>
                         <button
-                            ref={toggleRef}
                             type="button"
-                            className="btn btn-sm"
-                            aria-pressed={selectMode}
-                            disabled={bulkBusy}
-                            onClick={toggleSelectMode}
+                            className="btn btn-sm library-refresh"
+                            aria-label="Refresh"
+                            title="Refresh"
+                            onClick={refresh}
                         >
-                            Select
+                            <RefreshIcon />
                         </button>
-                        <button type="button" className="btn btn-sm" onClick={refresh}>
-                            Refresh
-                        </button>
-                    </div>
-                </div>
-
-                {selectMode && (
-                    <div className="library-tools" role="toolbar" aria-label="Selection">
-                        <span className="library-count" role="status">
-                            {pickedIds.length} selected
-                        </span>
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            disabled={bulkBusy || items.length === 0}
-                            onClick={() => setPicked(new Set(items.map((item) => item.id)))}
-                        >
-                            Select all on this page
-                        </button>
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            disabled={bulkBusy || pickedIds.length === 0}
-                            onClick={() => setPicked(new Set())}
-                        >
-                            Clear
-                        </button>
-                        <button
-                            ref={bulkRef}
-                            type="button"
-                            className="btn btn-sm btn-accent-danger"
-                            disabled={bulkBusy || pickedIds.length === 0}
-                            onClick={() => setConfirmBulk(true)}
-                        >
-                            Delete selected
-                        </button>
-                    </div>
-                )}
-
-                <div className="field library-search">
-                    <label htmlFor="library-search">Search videos</label>
-                    <div className="search">
-                        <SearchIcon />
-                        <input
-                            id="library-search"
-                            type="text"
-                            maxLength={100}
-                            value={input}
-                            placeholder="Search by title"
-                            onChange={onSearch}
-                        />
                     </div>
                 </div>
 
@@ -577,10 +835,60 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                     </p>
                 )}
 
+                {pagerTop}
+
+                {selectMode && (
+                    <div className="library-tools" role="toolbar" aria-label="Selection">
+                        <span className="library-count" role="status">
+                            {pickedIds.length} selected
+                        </span>
+                        <button
+                            type="button"
+                            className={allPicked ? 'btn btn-sm btn-tonal' : 'btn btn-sm'}
+                            aria-label={
+                                allPicked ? 'Unselect all on this page' : 'Select all on this page'
+                            }
+                            disabled={bulkBusy || items.length === 0}
+                            onClick={() =>
+                                setPicked(
+                                    allPicked ? new Set() : new Set(items.map((item) => item.id)),
+                                )
+                            }
+                        >
+                            <CheckboxIcon
+                                state={allPicked ? 'all' : pickedIds.length > 0 ? 'some' : 'none'}
+                            />
+                            Select all
+                        </button>
+                        <button
+                            ref={bulkRef}
+                            type="button"
+                            className="btn btn-sm btn-accent-danger"
+                            disabled={bulkBusy || pickedIds.length === 0}
+                            onClick={() => setConfirmBulk(true)}
+                        >
+                            Delete selected
+                        </button>
+                        <button
+                            ref={cancelRef}
+                            type="button"
+                            className="btn btn-sm"
+                            aria-label="Exit select mode"
+                            disabled={bulkBusy}
+                            onClick={leaveSelectMode}
+                        >
+                            Cancel
+                        </button>
+                    </div>
+                )}
+
                 {load.kind === 'loading' && (
-                    <p className="empty" role="status" aria-busy="true">
-                        {'Loading…'}
-                    </p>
+                    <>
+                        <p className="visually-hidden" role="status" aria-busy="true">
+                            {'Loading…'}
+                        </p>
+                        <SkeletonGrid count={Math.min(pageSize, 8)} />
+                    </>
                 )}
 
                 {load.kind === 'error' && (
@@ -594,7 +902,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
 
                 {load.kind === 'ready' && load.items.length === 0 && (
                     <p className="empty">
-                        {search === '' ? 'No videos yet' : 'No videos match your search'}
+                        {search !== '' ? 'No videos match your search' : 'No videos yet'}
                     </p>
                 )}
 
@@ -633,21 +941,35 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                                     onToggle={togglePicked}
                                     quickBusy={quick.busyIds.has(video.id)}
                                     onQuick={(item, action) => quick.run(item.id, action)}
+                                    onDelete={askDelete}
+                                    onSelect={startSelecting}
                                 />
                             ))}
                         </ul>
                     </div>
                 )}
 
-                {meta !== null && (
-                    <Pagination
-                        page={meta.page}
-                        lastPage={meta.lastPage}
-                        total={meta.total}
-                        onPageChange={changePage}
-                    />
-                )}
+                {pagerBottom}
             </div>
+
+            {confirmDelete !== null && (
+                <ConfirmDialog
+                    title="Delete video"
+                    message={
+                        <>
+                            Delete this video? This removes it from the site and may remove its
+                            files from storage. This cannot be undone.
+                            <br />
+                            <strong>{confirmDelete.title}</strong>
+                        </>
+                    }
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                    danger
+                    onConfirm={deleteOne}
+                    onCancel={() => setConfirmDelete(null)}
+                />
+            )}
 
             {confirmBulk && (
                 <ConfirmDialog

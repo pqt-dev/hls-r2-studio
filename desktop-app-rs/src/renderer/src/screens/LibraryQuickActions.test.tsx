@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ActionResult } from '../../../shared/ipc';
 import { makeVideo, makeVideoDetail } from '../testing/fakeApi';
 import { renderApp } from '../testing/renderApp';
+import { enterSelectMode } from '../testing/selectMode';
 
 const KEY = 'hls-r2-studio:library-view';
 
@@ -41,24 +42,46 @@ afterEach(() => {
     vi.restoreAllMocks();
 });
 
+/** Opens the kebab menu of a video and clicks one of its items. */
+async function fromMenu(
+    user: Awaited<ReturnType<typeof openLibrary>>['user'],
+    video: string,
+    item: string,
+) {
+    await user.click(screen.getByRole('button', { name: `More actions for ${video}` }));
+    await user.click(screen.getByRole('menuitem', { name: `${item} for ${video}` }));
+}
+
 describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) => {
-    it('shows the three buttons only for ready videos, with labels that include the title', async () => {
-        await openLibrary(view);
+    it('keeps ONE neutral quick action (Copy shortcode) on a ready video; the rest is in the menu', async () => {
+        const { user } = await openLibrary(view);
+        const button = screen.getByRole('button', { name: 'Copy shortcode for Alpha' });
 
-        for (const name of [
-            'Copy shortcode for Alpha',
-            'Copy embed URL for Alpha',
-            'Open in browser for Alpha',
-        ]) {
-            const button = screen.getByRole('button', { name });
+        expect(button).toHaveClass('video-quick-ghost');
+        expect(button).not.toHaveClass('btn-accent-share');
+        expect(button).toHaveAttribute('title', 'Copy shortcode');
+        // Only that one button of the family is visible on a card.
+        expect(screen.getAllByRole('button', { name: /^(Copy|Open in)/ })).toHaveLength(1);
+        expect(screen.queryByRole('button', { name: /^(Copy|Open in).* for Beta/ })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^(Copy|Open in).* for Gamma/ })).toBeNull();
 
-            expect(button).toHaveClass('btn-accent-share');
-            expect(button).toHaveAttribute('title', name.replace(/ for .*/, ''));
-        }
+        await user.click(screen.getByRole('button', { name: 'More actions for Alpha' }));
+        expect(
+            within(screen.getByRole('menu'))
+                .getAllByRole('menuitem')
+                .map((item) => item.textContent),
+        ).toEqual(['Select', 'Copy embed URL', 'Open in browser', 'Edit', 'Delete']);
+    });
 
-        expect(screen.getAllByRole('button', { name: /^(Copy|Open in)/ })).toHaveLength(3);
-        expect(screen.queryByRole('button', { name: /for Beta/ })).toBeNull();
-        expect(screen.queryByRole('button', { name: /for Gamma/ })).toBeNull();
+    it('offers only Select, Edit and Delete in the menu of a video that is not ready', async () => {
+        const { user } = await openLibrary(view);
+
+        await user.click(screen.getByRole('button', { name: 'More actions for Beta' }));
+        expect(
+            within(screen.getByRole('menu'))
+                .getAllByRole('menuitem')
+                .map((item) => item.textContent),
+        ).toEqual(['Select', 'Edit', 'Delete']);
     });
 
     it('keeps the buttons out of the open button (no nested interactive markup)', async () => {
@@ -67,7 +90,9 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
         const open = screen.getByRole('button', { name: /^Alpha/ });
         const row = open.closest('li') as HTMLElement;
 
-        for (const button of within(row).getAllByRole('button', { name: /for Alpha/ })) {
+        for (const button of within(row).getAllByRole('button', {
+            name: /(for Alpha|More actions for Alpha)/,
+        })) {
             expect(open.contains(button)).toBe(false);
             expect(button.closest('.video-open')).toBeNull();
             expect(button.closest('li')).toBe(row);
@@ -77,10 +102,10 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
     it('is hidden in select mode and back afterwards', async () => {
         const { user } = await openLibrary(view);
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        expect(screen.queryByRole('button', { name: /for Alpha/ })).toBeNull();
+        await enterSelectMode(user, 'Alpha');
+        expect(screen.queryByRole('button', { name: /(for Alpha|More actions)/ })).toBeNull();
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
+        await user.click(screen.getByRole('button', { name: 'Exit select mode' }));
         expect(
             screen.getByRole('button', { name: 'Copy shortcode for Alpha' }),
         ).toBeInTheDocument();
@@ -89,15 +114,16 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
     it('copies the shortcode and the embed URL and opens the embed page, with toasts', async () => {
         const { user, copyLink, openEmbed } = await openLibrary(view);
 
+        // The renderer only sends the id and the kind; the main process builds the text.
         await user.click(screen.getByRole('button', { name: 'Copy shortcode for Alpha' }));
         expect(copyLink).toHaveBeenLastCalledWith(1, 'shortcode');
         expect(await screen.findByText('Shortcode copied.')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'Copy embed URL for Alpha' }));
+        await fromMenu(user, 'Alpha', 'Copy embed URL');
         expect(copyLink).toHaveBeenLastCalledWith(1, 'embed-url');
         expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'Open in browser for Alpha' }));
+        await fromMenu(user, 'Alpha', 'Open in browser');
         expect(openEmbed).toHaveBeenLastCalledWith(1);
         expect(await screen.findByText('Opened in your browser.')).toBeInTheDocument();
     });
@@ -107,7 +133,7 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
 
         await user.click(screen.getByRole('button', { name: 'Copy shortcode for Alpha' }));
         await screen.findByText('Shortcode copied.');
-        screen.getByRole('button', { name: 'Open in browser for Alpha' }).focus();
+        screen.getByRole('button', { name: 'Copy shortcode for Alpha' }).focus();
         await user.keyboard('{Enter}');
         await user.keyboard(' ');
 
@@ -116,10 +142,10 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
         expect(screen.getByRole('list', { name: 'Videos' })).toBeVisible();
         // Select mode was never on, so there is no checkbox and no selection summary.
         expect(screen.queryByRole('checkbox')).toBeNull();
-        expect(copyLink).toHaveBeenCalledTimes(1);
+        expect(copyLink).toHaveBeenCalledTimes(3);
     });
 
-    it('disables the buttons of the row while the request is in flight (aria-busy)', async () => {
+    it('disables the buttons of the row only while the copy runs (aria-busy)', async () => {
         const { user, copyLink } = await openLibrary(view);
         let finish: (result: ActionResult) => void = () => undefined;
 
@@ -132,31 +158,38 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
 
         await user.click(screen.getByRole('button', { name: 'Copy shortcode for Alpha' }));
 
-        const buttons = screen.getAllByRole('button', { name: /for Alpha/ }).slice(-3);
+        const shortcode = screen.getByRole('button', { name: 'Copy shortcode for Alpha' });
+        const kebab = screen.getByRole('button', { name: 'More actions for Alpha' });
 
-        expect(buttons).toHaveLength(3);
-
-        for (const button of buttons) {
-            expect(button).toBeDisabled();
-            expect(button).toHaveAttribute('aria-busy', 'true');
-        }
+        expect(shortcode).toBeDisabled();
+        expect(shortcode).toHaveAttribute('aria-busy', 'true');
+        expect(kebab).toBeDisabled();
 
         finish({ ok: true });
         await screen.findByText('Shortcode copied.');
-        await waitFor(() => expect(buttons[0]).toBeEnabled());
-        expect(buttons[0]).toHaveAttribute('aria-busy', 'false');
+        await waitFor(() => expect(shortcode).toBeEnabled());
+        expect(shortcode).toHaveAttribute('aria-busy', 'false');
         expect(copyLink).toHaveBeenCalledTimes(1);
     });
 
-    it('shows the safe error as a toast when the action fails', async () => {
-        const { user, copyLink, openEmbed } = await openLibrary(view);
+    it('shows the error the main process returns as a toast', async () => {
+        const { user, copyLink } = await openLibrary(view);
 
         copyLink.mockResolvedValue({ ok: false, error: 'This video has no embed URL yet.' });
         await user.click(screen.getByRole('button', { name: 'Copy shortcode for Alpha' }));
         expect(await screen.findByText(/This video has no embed URL yet\./)).toBeInTheDocument();
 
+        copyLink.mockResolvedValue({ ok: false, error: 'Could not copy to the clipboard.' });
+        await fromMenu(user, 'Alpha', 'Copy embed URL');
+        expect(await screen.findByText(/Could not copy to the clipboard\./)).toBeInTheDocument();
+        expect(screen.queryByText('Embed URL copied.')).toBeNull();
+    });
+
+    it('opening the embed page stays with the main process and reports a failure safely', async () => {
+        const { user, openEmbed } = await openLibrary(view);
+
         openEmbed.mockRejectedValue(new Error('boom'));
-        await user.click(screen.getByRole('button', { name: 'Open in browser for Alpha' }));
+        await fromMenu(user, 'Alpha', 'Open in browser');
         expect(
             await screen.findByText(/Something went wrong\. Please try again\./),
         ).toBeInTheDocument();

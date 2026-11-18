@@ -1,5 +1,6 @@
 import type { JobDto } from '../../../shared/ipc';
 import type { JobState } from '../../../shared/types';
+import type { FluentName } from '../components/fluentIcons';
 
 /** Visual/semantic group of a job state. Mirrors the groups of the main process. */
 export type StatusKind =
@@ -46,13 +47,13 @@ export function hasDetailsView(state: JobState): boolean {
     );
 }
 
-/** Glyphs shown next to the status text so the state is never conveyed by color alone. */
-export const STATUS_ICON: Record<StatusKind, string> = {
-    waiting: '○',
-    running: '▶',
-    done: '✓',
-    failed: '✕',
-    attention: '!',
-    paused: '‖',
-    cancelled: '–',
+/** Fluent icon (see fluentIcons.ts) shown next to the status text so the state is never color only. */
+export const STATUS_ICON: Record<StatusKind, FluentName> = {
+    waiting: 'circle',
+    running: 'play',
+    done: 'success',
+    failed: 'failure',
+    attention: 'warning',
+    paused: 'pause',
+    cancelled: 'cancelled',
 };

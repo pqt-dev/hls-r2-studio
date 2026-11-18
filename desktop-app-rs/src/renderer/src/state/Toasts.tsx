@@ -8,6 +8,7 @@ import {
     useState,
     type ReactNode,
 } from 'react';
+import { CloseIcon, ErrorIcon, InfoIcon, SuccessIcon } from '../components/icons';
 
 export type ToastKind = 'success' | 'error' | 'info';
 
@@ -72,7 +73,13 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                 {toasts.map((toast) => (
                     <div key={toast.id} className={`toast toast-${toast.kind}`}>
                         <span className="toast-icon" aria-hidden="true">
-                            {toast.kind === 'success' ? '✓' : toast.kind === 'error' ? '!' : 'i'}
+                            {toast.kind === 'success' ? (
+                                <SuccessIcon />
+                            ) : toast.kind === 'error' ? (
+                                <ErrorIcon />
+                            ) : (
+                                <InfoIcon />
+                            )}
                         </span>
                         <span className="toast-text">
                             {toast.kind === 'error' ? 'Error: ' : ''}
@@ -84,7 +91,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
                             aria-label="Dismiss notification"
                             onClick={() => dismiss(toast.id)}
                         >
-                            {'×'}
+                            <CloseIcon />
                         </button>
                     </div>
                 ))}

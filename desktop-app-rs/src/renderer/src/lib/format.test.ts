@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
     formatBytes,
+    formatQuality,
     formatRelativeTime,
     plural,
     siteHost,
@@ -75,5 +76,28 @@ describe('labels and helpers', () => {
         expect(plural(1, 'video')).toBe('1 video');
         expect(plural(2, 'video')).toBe('2 videos');
         expect(plural(2, 'video is', 'videos are')).toBe('2 videos are');
+    });
+});
+
+describe('formatQuality', () => {
+    it.each<[number | null, number | null, string]>([
+        [1920, 1080, '1080p'],
+        [1080, 1920, '1080p'],
+        [888, 1920, '720p'],
+        [1280, 2770, '1080p'],
+        [3840, 2160, '4K'],
+        [720, 1280, '720p'],
+        [1280, 720, '720p'],
+        [854, 480, '480p'],
+        [640, 360, '360p'],
+        [426, 240, '240p'],
+        [2560, 1440, '1440p'],
+        [7680, 4320, '8K'],
+        [160, 96, '96p'],
+        [null, 1080, '1080p'],
+        [null, null, ''],
+        [0, 0, ''],
+    ])('%s x %s is %s', (width, height, expected) => {
+        expect(formatQuality(width, height)).toBe(expected);
     });
 });

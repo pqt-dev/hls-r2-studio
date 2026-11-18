@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Feedback, type FeedbackMessage } from '../components/Feedback';
+import { ErrorIcon, SuccessIcon } from '../components/icons';
 import { useApp } from '../state/AppProvider';
 
 export function AboutScreen() {
@@ -38,7 +39,7 @@ export function AboutScreen() {
                         ) : ffmpeg.ok ? (
                             <span className="chip chip-done">
                                 <span className="chip-icon" aria-hidden="true">
-                                    {'✓'}
+                                    <SuccessIcon />
                                 </span>
                                 Passed
                             </span>
@@ -46,7 +47,7 @@ export function AboutScreen() {
                             <>
                                 <span className="chip chip-failed">
                                     <span className="chip-icon" aria-hidden="true">
-                                        {'✕'}
+                                        <ErrorIcon />
                                     </span>
                                     Failed
                                 </span>

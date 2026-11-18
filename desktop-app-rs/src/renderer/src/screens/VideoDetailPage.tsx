@@ -1,13 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { VideoDetail, VideoLinkKind } from '../../../shared/ipc';
+import { ActionMenu } from '../components/ActionMenu';
 import { ConfirmDialog } from '../components/Dialog';
 import {
+    ArrowLeftIcon,
     LinkIcon,
     OpenExternalIcon,
     PencilIcon,
     PlaylistIcon,
+    ShortcodeIcon,
     TrashIcon,
 } from '../components/icons';
+import { Thumbnail } from '../components/Thumbnail';
 import { formatBytes, formatDateTime, formatDuration } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
@@ -90,21 +94,23 @@ function statusExplanation(video: VideoDetail): string {
     }
 }
 
-function Poster({ url }: { url: string | null }) {
-    const [failed, setFailed] = useState(false);
-
-    if (url === null || failed) {
-        return (
-            <div className="thumb thumb-placeholder" aria-hidden="true">
-                No preview
-            </div>
-        );
-    }
-
-    return (
-        <img className="thumb" src={url} alt="" loading="lazy" onError={() => setFailed(true)} />
-    );
+/** Output size of the video (the real aspect ratio of its images), when known. */
+function sizeOf(video: VideoDetail): { width: number | null; height: number | null } {
+    return { width: video.outputWidth, height: video.outputHeight };
 }
+
+function Poster({ url, video }: { url: string | null; video: VideoDetail }) {
+    const { width, height } = sizeOf(video);
+
+    return <Thumbnail key={url ?? ''} url={url} width={width} height={height} />;
+}
+
+const LINK_LABELS: Record<VideoLinkKind, string> = {
+    'embed-url': 'Embed URL',
+    'playlist-url': 'Playlist URL',
+    shortcode: 'Shortcode',
+    'iframe-code': 'Iframe code',
+};
 
 interface Actions {
     busy: boolean;
@@ -122,17 +128,24 @@ interface Actions {
     removeImageRef: React.RefObject<HTMLButtonElement | null>;
 }
 
-/** Current thumbnail (the custom one wins) with a "Custom" chip, and the change/remove buttons. */
+/** Current thumbnail (the custom one wins) in its real aspect ratio, with upload / reset buttons. */
 function ThumbnailCard({ video, actions }: { video: VideoDetail; actions: Actions }) {
     const poster = video.customImageUrl ?? video.thumbnailUrl;
 
     return (
         <section className="card detail-card" aria-label="Thumbnail">
             <div className="row detail-card-head">
-                <h3>Thumbnail</h3>
+                <h3>Custom thumbnail</h3>
                 {video.hasCustomImage && <span className="chip">Custom</span>}
             </div>
-            <Poster key={poster ?? ''} url={poster} />
+            <div className="detail-thumb">
+                <Poster url={poster} video={video} />
+            </div>
+            <p className="muted detail-note">
+                {video.hasCustomImage
+                    ? 'A custom thumbnail is in use. Choose another image to replace it, or reset to the generated one.'
+                    : 'The generated thumbnail is in use. Choose an image to replace it.'}
+            </p>
             <div className="row row-wrap detail-actions detail-note">
                 <button
                     ref={actions.chooseRef}
@@ -179,14 +192,14 @@ function PreviewCard({
     if (video.status !== 'ready') {
         body = (
             <>
-                <Poster key={poster ?? ''} url={poster} />
+                <Poster url={poster} video={video} />
                 <p className="muted detail-note">{statusExplanation(video)}</p>
             </>
         );
     } else if (!embeddable || video.embedUrl === null) {
         body = (
             <>
-                <Poster key={poster ?? ''} url={poster} />
+                <Poster url={poster} video={video} />
                 <div className="detail-note">
                     <p>Preview unavailable</p>
                     {video.embedUrl !== null && (
@@ -205,7 +218,7 @@ function PreviewCard({
     } else if (!loaded) {
         body = (
             <div className="preview-poster">
-                <Poster key={poster ?? ''} url={poster} />
+                <Poster url={poster} video={video} />
                 <button type="button" className="btn preview-load" onClick={() => setLoaded(true)}>
                     Load preview
                 </button>
@@ -243,19 +256,76 @@ function StoryboardsCard({ video }: { video: VideoDetail }) {
     return (
         <section className="card detail-card" aria-label="Storyboards">
             <h3>Storyboards</h3>
-            {entries.map(([key, board]) => {
-                const parts = [
-                    board.columns !== null ? `${board.columns} columns` : null,
-                    board.count !== null ? `${board.count} frames` : null,
-                ].filter((part) => part !== null);
+            <div className="storyboard-grid">
+                {entries.map(([key, board]) => {
+                    const parts = [
+                        board.columns !== null ? `${board.columns} columns` : null,
+                        board.count !== null ? `${board.count} frames` : null,
+                    ].filter((part) => part !== null);
 
-                return (
-                    <figure key={key} className="storyboard">
-                        <img src={board.url} alt={`Storyboard ${key}`} loading="lazy" />
-                        <figcaption className="muted">{parts.join(' · ')}</figcaption>
-                    </figure>
-                );
-            })}
+                    return (
+                        <figure key={key} className="storyboard">
+                            <div className="storyboard-frame">
+                                <img src={board.url} alt={`Storyboard ${key}`} loading="lazy" />
+                            </div>
+                            <figcaption>
+                                <span className="storyboard-size">{key}</span>
+                                <span className="muted">{parts.join(' · ')}</span>
+                            </figcaption>
+                        </figure>
+                    );
+                })}
+            </div>
+        </section>
+    );
+}
+
+/** One labeled block: the value (read-only, selectable) with its own Copy button. */
+function EmbedField({
+    kind,
+    value,
+    actions,
+}: {
+    kind: VideoLinkKind;
+    value: string;
+    actions: Actions;
+}) {
+    const label = LINK_LABELS[kind];
+
+    return (
+        <div className="embed-field">
+            <div className="row embed-field-head">
+                <h4>{label}</h4>
+                <button
+                    type="button"
+                    className="btn btn-sm"
+                    aria-label={`Copy ${label}`}
+                    disabled={actions.busy}
+                    onClick={() => actions.copy(kind)}
+                >
+                    Copy
+                </button>
+            </div>
+            <pre className="embed-code mono">{value}</pre>
+        </div>
+    );
+}
+
+function EmbedCard({ video, actions }: { video: VideoDetail; actions: Actions }) {
+    if (video.embedUrl === null) return null;
+
+    return (
+        <section className="card detail-card" aria-label="Embed">
+            <h3>Embed</h3>
+            <div className="embed-fields">
+                <EmbedField kind="embed-url" value={video.embedUrl} actions={actions} />
+                {video.iframeCode !== null && (
+                    <EmbedField kind="iframe-code" value={video.iframeCode} actions={actions} />
+                )}
+                {video.shortcode !== null && (
+                    <EmbedField kind="shortcode" value={video.shortcode} actions={actions} />
+                )}
+            </div>
         </section>
     );
 }
@@ -408,9 +478,9 @@ function deleteBlocked(video: VideoDetail): boolean {
 }
 
 /**
- * Sticky action bar under the title row, grouped by meaning: share/open (teal), edit (amber),
- * then a spacer and the destructive Delete (red) at the right end. Below the narrow breakpoint the
- * labels collapse to icons (the accessible names stay).
+ * Sticky action toolbar at the top of the page: primary actions (open, copy embed URL, rename)
+ * and an overflow menu with the playlist URL and the destructive Delete (danger-styled; it still
+ * asks for confirmation). Below the narrow breakpoint the labels collapse to icons.
  */
 function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions }) {
     const blocked = deleteBlocked(video);
@@ -421,36 +491,24 @@ function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions })
                 <button
                     type="button"
                     className="btn btn-sm btn-accent-share"
-                    title="Copy embed URL"
-                    disabled={actions.busy}
-                    onClick={() => actions.copy('embed-url')}
-                >
-                    <LinkIcon />
-                    <span className="btn-label">Copy embed URL</span>
-                </button>
-            )}
-            {video.playlistUrl !== null && (
-                <button
-                    type="button"
-                    className="btn btn-sm btn-accent-share"
-                    title="Copy playlist URL"
-                    disabled={actions.busy}
-                    onClick={() => actions.copy('playlist-url')}
-                >
-                    <PlaylistIcon />
-                    <span className="btn-label">Copy playlist URL</span>
-                </button>
-            )}
-            {video.embedUrl !== null && (
-                <button
-                    type="button"
-                    className="btn btn-sm btn-accent-share"
                     title="Open in browser"
                     disabled={actions.busy}
                     onClick={actions.open}
                 >
                     <OpenExternalIcon />
                     <span className="btn-label">Open in browser</span>
+                </button>
+            )}
+            {video.embedUrl !== null && (
+                <button
+                    type="button"
+                    className="btn btn-sm btn-accent-share"
+                    title="Copy embed URL"
+                    disabled={actions.busy}
+                    onClick={() => actions.copy('embed-url')}
+                >
+                    <LinkIcon />
+                    <span className="btn-label">Copy embed URL</span>
                 </button>
             )}
             <button
@@ -465,18 +523,43 @@ function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions })
                 <span className="btn-label">Rename</span>
             </button>
             <span className="action-spacer" aria-hidden="true" />
-            <button
-                ref={actions.deleteRef}
-                type="button"
-                className="btn btn-sm btn-accent-danger"
-                title={blocked ? DELETE_BLOCKED : 'Delete'}
-                aria-describedby={blocked ? 'video-delete-blocked' : undefined}
-                disabled={actions.busy || blocked}
-                onClick={actions.askDelete}
-            >
-                <TrashIcon />
-                <span className="btn-label">Delete</span>
-            </button>
+            <ActionMenu
+                label="More actions"
+                disabled={actions.busy}
+                triggerRef={actions.deleteRef}
+                items={[
+                    ...(video.playlistUrl !== null
+                        ? [
+                              {
+                                  key: 'playlist',
+                                  label: 'Copy playlist URL',
+                                  icon: <PlaylistIcon />,
+                                  onSelect: () => actions.copy('playlist-url'),
+                              },
+                          ]
+                        : []),
+                    ...(video.shortcode !== null
+                        ? [
+                              {
+                                  key: 'shortcode',
+                                  label: 'Copy shortcode',
+                                  icon: <ShortcodeIcon />,
+                                  onSelect: () => actions.copy('shortcode'),
+                              },
+                          ]
+                        : []),
+                    {
+                        key: 'delete',
+                        label: 'Delete',
+                        icon: <TrashIcon />,
+                        danger: true,
+                        disabled: blocked,
+                        describedBy: blocked ? 'video-delete-blocked' : undefined,
+                        title: blocked ? DELETE_BLOCKED : 'Delete',
+                        onSelect: actions.askDelete,
+                    },
+                ]}
+            />
         </div>
     );
 }
@@ -763,11 +846,7 @@ export function VideoDetailPage({
             }
         },
         askDelete: () => setConfirmDelete(true),
-        copy: (kind) =>
-            run(
-                () => api.videos.copyLink(id, kind),
-                kind === 'embed-url' ? 'Embed URL copied.' : 'Playlist URL copied.',
-            ),
+        copy: (kind) => run(() => api.videos.copyLink(id, kind), `${LINK_LABELS[kind]} copied.`),
         open: () => run(() => api.videos.openEmbed(id), 'Opened in your browser.'),
     };
 
@@ -777,11 +856,11 @@ export function VideoDetailPage({
         <section className="detail" aria-label="Video details">
             <div className="detail-head">
                 <button ref={backRef} type="button" className="btn btn-sm" onClick={onBack}>
-                    {'← Library'}
+                    <ArrowLeftIcon />
+                    Library
                 </button>
                 <nav aria-label="Breadcrumb" className="breadcrumb">
                     <ol>
-                        <li>Library</li>
                         <li aria-current="page" title={title}>
                             {title}
                         </li>
@@ -818,13 +897,13 @@ export function VideoDetailPage({
             {load.kind === 'ready' && (
                 <div className="detail-grid">
                     <div className="detail-col">
-                        <ThumbnailCard video={load.video} actions={actions} />
                         <PreviewCard
                             key={load.video.embedUrl ?? ''}
                             video={load.video}
                             siteUrl={siteUrl}
                             actions={actions}
                         />
+                        <EmbedCard video={load.video} actions={actions} />
                         <StoryboardsCard video={load.video} />
                     </div>
                     <div className="detail-col">
@@ -844,6 +923,7 @@ export function VideoDetailPage({
                                 )
                             }
                         />
+                        <ThumbnailCard video={load.video} actions={actions} />
                     </div>
                 </div>
             )}

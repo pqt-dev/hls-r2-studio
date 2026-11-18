@@ -3,6 +3,7 @@ import type { SettingsPatch } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { Feedback, type FeedbackMessage } from '../components/Feedback';
 import { ReloadConfigButton } from '../components/QueueBanners';
+import { SelectBox } from '../components/SelectBox';
 import { plural, siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
@@ -139,7 +140,7 @@ export function SettingsScreen() {
 
                 <div className="field">
                     <label htmlFor={ids.parallel}>Parallel jobs</label>
-                    <select
+                    <SelectBox
                         id={ids.parallel}
                         value={settings.maxConcurrent}
                         disabled={saving === 'parallel'}
@@ -154,7 +155,7 @@ export function SettingsScreen() {
                     >
                         <option value={1}>1 (recommended)</option>
                         <option value={2}>2</option>
-                    </select>
+                    </SelectBox>
                     <p id={ids.parallelHelp} className="help">
                         Two jobs at once can finish a batch sooner but use much more CPU and disk,
                         so the computer may feel slower.

@@ -2,6 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { JobDto } from '../../../shared/ipc';
 import { makeJob, makeSummary } from '../testing/fakeApi';
+import { clickJobAction, openJobMenu } from '../testing/jobMenu';
 import { push, renderQueue } from '../testing/renderApp';
 
 const names = () =>
@@ -50,11 +51,53 @@ describe('Queue order', () => {
 
         expect(names()).toEqual([
             'running.mp4',
-            'failed.mp4',
             'waiting.mp4',
             'done-new.mp4',
             'done-old.mp4',
+            'failed.mp4',
         ]);
+    });
+
+    it('collapses a long finished group by default and expands it on demand', async () => {
+        const done = Array.from({ length: 25 }, (_, i) =>
+            makeJob({
+                id: `d${i}`,
+                fileName: `done-${i}.mp4`,
+                state: 'done',
+                createdAt: `2026-01-01T10:00:${String(i).padStart(2, '0')}.000Z`,
+            }),
+        );
+        const { user } = await renderQueue({
+            jobs: [...done, makeJob({ id: 'r', fileName: 'live.mp4', state: 'uploading' })],
+        });
+
+        expect(names()).toEqual(['live.mp4']);
+
+        const toggle = screen.getByRole('button', { name: /Finished/ });
+
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        expect(toggle).toHaveTextContent('25');
+
+        await user.click(toggle);
+        expect(names()).toHaveLength(26);
+        // Newest finished job first.
+        expect(names()[1]).toBe('done-24.mp4');
+        expect(screen.getByRole('button', { name: /Finished/ })).toHaveAttribute(
+            'aria-expanded',
+            'true',
+        );
+    });
+
+    it('keeps a short finished group open', async () => {
+        await renderQueue({
+            jobs: [makeJob({ id: 'd', fileName: 'one.mp4', state: 'done' })],
+        });
+
+        expect(names()).toEqual(['one.mp4']);
+        expect(screen.getByRole('button', { name: /Finished/ })).toHaveAttribute(
+            'aria-expanded',
+            'true',
+        );
     });
 
     it('re-orders when a job changes state, keeping the row, the summary and the dialog', async () => {
@@ -77,10 +120,10 @@ describe('Queue order', () => {
         const { fake, user } = await renderQueue({ jobs: [waiting, failed] });
 
         push(() => fake.emitSummary(makeSummary({ waiting: 1, failed: 1, total: 2 })));
-        expect(names()).toEqual(['broken.mp4', 'next.mp4']);
+        expect(names()).toEqual(['next.mp4', 'broken.mp4']);
 
         // Open the details dialog of the failed job, then let the other job start running.
-        await user.click(screen.getByRole('button', { name: 'View details: broken.mp4' }));
+        await clickJobAction(user, 'View details: broken.mp4');
         expect(screen.getByRole('dialog')).toBeInTheDocument();
 
         push(() =>
@@ -115,7 +158,7 @@ describe('Queue order', () => {
 
         expect(names()).toEqual(['first.mp4', 'second.mp4']);
 
-        const button = screen.getByRole('button', { name: 'Cancel: second.mp4' });
+        const button = screen.getByRole('button', { name: 'More actions for second.mp4' });
 
         button.focus();
         expect(button).toHaveFocus();
@@ -123,7 +166,7 @@ describe('Queue order', () => {
         push(() => fake.emitJobs([first, { ...second, state: 'transcoding', progress: 5 }]));
 
         expect(names()).toEqual(['second.mp4', 'first.mp4']);
-        expect(screen.getByRole('button', { name: 'Cancel: second.mp4' })).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'More actions for second.mp4' })).toHaveFocus();
     });
 
     it('does not take the focus back after the user moved it elsewhere', async () => {
@@ -143,17 +186,17 @@ describe('Queue order', () => {
         });
         const { fake, user } = await renderQueue({ jobs: [first, second] });
 
-        screen.getByRole('button', { name: 'Cancel: second.mp4' }).focus();
+        screen.getByRole('button', { name: 'More actions for second.mp4' }).focus();
         await user.tab({ shift: true });
-        expect(screen.getByRole('button', { name: 'Cancel: first.mp4' })).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'More actions for first.mp4' })).toHaveFocus();
 
         push(() => fake.emitJobs([first, { ...second, state: 'transcoding', progress: 5 }]));
 
-        expect(screen.getByRole('button', { name: 'Cancel: first.mp4' })).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'More actions for first.mp4' })).toHaveFocus();
     });
 
-    it('colours job buttons by meaning', async () => {
-        await renderQueue({
+    it('keeps one shortcut on the row and marks destructive menu items as danger', async () => {
+        const { user } = await renderQueue({
             jobs: [
                 makeJob({ id: 'r', fileName: 'run.mp4', state: 'uploading', canCancel: true }),
                 makeJob({
@@ -165,12 +208,6 @@ describe('Queue order', () => {
                     canRemove: true,
                 }),
                 makeJob({
-                    id: 'g',
-                    fileName: 'reg.mp4',
-                    state: 'register_failed',
-                    canRetryRegister: true,
-                }),
-                makeJob({
                     id: 'd',
                     fileName: 'done.mp4',
                     state: 'done',
@@ -179,19 +216,42 @@ describe('Queue order', () => {
                 }),
             ],
         });
+        const row = (file: string) =>
+            document.querySelector<HTMLElement>(`li[data-job-id="${file}"]`) as HTMLElement;
 
-        const cls = (name: string) => screen.getByRole('button', { name }).className;
+        // The only visible action of a done row is the shortcode button.
+        expect(
+            screen.getByRole('button', { name: 'Copy shortcode: done.mp4' }).className,
+        ).toContain('btn-accent-share');
+        expect(screen.queryByRole('button', { name: /^Remove:/ })).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Cancel:/ })).toBeNull();
 
-        expect(cls('Cancel: run.mp4')).toContain('btn-accent-danger');
-        expect(cls('Remove: done.mp4')).toContain('btn-accent-danger');
-        expect(cls('Resume: paused.mp4')).toContain('btn-accent-recover');
-        expect(cls('Start over: paused.mp4')).toContain('btn-accent-recover');
-        expect(cls('Retry register: reg.mp4')).toContain('btn-accent-recover');
-        expect(cls('Copy embed URL: done.mp4')).toContain('btn-accent-share');
-        expect(cls('Copy shortcode: done.mp4')).toContain('btn-accent-share');
-        expect(cls('Open on site: done.mp4')).toContain('btn-accent-share');
-        expect(cls('View in Library: done.mp4')).toContain('btn-accent-share');
-        expect(cls('View details: paused.mp4')).toContain('btn-accent-share');
+        const check = async (id: string, danger: string[], plain: string[]) => {
+            const menu = await openJobMenu(user, row(id));
+
+            for (const label of danger) {
+                expect(within(menu).getByRole('menuitem', { name: label }).className).toContain(
+                    'video-menu-danger',
+                );
+            }
+
+            for (const label of plain) {
+                expect(within(menu).getByRole('menuitem', { name: label }).className).not.toContain(
+                    'video-menu-danger',
+                );
+            }
+
+            await user.keyboard('{Escape}');
+        };
+
+        await check('r', ['Cancel: run.mp4'], []);
+        await check('p', ['Remove: paused.mp4'], ['Resume: paused.mp4', 'Start over: paused.mp4']);
+        await check(
+            'd',
+            ['Remove: done.mp4'],
+            ['Copy embed URL: done.mp4', 'Open on site: done.mp4'],
+        );
+
         expect(screen.getByRole('button', { name: 'Clear finished' }).className).toContain(
             'btn-accent-danger',
         );

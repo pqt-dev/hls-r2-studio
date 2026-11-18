@@ -11,6 +11,8 @@ import type {
 } from '../../../shared/ipc';
 import { makeVideo, makeVideoDetail } from '../testing/fakeApi';
 import { renderApp } from '../testing/renderApp';
+import { enterSelectMode } from '../testing/selectMode';
+import { waitForPage } from '../testing/pager';
 
 const CONFIRM_TEXT =
     /Delete this video\? This removes it from the site and may remove its files from storage\. This cannot be undone\./;
@@ -107,7 +109,7 @@ describe('Rename (video detail)', () => {
 
         const lists = list.mock.calls.length;
 
-        await user.click(screen.getByRole('button', { name: '← Library' }));
+        await user.click(screen.getByRole('button', { name: 'Library' }));
         // The row shows the new title without reloading the list.
         expect(screen.getByRole('button', { name: /^New name/ })).toBeInTheDocument();
         expect(list.mock.calls.length).toBe(lists);
@@ -209,12 +211,18 @@ describe('Rename (video detail)', () => {
     });
 });
 
+/** Delete lives in the overflow menu of the detail toolbar. */
+async function openMenuAndDelete(user: Opened['user']) {
+    await user.click(screen.getByRole('button', { name: 'More actions' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+}
+
 describe('Delete (video detail)', () => {
     it('asks first (Cancel is focused) and does not call the API when canceled', async () => {
         const { user, remove } = await openLibrary();
 
         await openDetail(user);
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await openMenuAndDelete(user);
 
         const dialog = screen.getByRole('alertdialog');
 
@@ -226,7 +234,7 @@ describe('Delete (video detail)', () => {
 
         expect(remove).not.toHaveBeenCalled();
         expect(screen.queryByRole('alertdialog')).toBeNull();
-        expect(screen.getByRole('button', { name: 'Delete' })).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus();
     });
 
     it('deleted: toasts the server message, returns to the list and reloads it', async () => {
@@ -243,7 +251,7 @@ describe('Delete (video detail)', () => {
 
         const lists = list.mock.calls.length;
 
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await openMenuAndDelete(user);
         await user.click(
             within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
@@ -261,7 +269,7 @@ describe('Delete (video detail)', () => {
         });
 
         await openDetail(user);
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await openMenuAndDelete(user);
         await user.click(
             within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
@@ -270,7 +278,9 @@ describe('Delete (video detail)', () => {
             await screen.findByText('The video is still processing; try again later.'),
         ).toBeInTheDocument();
         expect(screen.getByText('Information')).toBeInTheDocument();
-        await waitFor(() => expect(screen.getByRole('button', { name: 'Delete' })).toHaveFocus());
+        await waitFor(() =>
+            expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus(),
+        );
     });
 
     it('failed: shows the server message as an error toast and stays on the page', async () => {
@@ -280,7 +290,7 @@ describe('Delete (video detail)', () => {
         });
 
         await openDetail(user);
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await openMenuAndDelete(user);
         await user.click(
             within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
@@ -295,7 +305,7 @@ describe('Delete (video detail)', () => {
         });
 
         await openDetail(user);
-        await user.click(screen.getByRole('button', { name: 'Delete' }));
+        await openMenuAndDelete(user);
         await user.click(
             within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
@@ -311,9 +321,11 @@ describe('Delete (video detail)', () => {
 
             await openDetail(user);
 
-            const button = screen.getByRole('button', { name: 'Delete' });
+            await user.click(screen.getByRole('button', { name: 'More actions' }));
 
-            expect(button).toBeDisabled();
+            const button = screen.getByRole('menuitem', { name: 'Delete' });
+
+            expect(button).toHaveAttribute('aria-disabled', 'true');
             expect(button).toHaveAttribute('title', expect.stringMatching(/cannot be deleted/));
             expect(button).toHaveAccessibleDescription(/cannot be deleted/);
             await user.click(button);
@@ -336,11 +348,14 @@ describe('Select mode (library)', () => {
         await screen.findByText('Clip 1');
         expect(screen.queryByRole('checkbox')).toBeNull();
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute(
-            'aria-pressed',
-            'true',
-        );
+        // No standalone Select button: select mode starts from an item menu, with that item picked.
+        expect(screen.queryByRole('button', { name: 'Select' })).toBeNull();
+        await enterSelectMode(user, 'Clip 1');
+        expect(screen.getByRole('checkbox', { name: 'Select Clip 1' })).toBeChecked();
+        expect(screen.getByText('1 selected')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Delete selected' })).toBeEnabled();
+
+        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 1' }));
         expect(screen.getByText('0 selected')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Delete selected' })).toBeDisabled();
 
@@ -357,32 +372,34 @@ describe('Select mode (library)', () => {
         await user.click(screen.getByRole('button', { name: 'Select all on this page' }));
         expect(screen.getByText('3 selected')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Delete selected' })).toBeEnabled();
+        // With everything selected the same control unselects, and there is no separate Clear.
+        expect(screen.queryByRole('button', { name: 'Clear' })).toBeNull();
 
-        await user.click(screen.getByRole('button', { name: 'Clear' }));
+        await user.click(screen.getByRole('button', { name: 'Unselect all on this page' }));
         expect(screen.getByText('0 selected')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Select all on this page' })).toBeInTheDocument();
         expect(
             screen.getAllByRole('checkbox').every((box) => !(box as HTMLInputElement).checked),
         ).toBe(true);
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
+        await user.click(screen.getByRole('button', { name: 'Exit select mode' }));
         expect(screen.queryByRole('checkbox')).toBeNull();
+        expect(screen.queryByText(/selected$/)).toBeNull();
+        expect(screen.getByRole('button', { name: 'More actions for Clip 1' })).toBeInTheDocument();
     });
 
-    it('Esc leaves select mode and returns the focus to the Select button', async () => {
+    it('Esc leaves select mode and returns the focus to the Library heading', async () => {
         const { user } = await openLibrary({ list: () => Promise.resolve(listOf(many(2))) });
 
         await screen.findByText('Clip 1');
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 1' }));
+        await enterSelectMode(user, 'Clip 1');
+        // Focus moves into the selection toolbar when select mode starts.
+        expect(screen.getByRole('button', { name: 'Exit select mode' })).toHaveFocus();
         await user.keyboard('{Escape}');
 
         expect(screen.queryByRole('checkbox')).toBeNull();
         expect(screen.queryByText(/selected$/)).toBeNull();
-        expect(screen.getByRole('button', { name: 'Select' })).toHaveFocus();
-        expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute(
-            'aria-pressed',
-            'false',
-        );
+        expect(screen.getByRole('heading', { name: 'Library' })).toHaveFocus();
     });
 
     it('confirms with the count, deletes, shows the server message, exits and reloads', async () => {
@@ -399,8 +416,7 @@ describe('Select mode (library)', () => {
         });
 
         await screen.findByText('Clip 1');
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 1' }));
+        await enterSelectMode(user, 'Clip 1');
         await user.click(screen.getByRole('checkbox', { name: 'Select Clip 2' }));
         await user.click(screen.getByRole('checkbox', { name: 'Select Clip 3' }));
         await user.click(screen.getByRole('button', { name: 'Delete selected' }));
@@ -432,7 +448,7 @@ describe('Select mode (library)', () => {
         ).toBeInTheDocument();
         await waitFor(() => expect(screen.queryByRole('checkbox')).toBeNull());
         await waitFor(() => expect(list.mock.calls.length).toBeGreaterThan(lists));
-        expect(screen.getByRole('button', { name: 'Select' })).toHaveFocus();
+        expect(screen.getByRole('heading', { name: 'Library' })).toHaveFocus();
     });
 
     it('keeps the selection and shows an error toast when the request fails', async () => {
@@ -445,8 +461,7 @@ describe('Select mode (library)', () => {
 
         const lists = list.mock.calls.length;
 
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 1' }));
+        await enterSelectMode(user, 'Clip 1');
         await user.click(screen.getByRole('button', { name: 'Delete selected' }));
         await user.click(
             within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
@@ -472,17 +487,16 @@ describe('Select mode (library)', () => {
         });
 
         await screen.findByText('Clip 1');
-        await user.click(screen.getByRole('button', { name: 'Next page' }));
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
         await screen.findByText('Clip 30');
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 30' }));
+        await enterSelectMode(user, 'Clip 30');
         await user.click(screen.getByRole('button', { name: 'Delete selected' }));
         await user.click(
             within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
 
         expect(bulkDelete).toHaveBeenCalledWith([30]);
-        await screen.findByText('Page 1 of 2 · 2 videos');
+        await waitForPage(1);
         expect(list).toHaveBeenLastCalledWith({ page: 1, perPage: 24 });
     });
 
@@ -496,23 +510,19 @@ describe('Select mode (library)', () => {
         });
 
         await screen.findByText('Clip 1');
-        await user.click(screen.getByRole('button', { name: 'Select' }));
-        await user.click(screen.getByRole('checkbox', { name: 'Select Clip 1' }));
+        await enterSelectMode(user, 'Clip 1');
         expect(screen.getByText('1 selected')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'Next page' }));
+        await user.click(screen.getAllByRole('button', { name: 'Next page' })[0]!);
         await screen.findByText('Clip 10');
         expect(screen.getByText('0 selected')).toBeInTheDocument();
 
         await user.click(screen.getByRole('checkbox', { name: 'Select Clip 10' }));
         expect(screen.getByText('1 selected')).toBeInTheDocument();
 
-        await user.type(screen.getByLabelText('Search videos'), 'abc');
+        await user.type(screen.getByLabelText('Search videos'), 'abc{Enter}');
         await waitFor(() => expect(screen.getByText('0 selected')).toBeInTheDocument());
         // Select mode itself stays on.
-        expect(screen.getByRole('button', { name: 'Select' })).toHaveAttribute(
-            'aria-pressed',
-            'true',
-        );
+        expect(screen.getByRole('toolbar', { name: 'Selection' })).toBeInTheDocument();
     });
 });
