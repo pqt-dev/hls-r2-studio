@@ -318,6 +318,7 @@ mod tests {
                 playlist_url: None,
                 thumbnail_url: None,
                 custom_image_url: None,
+                storyboard_urls: Vec::new(),
                 width: None,
                 height: None,
             },

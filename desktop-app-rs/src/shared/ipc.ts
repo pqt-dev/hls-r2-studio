@@ -322,7 +322,8 @@ export type VideoLinkKind =
     | 'shortcode'
     | 'iframe-code'
     | 'thumbnail-url'
-    | 'custom-image-url';
+    | 'custom-image-url'
+    | 'storyboard-url';
 
 // ---- overview + logs (site dashboard numbers) ----------------------------------------------
 
@@ -445,7 +446,8 @@ export interface VideosApi {
     list(params?: VideoListParams): Promise<VideosListResult>;
     get(id: number): Promise<VideosGetResult>;
     /** Main fetches the video and copies the URL; the renderer never passes clipboard text. */
-    copyLink(id: number, kind: VideoLinkKind): Promise<ActionResult>;
+    /** `index` (0-based, among the storyboards that have a URL) is required for `storyboard-url` only. */
+    copyLink(id: number, kind: VideoLinkKind, index?: number): Promise<ActionResult>;
     /** Main fetches the video and opens its embed page when it is https on the signed-in site. */
     openEmbed(id: number): Promise<ActionResult>;
     /** Title is trimmed by the main process: 1..255 characters, no control characters. */

@@ -3,10 +3,13 @@ import type { VideoDetail, VideoLinkKind } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import {
     ArrowLeftIcon,
+    CheckIcon,
+    CopyIcon,
     OpenExternalIcon,
     PencilIcon,
     RefreshIcon,
     TrashIcon,
+    UploadIcon,
 } from '../components/icons';
 import { Thumbnail } from '../components/Thumbnail';
 import { formatBytes, formatDateTime, formatDuration } from '../lib/format';
@@ -18,7 +21,7 @@ const GENERIC_ERROR = 'Something went wrong. Please try again.';
 const MAX_TITLE_CHARS = 255;
 const STILL_PROCESSING = 'The video is still processing; try again later.';
 const REFRESH_FAILED =
-    'The change was saved, but the page could not be refreshed. Use Refresh to reload it.';
+    'The change was saved, but the page could not be refreshed. Reopen the video to reload it.';
 const DELETE_BLOCKED = 'A video that is pending or processing cannot be deleted yet.';
 
 /** Same rule as the main process and the site: 1..255 characters (not bytes), no control chars. */
@@ -109,11 +112,13 @@ const LINK_LABELS: Record<VideoLinkKind, string> = {
     'iframe-code': 'Iframe code',
     'thumbnail-url': 'Thumbnail URL',
     'custom-image-url': 'Image URL',
+    'storyboard-url': 'Storyboard URL',
 };
 
 interface Actions {
     busy: boolean;
-    copy: (kind: VideoLinkKind) => void;
+    /** Resolves to whether the copy succeeded (the toast already tells the user either way). */
+    copy: (kind: VideoLinkKind, index?: number) => Promise<boolean>;
     open: () => void;
     refresh: () => void;
     renaming: boolean;
@@ -128,93 +133,167 @@ interface Actions {
     removeImageRef: React.RefObject<HTMLButtonElement | null>;
 }
 
-/** One image of the Images card: label bar, square image and its action bar. */
+/**
+ * One image tile: a label bar (optional small icon controls at its right end), the image, and a
+ * compact Copy box with the image URL. A wide image (a storyboard sprite sheet) is scaled down
+ * with `object-fit: contain` instead of the thumbnail frame.
+ */
 function ImageCard({
     label,
     url,
-    children,
+    wide = false,
+    controls,
+    copyLabel,
+    copyDisabled,
+    onCopy,
 }: {
     label: string;
     url: string | null;
-    children: React.ReactNode;
+    wide?: boolean;
+    controls?: React.ReactNode;
+    copyLabel: string;
+    copyDisabled: boolean;
+    onCopy: () => Promise<boolean>;
 }) {
     return (
-        <figure className="image-card">
-            <figcaption className="image-card-label">{label}</figcaption>
+        <figure className={wide ? 'image-card image-card-wide' : 'image-card'}>
+            <figcaption className="image-card-bar">
+                <span className="image-card-label">{label}</span>
+                {controls}
+            </figcaption>
             <div className="image-card-frame">
-                <Thumbnail key={url ?? ''} url={url} />
+                {wide && url !== null ? (
+                    <img src={url} alt={label} loading="lazy" decoding="async" />
+                ) : (
+                    <Thumbnail key={url ?? ''} url={url} />
+                )}
             </div>
-            <div className="image-card-actions">{children}</div>
+            <div className="image-card-actions">
+                <CopyBox
+                    ariaLabel={copyLabel}
+                    value={url}
+                    disabled={copyDisabled || url === null}
+                    onCopy={onCopy}
+                />
+            </div>
         </figure>
     );
 }
 
 /**
- * Images, as on the web: the generated thumbnail and the (single) custom image side by side.
- * The custom image never replaces the generated thumbnail; the list uses the thumbnail only.
+ * Images, as on the web, in one block, as small same-width tiles in two rows: the generated
+ * thumbnail and the (single) custom image, then the storyboards. The custom image never replaces
+ * the generated thumbnail; the list uses the thumbnail only.
  */
 function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }) {
+    // The same order and filter as the main process uses to resolve a Copy by index.
+    const storyboards = Object.values(video.storyboards).flatMap((board) =>
+        board.url !== null ? [board.url] : [],
+    );
+    const replaceLabel = actions.uploading ? 'Uploading…' : 'Replace';
+
     return (
         <section className="card detail-card" aria-label="Images">
             <h3>Images</h3>
-            <div className="image-grid">
-                <ImageCard label="Thumbnail" url={video.thumbnailUrl}>
-                    <button
-                        type="button"
-                        className="btn btn-sm"
-                        aria-label="Copy thumbnail URL"
-                        disabled={actions.busy || video.thumbnailUrl === null}
-                        onClick={() => actions.copy('thumbnail-url')}
-                    >
-                        Copy
-                    </button>
-                </ImageCard>
-                {video.hasCustomImage ? (
-                    <ImageCard label="Custom image" url={video.customImageUrl}>
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            aria-label="Copy custom image URL"
-                            disabled={actions.busy}
-                            onClick={() => actions.copy('custom-image-url')}
-                        >
-                            Copy
-                        </button>
-                        <button
-                            ref={actions.chooseRef}
-                            type="button"
-                            className="btn btn-sm"
-                            disabled={actions.busy}
-                            onClick={actions.chooseImage}
-                        >
-                            {actions.uploading ? 'Uploading…' : 'Replace'}
-                        </button>
-                        <button
-                            ref={actions.removeImageRef}
-                            type="button"
-                            className="btn btn-sm btn-accent-danger"
-                            disabled={actions.busy}
-                            onClick={actions.askRemoveImage}
-                        >
-                            <TrashIcon />
-                            {'Delete'}
-                        </button>
-                    </ImageCard>
-                ) : (
-                    <figure className="image-card">
-                        <figcaption className="image-card-label">Custom image</figcaption>
-                        <button
-                            ref={actions.chooseRef}
-                            type="button"
-                            className="image-upload-tile"
-                            disabled={actions.busy}
-                            onClick={actions.chooseImage}
-                        >
-                            {actions.uploading ? 'Uploading…' : '+ Upload image'}
-                        </button>
-                    </figure>
-                )}
+            <div className="image-row" data-row="thumbnails">
+                <p className="image-row-label">Thumbnails</p>
+                <div className="image-grid">
+                    <ImageCard
+                        label="Thumbnail"
+                        url={video.thumbnailUrl}
+                        copyLabel="Copy thumbnail URL"
+                        copyDisabled={actions.busy}
+                        onCopy={() => actions.copy('thumbnail-url')}
+                    />
+                    {video.hasCustomImage ? (
+                        <ImageCard
+                            label="Custom image"
+                            url={video.customImageUrl}
+                            copyLabel="Copy custom image URL"
+                            copyDisabled={actions.busy}
+                            onCopy={() => actions.copy('custom-image-url')}
+                            controls={
+                                <span className="image-card-controls">
+                                    <button
+                                        ref={actions.chooseRef}
+                                        type="button"
+                                        className="btn btn-sm image-card-icon-btn"
+                                        aria-label={replaceLabel}
+                                        title={replaceLabel}
+                                        disabled={actions.busy}
+                                        onClick={actions.chooseImage}
+                                    >
+                                        <UploadIcon />
+                                    </button>
+                                    <button
+                                        ref={actions.removeImageRef}
+                                        type="button"
+                                        className="btn btn-sm btn-accent-danger image-card-icon-btn"
+                                        aria-label="Delete"
+                                        title="Delete"
+                                        disabled={actions.busy}
+                                        onClick={actions.askRemoveImage}
+                                    >
+                                        <TrashIcon />
+                                    </button>
+                                </span>
+                            }
+                        />
+                    ) : (
+                        <figure className="image-card">
+                            <figcaption className="image-card-bar">
+                                <span className="image-card-label">Custom image</span>
+                            </figcaption>
+                            <div className="image-upload-tile">
+                                <button
+                                    ref={actions.chooseRef}
+                                    type="button"
+                                    className="image-upload-btn"
+                                    disabled={actions.busy}
+                                    onClick={actions.chooseImage}
+                                >
+                                    {actions.uploading ? (
+                                        'Uploading…'
+                                    ) : (
+                                        <>
+                                            <span aria-hidden="true">+</span> Upload image
+                                        </>
+                                    )}
+                                </button>
+                            </div>
+                        </figure>
+                    )}
+                </div>
             </div>
+            {storyboards.length > 0 && (
+                <div className="image-row" data-row="storyboards">
+                    <p className="image-row-label">Storyboards</p>
+                    <div className="image-grid">
+                        {storyboards.map((url, index) => {
+                            const name =
+                                storyboards.length === 1
+                                    ? 'storyboard URL'
+                                    : `storyboard ${index + 1} URL`;
+
+                            return (
+                                <ImageCard
+                                    key={url}
+                                    label={
+                                        storyboards.length === 1
+                                            ? 'Storyboard'
+                                            : `Storyboard ${index + 1}`
+                                    }
+                                    url={url}
+                                    wide
+                                    copyLabel={`Copy ${name}`}
+                                    copyDisabled={actions.busy}
+                                    onCopy={() => actions.copy('storyboard-url', index)}
+                                />
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
             <p className="muted detail-note">JPG, PNG or WebP, up to 5 MB.</p>
         </section>
     );
@@ -251,7 +330,9 @@ function PreviewCard({
                 <Poster url={poster} video={video} />
                 <div className="detail-note">
                     <p>Preview unavailable</p>
-                    {video.embedUrl !== null && <p className="muted">Use Open in browser above.</p>}
+                    {video.embedUrl !== null && (
+                        <p className="muted">Use the Open in browser button above.</p>
+                    )}
                 </div>
             </>
         );
@@ -275,73 +356,118 @@ function PreviewCard({
 
     return (
         <section className="card detail-card" aria-label="Preview">
-            <h3>Preview</h3>
+            <div className="row detail-card-head">
+                <h3>Preview</h3>
+                {video.embedUrl !== null && (
+                    <button
+                        type="button"
+                        className="btn btn-sm"
+                        title="Open in browser"
+                        aria-label="Open in browser"
+                        disabled={actions.busy}
+                        onClick={actions.open}
+                    >
+                        <OpenExternalIcon />
+                    </button>
+                )}
+            </div>
             {body}
         </section>
     );
 }
 
-function StoryboardsCard({ video }: { video: VideoDetail }) {
-    const entries = Object.entries(video.storyboards).filter(
-        (entry): entry is [string, (typeof entry)[1] & { url: string }] => entry[1].url !== null,
+/** How long the Copy button shows its "Copied" state. */
+const COPIED_FEEDBACK_MS = 1500;
+
+function CopyBox({
+    ariaLabel,
+    value,
+    display = value,
+    disabled,
+    onCopy,
+    wrap = false,
+}: {
+    /** Accessible name and tooltip of the Copy button, e.g. "Copy Embed URL". */
+    ariaLabel: string;
+    /** Full value (the tooltip of the text); null when there is none to show. */
+    value: string | null;
+    /** The text shown in the box (defaults to the value). */
+    display?: string | null;
+    disabled: boolean;
+    /** Resolves to whether the copy succeeded. */
+    onCopy: () => Promise<boolean>;
+    /** Long multi-part values (the iframe code) wrap over up to 3 lines instead of one. */
+    wrap?: boolean;
+}) {
+    const [copied, setCopied] = useState(false);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(
+        () => () => {
+            if (timer.current !== null) clearTimeout(timer.current);
+        },
+        [],
     );
 
-    if (entries.length === 0) return null;
+    function copy(): void {
+        void onCopy().then((ok) => {
+            if (!ok) return;
+
+            if (timer.current !== null) clearTimeout(timer.current);
+
+            setCopied(true);
+            timer.current = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+        });
+    }
 
     return (
-        <section className="card detail-card" aria-label="Storyboards">
-            <h3>Storyboards</h3>
-            <div className="storyboard-grid">
-                {entries.map(([key, board]) => {
-                    const parts = [
-                        board.columns !== null ? `${board.columns} columns` : null,
-                        board.count !== null ? `${board.count} frames` : null,
-                    ].filter((part) => part !== null);
-
-                    return (
-                        <figure key={key} className="storyboard">
-                            <div className="storyboard-frame">
-                                <img src={board.url} alt={`Storyboard ${key}`} loading="lazy" />
-                            </div>
-                            <figcaption>
-                                <span className="storyboard-size">{key}</span>
-                                <span className="muted">{parts.join(' · ')}</span>
-                            </figcaption>
-                        </figure>
-                    );
-                })}
+        <div className={wrap ? 'embed-box embed-box-wrap' : 'embed-box'}>
+            <div className="embed-value mono" title={value ?? undefined}>
+                {display ?? 'Copy URL'}
             </div>
-        </section>
+            <button
+                type="button"
+                className={copied ? 'btn btn-sm embed-copy is-copied' : 'btn btn-sm embed-copy'}
+                aria-label={ariaLabel}
+                title={copied ? 'Copied' : ariaLabel}
+                disabled={disabled}
+                onClick={copy}
+            >
+                {copied ? <CheckIcon /> : <CopyIcon />}
+            </button>
+        </div>
     );
 }
 
-/** One labeled block: the value (read-only, selectable) with its own Copy button. */
+/**
+ * One labeled field: a caption, then a read-only value box (selectable text, full value in the
+ * tooltip) with an icon-only Copy button inside its right end. After a successful copy the button
+ * shows a check and a "Copied" tooltip for a moment; the screen-reader announcement is the toast
+ * the copy action already shows, so there is no second live region.
+ */
 function EmbedField({
     kind,
     value,
     actions,
+    wrap = false,
 }: {
     kind: VideoLinkKind;
     value: string;
     actions: Actions;
+    wrap?: boolean;
 }) {
     const label = LINK_LABELS[kind];
 
     return (
         <div className="embed-field">
-            <div className="row embed-field-head">
-                <h4>{label}</h4>
-                <button
-                    type="button"
-                    className="btn btn-sm"
-                    aria-label={`Copy ${label}`}
-                    disabled={actions.busy}
-                    onClick={() => actions.copy(kind)}
-                >
-                    Copy
-                </button>
-            </div>
-            <pre className="embed-code mono">{value}</pre>
+            <h4>{label}</h4>
+            <CopyBox
+                ariaLabel={`Copy ${label}`}
+                value={value}
+                disabled={actions.busy}
+                onCopy={() => actions.copy(kind)}
+                wrap={wrap}
+            />
         </div>
     );
 }
@@ -355,7 +481,12 @@ function EmbedCard({ video, actions }: { video: VideoDetail; actions: Actions })
             <div className="embed-fields">
                 <EmbedField kind="embed-url" value={video.embedUrl} actions={actions} />
                 {video.iframeCode !== null && (
-                    <EmbedField kind="iframe-code" value={video.iframeCode} actions={actions} />
+                    <EmbedField
+                        kind="iframe-code"
+                        value={video.iframeCode}
+                        actions={actions}
+                        wrap
+                    />
                 )}
                 {video.shortcode !== null && (
                     <EmbedField kind="shortcode" value={video.shortcode} actions={actions} />
@@ -516,54 +647,39 @@ function deleteBlocked(video: VideoDetail): boolean {
 }
 
 /**
- * Action toolbar inside the sticky header: Open in browser, Rename, Refresh and the destructive
- * Delete (danger-styled, set apart at the end; it still asks for confirmation). Copying links
- * lives in the Embed card. Below the narrow breakpoint the labels collapse to icons.
+ * Action toolbar inside the sticky header: the destructive icon-only Delete (danger-styled; it
+ * still asks for confirmation) and, only while the video is not ready, an icon-only Refresh.
+ * The page does not poll, and a ready video is static, so Refresh only matters while the status
+ * can still change server-side (pending, processing, failed). Rename sits next to the title and
+ * Open in browser in the Preview card; copying links lives in the Embed card.
  */
 function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions }) {
     const blocked = deleteBlocked(video);
 
     return (
         <div className="detail-actionbar" role="toolbar" aria-label="Video actions">
-            {video.embedUrl !== null && (
+            {video.status !== 'ready' && (
                 <button
                     type="button"
-                    className="btn btn-sm btn-accent-share"
-                    title="Open in browser"
-                    disabled={actions.busy}
-                    onClick={actions.open}
+                    className="btn btn-sm"
+                    title="Refresh"
+                    aria-label="Refresh"
+                    onClick={actions.refresh}
                 >
-                    <OpenExternalIcon />
-                    <span className="btn-label">Open in browser</span>
+                    <RefreshIcon />
                 </button>
             )}
-            <button
-                ref={actions.renameRef}
-                type="button"
-                className="btn btn-sm btn-accent-edit"
-                title="Rename"
-                disabled={actions.busy || actions.renaming}
-                onClick={actions.rename}
-            >
-                <PencilIcon />
-                <span className="btn-label">Rename</span>
-            </button>
-            <button type="button" className="btn btn-sm" title="Refresh" onClick={actions.refresh}>
-                <RefreshIcon />
-                <span className="btn-label">Refresh</span>
-            </button>
-            <span className="action-spacer" aria-hidden="true" />
             <button
                 ref={actions.deleteRef}
                 type="button"
                 className="btn btn-sm btn-accent-danger"
                 title={blocked ? DELETE_BLOCKED : 'Delete'}
+                aria-label="Delete"
                 disabled={actions.busy || blocked}
                 aria-describedby={blocked ? 'video-delete-blocked' : undefined}
                 onClick={actions.askDelete}
             >
                 <TrashIcon />
-                <span className="btn-label">Delete</span>
             </button>
         </div>
     );
@@ -670,14 +786,24 @@ export function VideoDetailPage({
     const refresh = useCallback(() => setReloads((count) => count + 1), []);
 
     const run = useCallback(
-        (action: () => Promise<{ ok: true } | { ok: false; error: string }>, success: string) => {
+        (
+            action: () => Promise<{ ok: true } | { ok: false; error: string }>,
+            success: string,
+        ): Promise<boolean> => {
             setBusy(true);
-            action()
+
+            return action()
                 .then((result) => {
                     if (result.ok) toast.show('success', success);
                     else toast.show('error', result.error);
+
+                    return result.ok;
                 })
-                .catch(() => toast.show('error', GENERIC_ERROR))
+                .catch(() => {
+                    toast.show('error', GENERIC_ERROR);
+
+                    return false;
+                })
                 .finally(() => setBusy(false));
         },
         [toast],
@@ -852,7 +978,14 @@ export function VideoDetailPage({
         },
         askDelete: () => setConfirmDelete(true),
         refresh,
-        copy: (kind) => run(() => api.videos.copyLink(id, kind), `${LINK_LABELS[kind]} copied.`),
+        copy: (kind, index) =>
+            run(
+                () =>
+                    index === undefined
+                        ? api.videos.copyLink(id, kind)
+                        : api.videos.copyLink(id, kind, index),
+                `${LINK_LABELS[kind]} copied.`,
+            ),
         open: () => run(() => api.videos.openEmbed(id), 'Opened in your browser.'),
     };
 
@@ -872,18 +1005,25 @@ export function VideoDetailPage({
                     <ArrowLeftIcon />
                 </button>
                 {/* The shell's top bar is hidden while this page is open, so this is the page heading. */}
-                <h2 className="detail-title" title={title}>
-                    {title}
-                </h2>
-                {load.kind === 'ready' ? (
-                    <ActionBar video={load.video} actions={actions} />
-                ) : (
-                    <div className="detail-header-actions">
-                        <button type="button" className="btn btn-sm" onClick={refresh}>
-                            Refresh
+                <div className="detail-titlebar">
+                    <h2 className="detail-title" title={title}>
+                        {title}
+                    </h2>
+                    {load.kind === 'ready' && (
+                        <button
+                            ref={renameRef}
+                            type="button"
+                            className="btn btn-sm detail-rename"
+                            title="Rename"
+                            aria-label="Rename"
+                            disabled={actions.busy || actions.renaming}
+                            onClick={actions.rename}
+                        >
+                            <PencilIcon />
                         </button>
-                    </div>
-                )}
+                    )}
+                </div>
+                {load.kind === 'ready' && <ActionBar video={load.video} actions={actions} />}
             </header>
 
             {load.kind === 'loading' && (
@@ -917,10 +1057,10 @@ export function VideoDetailPage({
                             actions={actions}
                         />
                         <EmbedCard video={load.video} actions={actions} />
-                        <StoryboardsCard video={load.video} />
                     </div>
                     <div className="detail-col">
                         <ErrorCard video={load.video} />
+                        <ImagesCard video={load.video} actions={actions} />
                         <InfoCard
                             video={load.video}
                             titleEditor={
@@ -936,7 +1076,6 @@ export function VideoDetailPage({
                                 )
                             }
                         />
-                        <ImagesCard video={load.video} actions={actions} />
                     </div>
                 </div>
             )}

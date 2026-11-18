@@ -31,6 +31,7 @@ use crate::state::AppState;
 pub const NO_PLAYLIST_URL: &str = "This video has no playlist URL yet.";
 pub const NO_THUMBNAIL_URL: &str = "This video has no thumbnail yet.";
 pub const NO_CUSTOM_IMAGE_URL: &str = "This video has no custom image.";
+pub const NO_STORYBOARD_URL: &str = "This video has no such storyboard.";
 
 /// One list row for the renderer: URLs built here from the R2 public base URL. The storage
 /// paths (`diskPrefix`, `playlistPath`, `*Path`) and the R2 base never leave Rust.
@@ -459,6 +460,12 @@ fn link_text(
                 .map(str::to_string)
                 .ok_or(missing)
         }
+        VideoLinkKind::StoryboardUrl(index) => links
+            .storyboard_urls
+            .get(index)
+            .filter(|url| safe_https_url(url).is_some())
+            .cloned()
+            .ok_or(NO_STORYBOARD_URL),
         VideoLinkKind::IframeCode => {
             let embed_url = links.embed_url.as_deref().ok_or(NO_EMBED_URL)?;
 
@@ -605,7 +612,9 @@ pub async fn videos_copy_link<R: Runtime>(
     // always come from a fresh detail instead of the remembered entry.
     let links = match if matches!(
         kind,
-        VideoLinkKind::ThumbnailUrl | VideoLinkKind::CustomImageUrl
+        VideoLinkKind::ThumbnailUrl
+            | VideoLinkKind::CustomImageUrl
+            | VideoLinkKind::StoryboardUrl(_)
     ) {
         fresh_links(&state.site_client, &state.video_links, id).await
     } else {
@@ -695,6 +704,7 @@ mod tests {
             playlist_url: Some("https://cdn.example.com/v/master.m3u8".into()),
             thumbnail_url: None,
             custom_image_url: None,
+            storyboard_urls: Vec::new(),
             width: Some(1920),
             height: Some(1080),
         };
@@ -1240,6 +1250,7 @@ mod tests {
             playlist_url: None,
             thumbnail_url: Some("https://cdn.example.com/t.jpg?v=1".into()),
             custom_image_url: None,
+            storyboard_urls: Vec::new(),
             width: None,
             height: None,
         };
@@ -1267,6 +1278,85 @@ mod tests {
         assert_eq!(
             desktop.clipboard.lock().unwrap().clone(),
             vec!["https://cdn.example.com/t.jpg?v=1".to_string()]
+        );
+    }
+
+    #[test]
+    fn copy_storyboard_url_by_index_needs_a_safe_https_url() {
+        let links = VideoLinks {
+            public_id: "abcdefghijkl".into(),
+            embed_url: None,
+            playlist_url: None,
+            thumbnail_url: None,
+            custom_image_url: None,
+            storyboard_urls: vec![
+                "https://cdn.example.com/a.jpg".into(),
+                "http://cdn.example.com/b.jpg".into(),
+            ],
+            width: None,
+            height: None,
+        };
+        let desktop = FakeDesktop::default();
+        let log = RecordingLogger::default();
+
+        assert_eq!(
+            copy_video_link(
+                &links,
+                VideoLinkKind::StoryboardUrl(0),
+                &desktop,
+                SITE,
+                &log
+            ),
+            ActionResult::Ok
+        );
+        // An insecure URL and an index past the end are both refused with the same message.
+        assert_eq!(
+            copy_video_link(
+                &links,
+                VideoLinkKind::StoryboardUrl(1),
+                &desktop,
+                SITE,
+                &log
+            ),
+            ActionResult::err(NO_STORYBOARD_URL)
+        );
+        assert_eq!(
+            copy_video_link(
+                &links,
+                VideoLinkKind::StoryboardUrl(2),
+                &desktop,
+                SITE,
+                &log
+            ),
+            ActionResult::err(NO_STORYBOARD_URL)
+        );
+        assert_eq!(
+            desktop.clipboard.lock().unwrap().clone(),
+            vec!["https://cdn.example.com/a.jpg".to_string()]
+        );
+    }
+
+    #[test]
+    fn links_from_a_detail_keep_storyboard_urls_that_have_one_in_key_order() {
+        let detail: VideoDetail = serde_json::from_value(json!({
+            "id": 1,
+            "public_id": "abcdefghijkl",
+            "title": "Holiday",
+            "status": "ready",
+            "storyboards": {
+                "5x5": { "url": "https://cdn.example.com/5.jpg" },
+                "3x3": { "url": "https://cdn.example.com/3.jpg" },
+                "4x4": { "url": null }
+            }
+        }))
+        .unwrap();
+
+        assert_eq!(
+            VideoLinks::from(&detail).storyboard_urls,
+            vec![
+                "https://cdn.example.com/3.jpg".to_string(),
+                "https://cdn.example.com/5.jpg".to_string()
+            ]
         );
     }
 
@@ -1423,6 +1513,7 @@ mod tests {
                     playlist_url: None,
                     thumbnail_url: None,
                     custom_image_url: None,
+                    storyboard_urls: Vec::new(),
                     width: None,
                     height: None,
                 },

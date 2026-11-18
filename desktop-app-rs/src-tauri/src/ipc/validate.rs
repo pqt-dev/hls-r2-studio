@@ -256,7 +256,10 @@ const VIDEO_LINK_KINDS: &[&str] = &[
     "iframe-code",
     "thumbnail-url",
     "custom-image-url",
+    "storyboard-url",
 ];
+/// Most storyboards a detail keeps (`MAX_STORYBOARDS` in api/videos.rs), so `index` is 0..=7.
+const MAX_STORYBOARD_INDEX: i64 = 7;
 const MAX_VIDEO_ID: i64 = 9_007_199_254_740_991;
 
 /// Validated `videos:list` input.
@@ -373,11 +376,23 @@ pub fn parse_logs_get(payload: Option<Value>) -> Result<LogsGetInput> {
     })
 }
 
-/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url` / `shortcode` / `iframe-code` / `thumbnail-url` / `custom-image-url`.
+/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url` / `shortcode` / `iframe-code` / `thumbnail-url` / `custom-image-url`, or `{ id, kind: 'storyboard-url', index }` with an integer `index` from 0 to 7. `index` is required for `storyboard-url` and rejected for every other kind.
 pub fn parse_video_link(payload: Option<Value>) -> Result<(i64, VideoLinkKind)> {
-    let object = expect_single_object(payload, "video link", &["id", "kind"])?;
+    let object = expect_single_object(payload, "video link", &["id", "kind", "index"])?;
     let id = expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)?;
-    let kind = match expect_one_of(object.get("kind"), "kind", VIDEO_LINK_KINDS)? {
+    let kind_name = expect_one_of(object.get("kind"), "kind", VIDEO_LINK_KINDS)?;
+
+    if kind_name == "storyboard-url" {
+        let index = expect_int(object.get("index"), "index", 0, MAX_STORYBOARD_INDEX)?;
+
+        return Ok((id, VideoLinkKind::StoryboardUrl(index as usize)));
+    }
+
+    if object.contains_key("index") {
+        return invalid("index is only allowed for storyboard-url");
+    }
+
+    let kind = match kind_name {
         "embed-url" => VideoLinkKind::EmbedUrl,
         "shortcode" => VideoLinkKind::Shortcode,
         "iframe-code" => VideoLinkKind::IframeCode,
@@ -828,6 +843,20 @@ mod tests {
             parse_video_link(Some(json!({ "id": 5, "kind": "shortcode" }))).unwrap(),
             (5, VideoLinkKind::Shortcode)
         );
+        assert_eq!(
+            parse_video_link(Some(
+                json!({ "id": 5, "kind": "storyboard-url", "index": 2 })
+            ))
+            .unwrap(),
+            (5, VideoLinkKind::StoryboardUrl(2))
+        );
+        assert_eq!(
+            parse_video_link(Some(
+                json!({ "id": 5, "kind": "storyboard-url", "index": 0 })
+            ))
+            .unwrap(),
+            (5, VideoLinkKind::StoryboardUrl(0))
+        );
 
         for bad in [
             None,
@@ -841,6 +870,13 @@ mod tests {
             Some(json!({ "id": 5, "kind": 1 })),
             Some(json!({ "id": 5, "kind": "embed-url", "url": "https://evil.example" })),
             Some(json!({ "id": 5, "kind": "embed-url", "text": "x" })),
+            Some(json!({ "id": 5, "kind": "storyboard-url" })),
+            Some(json!({ "id": 5, "kind": "storyboard-url", "index": -1 })),
+            Some(json!({ "id": 5, "kind": "storyboard-url", "index": 8 })),
+            Some(json!({ "id": 5, "kind": "storyboard-url", "index": 1.5 })),
+            Some(json!({ "id": 5, "kind": "storyboard-url", "index": "1" })),
+            Some(json!({ "id": 5, "kind": "thumbnail-url", "index": 0 })),
+            Some(json!({ "id": 5, "kind": "embed-url", "index": 0 })),
         ] {
             assert!(parse_video_link(bad.clone()).is_err(), "{bad:?}");
         }

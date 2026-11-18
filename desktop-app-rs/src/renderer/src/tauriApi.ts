@@ -193,7 +193,11 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
         videos: {
             list: (params) => send<VideosListResult>(IpcChannels.videosList, params ?? {}),
             get: (id) => send<VideosGetResult>(IpcChannels.videosGet, { id }),
-            copyLink: (id, kind) => send<ActionResult>(IpcChannels.videosCopyLink, { id, kind }),
+            copyLink: (id, kind, index) =>
+                send<ActionResult>(
+                    IpcChannels.videosCopyLink,
+                    index === undefined ? { id, kind } : { id, kind, index },
+                ),
             openEmbed: (id) => send<ActionResult>(IpcChannels.videosOpenEmbed, { id }),
             updateTitle: (id, title) =>
                 send<VideosUpdateTitleResult>(IpcChannels.videosUpdateTitle, { id, title }),

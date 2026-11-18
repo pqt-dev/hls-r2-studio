@@ -85,7 +85,7 @@ describe('Images card (video detail)', () => {
         );
 
         expect(labels).toEqual(['Thumbnail', 'Custom image']);
-        expect(card().getByRole('button', { name: '+ Upload image' })).toBeEnabled();
+        expect(card().getByRole('button', { name: 'Upload image' })).toBeEnabled();
         expect(card().queryByRole('button', { name: 'Replace' })).toBeNull();
         expect(card().queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(card().getByRole('button', { name: 'Copy thumbnail URL' })).toBeEnabled();
@@ -103,11 +103,119 @@ describe('Images card (video detail)', () => {
         ).map((img) => img.getAttribute('src'));
 
         expect(sources).toEqual([GENERATED_URL, CUSTOM_URL]);
-        expect(document.querySelectorAll('.image-grid > .image-card')).toHaveLength(2);
+        expect(
+            document.querySelectorAll('.image-row[data-row="thumbnails"] .image-card'),
+        ).toHaveLength(2);
         expect(card().getByRole('button', { name: 'Replace' })).toBeEnabled();
         expect(card().getByRole('button', { name: 'Delete' })).toBeEnabled();
         expect(card().getByRole('button', { name: 'Copy custom image URL' })).toBeEnabled();
-        expect(card().queryByRole('button', { name: '+ Upload image' })).toBeNull();
+        expect(card().queryByRole('button', { name: 'Upload image' })).toBeNull();
+    });
+
+    it('puts the storyboards after the other tiles in the one Images gallery, labelled and in order', async () => {
+        const SB3 = 'https://cdn.example.com/sb3.jpg';
+        const SB5 = 'https://cdn.example.com/sb5.jpg';
+        const storyboards = {
+            '3x3': { url: SB3, columns: 3, count: 9 },
+            '4x4': { url: null, columns: 4, count: 16 },
+            '5x5': { url: SB5, columns: 5, count: 25 },
+        };
+        const { user, fake } = await openDetail({ details: [{ ...withCustom, storyboards }] });
+        const copyLink = vi.spyOn(fake.api.videos, 'copyLink');
+        const block = screen.getByRole('region', { name: 'Images' });
+
+        expect(screen.getAllByRole('region', { name: 'Images' })).toHaveLength(1);
+        expect(screen.queryByRole('region', { name: 'Storyboards' })).toBeNull();
+        expect(
+            Array.from(block.querySelectorAll('.image-card-label')).map((node) => node.textContent),
+        ).toEqual(['Thumbnail', 'Custom image', 'Storyboard 1', 'Storyboard 2']);
+        expect(
+            Array.from(block.querySelectorAll('img')).map((img) => img.getAttribute('src')),
+        ).toEqual([GENERATED_URL, CUSTOM_URL, SB3, SB5]);
+        const rows = block.querySelectorAll('.image-row');
+        expect(rows).toHaveLength(2);
+        expect(rows[0]!.getAttribute('data-row')).toBe('thumbnails');
+        expect(rows[1]!.getAttribute('data-row')).toBe('storyboards');
+        expect(rows[0]!.textContent).toContain('Thumbnails');
+        expect(rows[1]!.textContent).toContain('Storyboards');
+        expect(
+            Array.from(rows[0]!.querySelectorAll('.image-card-label')).map((n) => n.textContent),
+        ).toEqual(['Thumbnail', 'Custom image']);
+        expect(
+            Array.from(rows[1]!.querySelectorAll('.image-card-label')).map((n) => n.textContent),
+        ).toEqual(['Storyboard 1', 'Storyboard 2']);
+
+        // Every tile has its Copy button after the image, inside the same tile.
+        for (const tile of Array.from(block.querySelectorAll('.image-card'))) {
+            const frame = tile.querySelector('.image-card-frame') as HTMLElement;
+            const actions = tile.querySelector('.image-card-actions') as HTMLElement;
+
+            expect(frame.compareDocumentPosition(actions)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+            expect(within(actions).getByRole('button', { name: /^Copy/ })).toBeInTheDocument();
+        }
+
+        await user.click(card().getByRole('button', { name: 'Copy storyboard 1 URL' }));
+        await user.click(card().getByRole('button', { name: 'Copy storyboard 2 URL' }));
+
+        expect(copyLink).toHaveBeenNthCalledWith(1, 7, 'storyboard-url', 0);
+        expect(copyLink).toHaveBeenNthCalledWith(2, 7, 'storyboard-url', 1);
+    });
+
+    it('labels a single storyboard just Storyboard, and the upload tile has no Copy', async () => {
+        const { user, fake } = await openDetail({
+            details: [
+                {
+                    storyboards: {
+                        '3x3': { url: 'https://cdn.example.com/sb.jpg', columns: 3, count: 9 },
+                    },
+                },
+            ],
+        });
+        const copyLink = vi.spyOn(fake.api.videos, 'copyLink');
+
+        expect(
+            Array.from(document.querySelectorAll('.image-card-label')).map((n) => n.textContent),
+        ).toEqual(['Thumbnail', 'Custom image', 'Storyboard']);
+        // Copy buttons: thumbnail + storyboard only (the upload tile has none).
+        expect(card().getAllByRole('button', { name: /^Copy/ })).toHaveLength(2);
+
+        await user.click(card().getByRole('button', { name: 'Copy storyboard URL' }));
+        expect(copyLink).toHaveBeenCalledWith(7, 'storyboard-url', 0);
+    });
+
+    it('Replace and Delete sit in the custom tile label bar; Copy is a URL box with feedback', async () => {
+        const { user } = await openDetail({ details: [withCustom] });
+        const tile = screen.getByText('Custom image').closest('figure') as HTMLElement;
+        const bar = tile.querySelector('.image-card-bar') as HTMLElement;
+
+        expect(within(bar).getByRole('button', { name: 'Replace' })).toBeInTheDocument();
+        expect(within(bar).getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+
+        const box = tile.querySelector('.image-card-actions .embed-box') as HTMLElement;
+
+        expect(box).toHaveTextContent(CUSTOM_URL);
+
+        const copy = within(box).getByRole('button', { name: 'Copy custom image URL' });
+
+        await user.click(copy);
+        await waitFor(() => expect(copy).toHaveAttribute('title', 'Copied'));
+    });
+
+    it('shows the Images block before the Information block', async () => {
+        await openDetail();
+
+        const images = screen.getByRole('region', { name: 'Images' });
+        const info = screen.getByText('Information').closest('section') as HTMLElement;
+
+        expect(images.compareDocumentPosition(info)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+
+    it('has no storyboard row when the video has no storyboards', async () => {
+        await openDetail();
+
+        expect(document.querySelector('.image-card-wide')).toBeNull();
+        expect(document.querySelectorAll('.image-row')).toHaveLength(1);
+        expect(card().queryByRole('button', { name: /storyboard/i })).toBeNull();
     });
 
     it('the Preview poster of a video that is not ready uses the generated thumbnail', async () => {
@@ -141,7 +249,7 @@ describe('Images card (video detail)', () => {
         const loads = get.mock.calls.length;
         const lists = list.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: '+ Upload image' }));
+        await user.click(card().getByRole('button', { name: 'Upload image' }));
 
         expect(setImage).toHaveBeenCalledTimes(1);
         expect(setImage).toHaveBeenCalledWith(7);
@@ -171,9 +279,9 @@ describe('Images card (video detail)', () => {
         });
         const loads = get.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: '+ Upload image' }));
+        await user.click(card().getByRole('button', { name: 'Upload image' }));
         await waitFor(() =>
-            expect(card().getByRole('button', { name: '+ Upload image' })).toBeEnabled(),
+            expect(card().getByRole('button', { name: 'Upload image' })).toBeEnabled(),
         );
 
         expect(screen.queryByText('Custom image updated.')).toBeNull();
@@ -188,18 +296,18 @@ describe('Images card (video detail)', () => {
         });
         const loads = get.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: '+ Upload image' }));
+        await user.click(card().getByRole('button', { name: 'Upload image' }));
 
         expect(await screen.findByText(/Choose a JPG, PNG or WebP image\./)).toBeInTheDocument();
         expect(get.mock.calls.length).toBe(loads);
-        expect(card().getByRole('button', { name: '+ Upload image' })).toBeEnabled();
-        expect(card().getByRole('button', { name: '+ Upload image' })).toHaveFocus();
+        expect(card().getByRole('button', { name: 'Upload image' })).toBeEnabled();
+        expect(card().getByRole('button', { name: 'Upload image' })).toHaveFocus();
     });
 
     it('a rejected call shows the generic error', async () => {
         const { user } = await openDetail({ setImage: () => Promise.reject(new Error('boom')) });
 
-        await user.click(card().getByRole('button', { name: '+ Upload image' }));
+        await user.click(card().getByRole('button', { name: 'Upload image' }));
 
         expect(
             await screen.findByText(/Something went wrong\. Please try again\./),
@@ -260,7 +368,7 @@ describe('Images card (video detail)', () => {
         await waitFor(() => expect(card().queryByRole('button', { name: 'Replace' })).toBeNull());
         expect(card().queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(get.mock.calls.length).toBe(loads + 1);
-        expect(card().getByRole('button', { name: '+ Upload image' })).toHaveFocus();
+        expect(card().getByRole('button', { name: 'Upload image' })).toHaveFocus();
     });
 
     it('remove: "No custom thumbnail to remove." is shown and the state is re-read', async () => {

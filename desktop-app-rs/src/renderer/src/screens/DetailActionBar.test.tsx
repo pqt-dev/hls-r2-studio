@@ -32,10 +32,16 @@ async function openDetail(partial: Partial<VideoDetail> = {}) {
     return { ...rendered, copyLink, openEmbed, remove };
 }
 
+const preview = () => within(screen.getByRole('region', { name: 'Preview' }));
 const bar = () => within(screen.getByRole('toolbar', { name: 'Video actions' }));
 
 describe('Video detail action bar', () => {
-    it('is one sticky header (Back, title, actions) placed before the cards', async () => {
+    const names = () =>
+        bar()
+            .getAllByRole('button')
+            .map((button) => button.getAttribute('aria-label') ?? button.textContent);
+
+    it('is one sticky header (Back, title with Rename, actions) placed before the cards', async () => {
         await openDetail();
 
         const toolbar = screen.getByRole('toolbar', { name: 'Video actions' });
@@ -43,70 +49,100 @@ describe('Video detail action bar', () => {
         const grid = document.querySelector('.detail-grid') as HTMLElement;
         const back = screen.getByRole('button', { name: 'Back to Library' });
         const title = screen.getByRole('heading', { level: 2, name: 'Holiday' });
+        const rename = screen.getByRole('button', { name: 'Rename' });
+        const titlebar = title.parentElement as HTMLElement;
 
         expect(toolbar).toHaveClass('detail-actionbar');
-        expect(Array.from(header.children)).toEqual([back, title, toolbar]);
+        expect(Array.from(header.children)).toEqual([back, titlebar, toolbar]);
+        expect(Array.from(titlebar.children)).toEqual([title, rename]);
         expect(header.nextElementSibling).toBe(grid);
         expect(header.closest('.detail')).not.toBeNull();
         expect(document.querySelector('.detail-head')).toBeNull();
         // The sticky rule itself is in styles.css (jsdom does not load it): the class is the hook.
     });
 
-    it('has Open in browser, Rename, Refresh and Delete, with Delete last after the spacer', async () => {
+    it('has only an icon-only Delete in the toolbar for a ready video (no Refresh)', async () => {
         await openDetail();
 
-        expect(
-            bar()
-                .getAllByRole('button')
-                .map((button) => button.getAttribute('aria-label') ?? button.textContent),
-        ).toEqual(['Open in browser', 'Rename', 'Refresh', 'Delete']);
+        expect(names()).toEqual(['Delete']);
+        expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Open in browser' })).not.toBeNull();
         expect(screen.queryByRole('button', { name: 'More actions' })).toBeNull();
-        expect(bar().queryByRole('button', { name: 'Copy embed URL' })).toBeNull();
 
-        const spacer = document.querySelector('.detail-actionbar .action-spacer');
+        const del = bar().getByRole('button', { name: 'Delete' });
 
-        expect(spacer?.nextElementSibling).toBe(bar().getByRole('button', { name: 'Delete' }));
+        expect(del).toHaveClass('btn-accent-danger');
+        expect(del).toHaveAttribute('title', 'Delete');
+        expect(del).toHaveTextContent('');
+        expect(del.querySelector('svg')).not.toBeNull();
     });
 
-    it('styles Delete as a danger button', async () => {
+    it.each(['pending', 'processing', 'failed'])(
+        'shows an icon-only Refresh before Delete while the video is %s',
+        async (status) => {
+            const { user } = await openDetail({ status } as Partial<VideoDetail>);
+
+            expect(names()).toEqual(['Refresh', 'Delete']);
+
+            const refresh = bar().getByRole('button', { name: 'Refresh' });
+
+            expect(refresh).toHaveAttribute('title', 'Refresh');
+            expect(refresh).toHaveTextContent('');
+            expect(refresh.querySelector('svg')).not.toBeNull();
+            await user.click(refresh);
+            await screen.findByText('Information');
+        },
+    );
+
+    it('has an icon-only Rename next to the title, outside the toolbar', async () => {
         await openDetail();
 
-        expect(bar().getByRole('button', { name: 'Delete' })).toHaveClass('btn-accent-danger');
+        const rename = screen.getByRole('button', { name: 'Rename' });
+
+        expect(bar().queryByRole('button', { name: 'Rename' })).toBeNull();
+        expect(rename).not.toHaveClass('btn-accent-edit');
+        expect(rename).toHaveAttribute('title', 'Rename');
+        expect(rename).toHaveTextContent('');
+        expect(rename.querySelector('svg')).not.toBeNull();
+        expect(screen.getAllByRole('button', { name: 'Rename' })).toHaveLength(1);
     });
 
-    it('colours the buttons by meaning', async () => {
+    it('styles Open in browser neutrally and has no leftover Actions card', async () => {
         await openDetail();
 
-        expect(bar().getByRole('button', { name: 'Open in browser' })).toHaveClass(
+        expect(preview().getByRole('button', { name: 'Open in browser' })).not.toHaveClass(
             'btn-accent-share',
         );
-        expect(bar().getByRole('button', { name: 'Rename' })).toHaveClass('btn-accent-edit');
-        expect(screen.getByRole('button', { name: '+ Upload image' })).toBeEnabled();
-    });
-
-    it('has no leftover Actions card and one Rename button', async () => {
-        await openDetail();
-
         expect(screen.queryByRole('region', { name: 'Actions' })).toBeNull();
         expect(screen.queryByRole('heading', { name: 'Actions' })).toBeNull();
-        expect(screen.getAllByRole('button', { name: 'Rename' })).toHaveLength(1);
         expect(screen.getAllByRole('button', { name: 'Open in browser' })).toHaveLength(1);
     });
 
-    it('hides Open in browser without an embed URL', async () => {
+    it('keeps Open in browser out of the toolbar and hides it without an embed URL', async () => {
         await openDetail({ embedUrl: null, playlistUrl: null, shortcode: null, iframeCode: null });
 
-        expect(
-            bar()
-                .getAllByRole('button')
-                .map((button) => button.getAttribute('aria-label') ?? button.textContent),
-        ).toEqual(['Rename', 'Refresh', 'Delete']);
+        expect(names()).toEqual(['Delete']);
+        expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull();
     });
 
-    it('opens from the bar', async () => {
+    it('has an icon-only Open in browser button in the Preview card heading row', async () => {
+        await openDetail();
+
+        const button = preview().getByRole('button', { name: 'Open in browser' });
+
+        expect(bar().queryByRole('button', { name: 'Open in browser' })).toBeNull();
+        expect(button).toHaveAttribute('title', 'Open in browser');
+        expect(button).toHaveTextContent('');
+        expect(button.querySelector('svg')).not.toBeNull();
+        expect(button.parentElement).toContainElement(
+            preview().getByRole('heading', { name: 'Preview' }),
+        );
+    });
+
+    it('opens from the Preview card', async () => {
         const { user, openEmbed, copyLink } = await openDetail();
 
-        await user.click(bar().getByRole('button', { name: 'Open in browser' }));
+        await user.click(preview().getByRole('button', { name: 'Open in browser' }));
 
         await waitFor(() => expect(openEmbed).toHaveBeenCalledWith(7));
         expect(copyLink).not.toHaveBeenCalled();
@@ -115,11 +151,11 @@ describe('Video detail action bar', () => {
     it('deletes from the bar after confirming, and Rename keeps its inline editor and focus', async () => {
         const { user, remove } = await openDetail();
 
-        await user.click(bar().getByRole('button', { name: 'Rename' }));
+        await user.click(screen.getByRole('button', { name: 'Rename' }));
         expect(screen.getByRole('textbox', { name: 'Title' })).toHaveFocus();
-        expect(bar().getByRole('button', { name: 'Rename' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
         await user.keyboard('{Escape}');
-        expect(bar().getByRole('button', { name: 'Rename' })).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'Rename' })).toHaveFocus();
 
         await user.click(bar().getByRole('button', { name: 'Delete' }));
         await user.click(

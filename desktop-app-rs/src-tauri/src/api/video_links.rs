@@ -19,6 +19,9 @@ pub struct VideoLinks {
     /// Generated thumbnail and custom image URLs (public R2 URLs), for the Copy buttons.
     pub thumbnail_url: Option<String>,
     pub custom_image_url: Option<String>,
+    /// Storyboard URLs of the detail that have one, in the order the detail lists them (by grid
+    /// key). The Copy buttons address them by position. Empty for a list item.
+    pub storyboard_urls: Vec<String>,
     pub width: Option<u32>,
     pub height: Option<u32>,
 }
@@ -31,6 +34,11 @@ impl From<&VideoDetail> for VideoLinks {
             playlist_url: video.playlist_url.clone(),
             thumbnail_url: video.thumbnail_url.clone(),
             custom_image_url: video.custom_image_url.clone(),
+            storyboard_urls: video
+                .storyboards
+                .values()
+                .filter_map(|board| board.url.clone())
+                .collect(),
             width: video.output_width,
             height: video.output_height,
         }
@@ -53,6 +61,7 @@ impl VideoLinks {
             custom_image_url: r2_base
                 .zip(item.custom_image_path.as_deref())
                 .and_then(|(base, path)| build_public_url(base, path)),
+            storyboard_urls: Vec::new(),
             width: item.output_width,
             height: item.output_height,
         }
@@ -107,6 +116,7 @@ mod tests {
             playlist_url: None,
             thumbnail_url: None,
             custom_image_url: None,
+            storyboard_urls: Vec::new(),
             width: Some(1280),
             height: Some(720),
         }

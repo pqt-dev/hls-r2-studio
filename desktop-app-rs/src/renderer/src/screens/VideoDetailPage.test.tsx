@@ -172,25 +172,32 @@ describe('Video detail page', () => {
         expect(screen.queryByRole('alert')).toBeNull();
     });
 
-    it('Refresh re-fetches and a stale answer is ignored', async () => {
+    it('Refresh (shown while not ready) re-fetches and shows the newest answer', async () => {
         const resolvers: Array<(result: VideosGetResult) => void> = [];
         const { user, get } = await openLibrary({
             get: () => new Promise<VideosGetResult>((resolve) => resolvers.push(resolve)),
         });
 
         await openFirst(user);
-        await user.click(screen.getByRole('button', { name: 'Refresh' }));
+        expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
+
+        await act(async () => {
+            resolvers[0]!({
+                ok: true,
+                video: makeVideoDetail({ status: 'processing', publicId: 'oldoldoldold' }),
+            });
+        });
+        await user.click(await screen.findByRole('button', { name: 'Refresh' }));
         expect(get).toHaveBeenCalledTimes(2);
 
         await act(async () => {
             resolvers[1]!({ ok: true, video: makeVideoDetail({ publicId: 'newestnewest' }) });
         });
-        await act(async () => {
-            resolvers[0]!({ ok: true, video: makeVideoDetail({ publicId: 'stalestalest' }) });
-        });
 
         expect(screen.getByText('newestnewest')).toBeInTheDocument();
-        expect(screen.queryByText('stalestalest')).toBeNull();
+        expect(screen.queryByText('oldoldoldold')).toBeNull();
+        // A ready video is static: no Refresh button any more.
+        expect(screen.queryByRole('button', { name: 'Refresh' })).toBeNull();
     });
 
     it('renders the info card fields', async () => {
@@ -279,11 +286,11 @@ describe('Video detail page', () => {
         expect(screen.queryByRole('button', { name: 'Load preview' })).toBeNull();
         expect(document.querySelector('iframe')).toBeNull();
         expect(
-            within(screen.getByLabelText('Preview')).queryByRole('button', {
+            within(screen.getByLabelText('Preview')).getByRole('button', {
                 name: 'Open in browser',
             }),
-        ).toBeNull();
-        expect(screen.getByText('Use Open in browser above.')).toBeInTheDocument();
+        ).toBeInTheDocument();
+        expect(screen.getByText('Use the Open in browser button above.')).toBeInTheDocument();
     });
 
     it('does not offer a preview for a video that is not ready', async () => {
@@ -354,6 +361,60 @@ describe('Video detail page', () => {
         await user.click(card.getByRole('button', { name: 'Copy Shortcode' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'shortcode');
         expect(await screen.findByText('Shortcode copied.')).toBeInTheDocument();
+    });
+
+    it('shows each embed field as a label above a value box with an icon-only Copy inside', async () => {
+        const shortcode = '[hls_embed_vl id="abcdefghijkl"]';
+        const { user } = await openLibrary(detail({ embedUrl: SITE_EMBED, shortcode }));
+
+        await openFirst(user);
+
+        const card = within(await screen.findByLabelText('Embed'));
+        const copy = card.getByRole('button', { name: 'Copy Shortcode' });
+        const box = copy.closest('.embed-box') as HTMLElement;
+
+        expect(box.previousElementSibling).toBe(card.getByRole('heading', { name: 'Shortcode' }));
+        expect(box.querySelector('.embed-value')).toHaveTextContent(shortcode);
+        expect(box.querySelector('.embed-value')).toHaveAttribute('title', shortcode);
+        expect(copy).toHaveAttribute('title', 'Copy Shortcode');
+        expect(copy).toHaveTextContent('');
+        expect(copy.querySelector('svg')).not.toBeNull();
+    });
+
+    it('shows a Copied state on the button after a successful copy, then resets', async () => {
+        const { user } = await openLibrary(detail({ embedUrl: SITE_EMBED }));
+
+        await openFirst(user);
+
+        const card = within(await screen.findByLabelText('Embed'));
+        const copy = card.getByRole('button', { name: 'Copy Embed URL' });
+
+        await user.click(copy);
+        await waitFor(() => expect(copy).toHaveAttribute('title', 'Copied'));
+        expect(copy).toHaveClass('is-copied');
+        expect(copy).toHaveAccessibleName('Copy Embed URL');
+        // The announcement is the existing toast only.
+        expect(screen.getAllByText('Embed URL copied.')).toHaveLength(1);
+
+        await waitFor(() => expect(copy).toHaveAttribute('title', 'Copy Embed URL'), {
+            timeout: 3000,
+        });
+        expect(copy).not.toHaveClass('is-copied');
+    });
+
+    it('shows no Copied state when the copy fails', async () => {
+        const { user, copyLink } = await openLibrary(detail({ embedUrl: SITE_EMBED }));
+
+        copyLink.mockResolvedValue({ ok: false, error: 'Could not copy to the clipboard.' });
+        await openFirst(user);
+
+        const card = within(await screen.findByLabelText('Embed'));
+        const copy = card.getByRole('button', { name: 'Copy Embed URL' });
+
+        await user.click(copy);
+        expect(await screen.findByText(/Could not copy to the clipboard\./)).toBeInTheDocument();
+        expect(copy).not.toHaveClass('is-copied');
+        expect(copy).toHaveAttribute('title', 'Copy Embed URL');
     });
 
     it('hides the blocks the main process could not build', async () => {
@@ -460,7 +521,7 @@ describe('Video detail page', () => {
         expect(screen.queryByLabelText('Processing error')).toBeNull();
     });
 
-    it('shows storyboards with a caption, and hides the card when there are none', async () => {
+    it('shows storyboards inside the Images block, and no standalone Storyboards card', async () => {
         const first = await openLibrary(
             detail({
                 storyboards: {
@@ -474,14 +535,15 @@ describe('Video detail page', () => {
         await openFirst(first.user);
         await screen.findByText('Information');
 
-        const card = screen.getByLabelText('Storyboards');
-        const images = within(card).getAllByRole('img');
+        const card = screen.getByRole('region', { name: 'Images' });
+        const boards = within(card).getAllByRole('img', { name: /^Storyboard/ });
 
-        expect(images).toHaveLength(2);
-        expect(images[0]).toHaveAttribute('src', 'https://cdn.example.com/sb3.jpg');
-        expect(images[0]).toHaveAttribute('loading', 'lazy');
-        expect(within(card).getByText('3 columns · 9 frames')).toBeInTheDocument();
-        expect(within(card).getByText('5 columns · 25 frames')).toBeInTheDocument();
+        expect(screen.queryByLabelText('Storyboards')).toBeNull();
+        expect(boards.map((img) => img.getAttribute('src'))).toEqual([
+            'https://cdn.example.com/sb3.jpg',
+            'https://cdn.example.com/sb5.jpg',
+        ]);
+        expect(boards[0]).toHaveAttribute('loading', 'lazy');
         first.unmount();
 
         const second = await openLibrary(detail({ storyboards: {} }));
@@ -489,6 +551,7 @@ describe('Video detail page', () => {
         await openFirst(second.user);
         await screen.findByText('Information');
         expect(screen.queryByLabelText('Storyboards')).toBeNull();
+        expect(document.querySelector('.image-storyboards')).toBeNull();
     });
 
     it('keeps the list scroll position when going back', async () => {
