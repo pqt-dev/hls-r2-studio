@@ -271,12 +271,14 @@ pub enum CopyKind {
     Shortcode,
 }
 
-/// What `videos:copy-link` copies: a URL taken from the video detail fetched by Rust.
+/// What `videos:copy-link` copies: a URL or the shortcode built from the video detail fetched
+/// by Rust.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum VideoLinkKind {
     EmbedUrl,
     PlaylistUrl,
+    Shortcode,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

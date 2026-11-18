@@ -25,7 +25,11 @@ use zeroize::Zeroizing;
 
 use super::app_config::{parse_app_config, r2_location_problem, AppConfig};
 use super::error::SiteApiError;
-use super::videos::{VideoDetail, VideoPage, MAX_LIST_ITEMS};
+use super::image_upload::{build_multipart, ImageKind};
+use super::videos::{
+    clean_url, normalize_video_title, BulkDeleteOutcome, VideoDeleteOutcome, VideoDetail,
+    VideoPage, MAX_BULK_DELETE, MAX_LIST_ITEMS, TITLE_INVALID,
+};
 use crate::logger::Log;
 use crate::pipeline::register::{
     RegisterClient, RegisterFailure, RegisterPayload, RegisterRequestError, RegisteredVideo,
@@ -36,6 +40,9 @@ use crate::site_url;
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 /// Responses larger than this are treated as invalid (the API only returns tiny JSON).
 pub const MAX_BODY_BYTES: usize = 1024 * 1024;
+
+const IMAGE_REJECTED: &str =
+    "The image was rejected by the server. Use a JPG, PNG or WebP image up to 5 MB.";
 
 pub type GetBaseUrl = Arc<dyn Fn() -> String + Send + Sync>;
 pub type GetToken = Arc<dyn Fn() -> Option<Secret> + Send + Sync>;
@@ -242,6 +249,20 @@ impl SiteClient {
         auth: bool,
         body: Option<Zeroizing<Vec<u8>>>,
     ) -> Result<RawResponse, SiteApiError> {
+        self.send_typed(method, path, auth, body, "application/json")
+            .await
+    }
+
+    /// `send` with an explicit request `Content-Type` (multipart uploads). The type is a
+    /// value built by this crate, never user input.
+    async fn send_typed(
+        &self,
+        method: Method,
+        path: &str,
+        auth: bool,
+        body: Option<Zeroizing<Vec<u8>>>,
+        content_type: &str,
+    ) -> Result<RawResponse, SiteApiError> {
         let origin = request_origin(&(self.options.get_base_url)(), self.allow_loopback_http)
             .map_err(|message| SiteApiError::new(message).code("invalid_site_url"))?;
         let token = (self.options.get_token)();
@@ -297,8 +318,14 @@ impl SiteClient {
             .headers(headers);
 
         if let Some(body) = body {
+            let Ok(content_type) = HeaderValue::from_str(content_type) else {
+                return Err(
+                    SiteApiError::new("Could not build the request.").code("invalid_request")
+                );
+            };
+
             request = request
-                .header(CONTENT_TYPE, "application/json")
+                .header(CONTENT_TYPE, content_type)
                 .body(Bytes::from_owner(body));
         }
 
@@ -530,6 +557,183 @@ impl SiteClient {
         parsed.sanitize();
 
         Ok(parsed)
+    }
+
+    /// `PUT /api/app/videos/{id}` with `{"title"}`; returns the updated detail. The title is
+    /// trimmed and checked first (no request when it is invalid). The body is never logged.
+    pub async fn update_video_title(
+        &self,
+        id: i64,
+        title: &str,
+    ) -> Result<VideoDetail, SiteApiError> {
+        let title = normalize_video_title(title)
+            .map_err(|message| SiteApiError::new(message).code("invalid_title"))?;
+        let body = serde_json::to_vec(&json!({ "title": title }))
+            .map_err(|_| SiteApiError::new("Could not rename the video."))?;
+        let path = format!("/api/app/videos/{id}");
+        let raw = self
+            .send(Method::PUT, &path, true, Some(Zeroizing::new(body)))
+            .await?;
+
+        Self::video_write_check(
+            &raw,
+            "Could not rename the video",
+            "Video not found.",
+            Some(TITLE_INVALID),
+        )?;
+
+        let mut parsed: VideoDetail = serde_json::from_slice(&raw.body).map_err(|_| {
+            SiteApiError::new("The site sent an unexpected video response.")
+                .status(raw.status)
+                .code("invalid_response")
+        })?;
+
+        parsed.sanitize();
+
+        Ok(parsed)
+    }
+
+    /// `DELETE /api/app/videos/{id}`. The outcome (`deleted|skipped|failed`) is in the body of
+    /// an HTTP 200; the server message is sanitized and length-capped.
+    pub async fn delete_video(&self, id: i64) -> Result<VideoDeleteOutcome, SiteApiError> {
+        let path = format!("/api/app/videos/{id}");
+        let raw = self.send(Method::DELETE, &path, true, None).await?;
+
+        Self::video_write_check(&raw, "Could not delete the video", "Video not found.", None)?;
+
+        VideoDeleteOutcome::parse(&raw.json()).ok_or_else(|| {
+            SiteApiError::new("The site sent an unexpected delete response.")
+                .status(raw.status)
+                .code("invalid_response")
+        })
+    }
+
+    /// `POST /api/app/videos/{id}/image` (multipart field `image`). `bytes` were already checked
+    /// (size, sniffed `kind`) by the caller; the file name and content type sent are built from
+    /// `kind`. Returns the new custom image URL, kept only when it is `https://`.
+    pub async fn set_video_image(
+        &self,
+        id: i64,
+        bytes: &[u8],
+        kind: ImageKind,
+    ) -> Result<Option<String>, SiteApiError> {
+        let (body, content_type) = build_multipart(kind, bytes).ok_or_else(|| {
+            SiteApiError::new("Could not save the image.").code("invalid_request")
+        })?;
+        let path = format!("/api/app/videos/{id}/image");
+        let raw = self
+            .send_typed(
+                Method::POST,
+                &path,
+                true,
+                Some(Zeroizing::new(body)),
+                &content_type,
+            )
+            .await?;
+
+        match raw.status {
+            200 => {}
+            422 if error_code_of(&raw.json()).as_deref() == Some("no_storage_folder") => {
+                return Err(Self::http_error(
+                    &raw,
+                    "This video has no storage folder yet.".to_string(),
+                ));
+            }
+            413 | 422 => {
+                return Err(Self::http_error(&raw, IMAGE_REJECTED.to_string()));
+            }
+            500 => {
+                return Err(Self::http_error(
+                    &raw,
+                    "Could not save the image.".to_string(),
+                ))
+            }
+            _ => Self::video_status_check(&raw, "Could not save the image", "Video not found.")?,
+        }
+
+        let mut url = raw
+            .json()
+            .get("url")
+            .and_then(Value::as_str)
+            .map(str::to_string);
+
+        clean_url(&mut url);
+
+        Ok(url)
+    }
+
+    /// `DELETE /api/app/videos/{id}/image`. A 404 `no_custom_image` has its own message and
+    /// code so the UI can tell it apart from an unknown video.
+    pub async fn delete_video_image(&self, id: i64) -> Result<(), SiteApiError> {
+        let path = format!("/api/app/videos/{id}/image");
+        let raw = self.send(Method::DELETE, &path, true, None).await?;
+
+        match raw.status {
+            200 => Ok(()),
+            404 if error_code_of(&raw.json()).as_deref() == Some("no_custom_image") => Err(
+                Self::http_error(&raw, "No custom thumbnail to remove.".to_string()),
+            ),
+            500 => Err(Self::http_error(
+                &raw,
+                "Could not remove the image.".to_string(),
+            )),
+            _ => Self::video_status_check(&raw, "Could not remove the image", "Video not found."),
+        }
+    }
+
+    /// `DELETE /api/app/videos/bulk-destroy` with `{"selected_ids": [...]}`. Ids are de-duplicated
+    /// (order kept); 1..=100 distinct positive ids are required, else nothing is sent.
+    pub async fn bulk_delete_videos(&self, ids: &[i64]) -> Result<BulkDeleteOutcome, SiteApiError> {
+        let mut unique: Vec<i64> = Vec::with_capacity(ids.len());
+
+        for id in ids {
+            if !unique.contains(id) {
+                unique.push(*id);
+            }
+        }
+
+        if unique.is_empty() || unique.len() > MAX_BULK_DELETE || unique.iter().any(|id| *id < 1) {
+            return Err(
+                SiteApiError::new("Select between 1 and 100 videos.").code("invalid_selection")
+            );
+        }
+
+        let body = serde_json::to_vec(&json!({ "selected_ids": unique }))
+            .map_err(|_| SiteApiError::new("Could not delete the videos."))?;
+        let raw = self
+            .send(
+                Method::DELETE,
+                "/api/app/videos/bulk-destroy",
+                true,
+                Some(Zeroizing::new(body)),
+            )
+            .await?;
+
+        Self::video_write_check(
+            &raw,
+            "Could not delete the videos",
+            "Video not found.",
+            Some("Some of the selected videos no longer exist. Refresh the list and try again."),
+        )?;
+
+        BulkDeleteOutcome::parse(&raw.json()).ok_or_else(|| {
+            SiteApiError::new("The site sent an unexpected delete response.")
+                .status(raw.status)
+                .code("invalid_response")
+        })
+    }
+
+    /// Like `video_status_check`, plus a fixed message for 422 (validation), when given.
+    fn video_write_check(
+        raw: &RawResponse,
+        failure: &str,
+        not_found: &str,
+        invalid: Option<&str>,
+    ) -> Result<(), SiteApiError> {
+        match (raw.status, invalid) {
+            (422, Some(message)) => Err(Self::http_error(raw, message.to_string())),
+            _ => Self::video_status_check(raw, failure, not_found),
+        }
     }
 
     /// Non-200 answers of the video read calls become safe, body-free messages.

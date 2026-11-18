@@ -29,6 +29,11 @@ export const IpcChannels = {
     videosGet: 'videos:get',
     videosCopyLink: 'videos:copy-link',
     videosOpenEmbed: 'videos:open-embed',
+    videosUpdateTitle: 'videos:update-title',
+    videosDelete: 'videos:delete',
+    videosBulkDelete: 'videos:bulk-delete',
+    videosSetImage: 'videos:set-image',
+    videosRemoveImage: 'videos:remove-image',
 } as const;
 
 /** Main -> renderer push events. */
@@ -159,7 +164,7 @@ export interface DiagnosticsDto {
 
 export type CopyKind = 'embed-url' | 'shortcode';
 
-// ---- cloud video library (read-only) ------------------------------------------------------
+// ---- cloud video library ------------------------------------------------------
 
 /** Unknown words can appear when the site adds a status, so treat any other value as "other". */
 export type VideoStatus = 'pending' | 'processing' | 'ready' | 'failed' | (string & {});
@@ -254,8 +259,27 @@ export type VideosListResult =
 
 export type VideosGetResult = { ok: true; video: VideoDetail } | { ok: false; error: string };
 
+/** Renaming returns the updated detail. */
+export type VideosUpdateTitleResult = VideosGetResult;
+
+/** `skipped`: the video is still pending/processing, nothing changed. `failed`: kept, retry. */
+export type VideoDeleteStatus = 'deleted' | 'skipped' | 'failed';
+
+export type VideosDeleteResult =
+    { ok: true; status: VideoDeleteStatus; message: string } | { ok: false; error: string };
+
+export type VideosBulkDeleteResult =
+    | { ok: true; deleted: number; failed: number; skipped: number; message: string }
+    | { ok: false; error: string };
+
+/** Main opens the native image picker; `canceled` when the user closed it. */
+export type VideosSetImageResult =
+    | { ok: true; canceled: true }
+    | { ok: true; canceled: false; imageUrl?: string }
+    | { ok: false; error: string };
+
 /** Which URL of a video the main process copies (it fetches the video itself). */
-export type VideoLinkKind = 'embed-url' | 'playlist-url';
+export type VideoLinkKind = 'embed-url' | 'playlist-url' | 'shortcode';
 
 // ---- preload API --------------------------------------------------------------------------
 
@@ -315,6 +339,16 @@ export interface VideosApi {
     copyLink(id: number, kind: VideoLinkKind): Promise<ActionResult>;
     /** Main fetches the video and opens its embed page when it is https on the signed-in site. */
     openEmbed(id: number): Promise<ActionResult>;
+    /** Title is trimmed by the main process: 1..255 characters, no control characters. */
+    updateTitle(id: number, title: string): Promise<VideosUpdateTitleResult>;
+    /** Deleting is only allowed after the renderer asked the user to confirm. */
+    delete(id: number): Promise<VideosDeleteResult>;
+    /** 1..100 ids (duplicates are dropped by the main process). */
+    bulkDelete(ids: number[]): Promise<VideosBulkDeleteResult>;
+    /** Rust opens the file picker and uploads the chosen image; the renderer never sees a path. */
+    setImage(id: number): Promise<VideosSetImageResult>;
+    /** Removes the custom thumbnail (only after the user confirmed). */
+    removeImage(id: number): Promise<ActionResult>;
 }
 
 export interface RendererApi {

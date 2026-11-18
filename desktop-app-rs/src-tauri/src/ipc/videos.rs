@@ -1,4 +1,5 @@
-//! `videos:*` commands: read-only cloud video library (list and detail) through the site API.
+//! `videos:*` commands: the cloud video library (list, detail, rename, delete, bulk delete) through
+//! the site API.
 //! Results are `{ ok: true, ... } | { ok: false, error }` with safe English error text; the
 //! site's body, URL and token never reach the renderer.
 
@@ -8,13 +9,17 @@ use tauri::{Runtime, State, WebviewWindow};
 
 use super::auth::rejected;
 use super::jobs::{
-    site_url, JobsDesktop, TauriJobsDesktop, CLIPBOARD_FAILED, FOREIGN_EMBED_URL, NO_EMBED_URL,
-    OPEN_FAILED,
+    embed_shortcode, site_url, JobsDesktop, TauriJobsDesktop, CLIPBOARD_FAILED, FOREIGN_EMBED_URL,
+    INVALID_VIDEO_ID, NO_EMBED_URL, OPEN_FAILED,
 };
-use super::validate::{parse_video_id, parse_video_link, parse_videos_list, VideosListInput};
+use super::validate::{
+    parse_video_bulk_delete, parse_video_id, parse_video_link, parse_video_title_update,
+    parse_videos_list, VideosListInput,
+};
 use super::IpcError;
+use crate::api::image_upload::{read_image_file, IMAGE_UNREADABLE};
 use crate::api::videos::{
-    build_public_url, VideoDetail, VideoListItem, VideoListMeta, VideoStatus,
+    build_public_url, DeleteStatus, VideoDetail, VideoListItem, VideoListMeta, VideoStatus,
 };
 use crate::api::{SiteApiError, SiteClient};
 use crate::desktop::{is_embed_url_of_site, open_external_https, safe_https_url};
@@ -166,27 +171,242 @@ pub async fn videos_get(
     Ok(get_video(&state.site_client, id).await)
 }
 
-/// Copies the embed or playlist URL of a video detail that Rust fetched itself; the renderer
-/// never supplies clipboard text. Only a plain https URL is copied.
+/// `{ ok: true; status: 'deleted' | 'skipped' | 'failed'; message } | { ok: false; error }`
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum VideosDeleteResult {
+    Ok {
+        ok: bool,
+        status: DeleteStatus,
+        message: String,
+    },
+    Err {
+        ok: bool,
+        error: String,
+    },
+}
+
+/// `{ ok: true; deleted; failed; skipped; message } | { ok: false; error }`
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum VideosBulkDeleteResult {
+    Ok {
+        ok: bool,
+        deleted: u32,
+        failed: u32,
+        skipped: u32,
+        message: String,
+    },
+    Err {
+        ok: bool,
+        error: String,
+    },
+}
+
+pub(crate) async fn update_video_title(
+    client: &SiteClient,
+    id: i64,
+    title: &str,
+) -> VideosGetResult {
+    match client.update_video_title(id, title).await {
+        Ok(video) => VideosGetResult::Ok {
+            ok: true,
+            video: Box::new(video),
+        },
+        Err(error) => VideosGetResult::failed(error),
+    }
+}
+
+pub(crate) async fn delete_video(client: &SiteClient, id: i64) -> VideosDeleteResult {
+    match client.delete_video(id).await {
+        Ok(outcome) => VideosDeleteResult::Ok {
+            ok: true,
+            status: outcome.status,
+            message: outcome.message,
+        },
+        Err(error) => VideosDeleteResult::Err {
+            ok: false,
+            error: error.message,
+        },
+    }
+}
+
+pub(crate) async fn bulk_delete_videos(client: &SiteClient, ids: &[i64]) -> VideosBulkDeleteResult {
+    match client.bulk_delete_videos(ids).await {
+        Ok(outcome) => VideosBulkDeleteResult::Ok {
+            ok: true,
+            deleted: outcome.deleted,
+            failed: outcome.failed,
+            skipped: outcome.skipped,
+            message: outcome.message,
+        },
+        Err(error) => VideosBulkDeleteResult::Err {
+            ok: false,
+            error: error.message,
+        },
+    }
+}
+
+/// `{ ok: true; canceled: true } | { ok: true; canceled: false; imageUrl?: string } |
+/// { ok: false; error }`
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(untagged)]
+pub enum VideosSetImageResult {
+    Ok {
+        ok: bool,
+        canceled: bool,
+        #[serde(rename = "imageUrl", skip_serializing_if = "Option::is_none")]
+        image_url: Option<String>,
+    },
+    Err {
+        ok: bool,
+        error: String,
+    },
+}
+
+impl VideosSetImageResult {
+    fn err(error: impl Into<String>) -> Self {
+        Self::Err {
+            ok: false,
+            error: error.into(),
+        }
+    }
+}
+
+/// Opens the native image picker (from Rust only), validates the chosen file locally (regular
+/// file, 1..=5 MB, type from the magic bytes) and uploads it. The renderer never supplies a
+/// path or bytes; neither the path nor the bytes are logged or put into an error.
+pub(crate) async fn set_video_image(
+    client: &SiteClient,
+    id: i64,
+    desktop: &dyn JobsDesktop,
+) -> VideosSetImageResult {
+    let Some(path) = desktop.pick_image_file().await else {
+        return VideosSetImageResult::Ok {
+            ok: true,
+            canceled: true,
+            image_url: None,
+        };
+    };
+    let read =
+        tauri::async_runtime::spawn_blocking(move || read_image_file(std::path::Path::new(&path)))
+            .await;
+    let (kind, bytes) = match read {
+        Ok(Ok(image)) => image,
+        Ok(Err(message)) => return VideosSetImageResult::err(message),
+        Err(_) => return VideosSetImageResult::err(IMAGE_UNREADABLE),
+    };
+
+    match client.set_video_image(id, &bytes, kind).await {
+        Ok(image_url) => VideosSetImageResult::Ok {
+            ok: true,
+            canceled: false,
+            image_url,
+        },
+        Err(error) => VideosSetImageResult::err(error.message),
+    }
+}
+
+pub(crate) async fn remove_video_image(client: &SiteClient, id: i64) -> ActionResult {
+    match client.delete_video_image(id).await {
+        Ok(()) => ActionResult::Ok,
+        Err(error) => ActionResult::err(error.message),
+    }
+}
+
+#[tauri::command]
+pub async fn videos_set_image<R: Runtime>(
+    window: WebviewWindow<R>,
+    state: State<'_, AppState>,
+    payload: Option<Value>,
+) -> Result<VideosSetImageResult, IpcError> {
+    let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:set-image", e))?;
+
+    Ok(set_video_image(&state.site_client, id, &TauriJobsDesktop { window }).await)
+}
+
+#[tauri::command]
+pub async fn videos_remove_image(
+    state: State<'_, AppState>,
+    payload: Option<Value>,
+) -> Result<ActionResult, IpcError> {
+    let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:remove-image", e))?;
+
+    Ok(remove_video_image(&state.site_client, id).await)
+}
+
+#[tauri::command]
+pub async fn videos_update_title(
+    state: State<'_, AppState>,
+    payload: Option<Value>,
+) -> Result<VideosGetResult, IpcError> {
+    let (id, title) = parse_video_title_update(payload)
+        .map_err(|e| rejected(&state, "videos:update-title", e))?;
+
+    Ok(update_video_title(&state.site_client, id, &title).await)
+}
+
+#[tauri::command]
+pub async fn videos_delete(
+    state: State<'_, AppState>,
+    payload: Option<Value>,
+) -> Result<VideosDeleteResult, IpcError> {
+    let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:delete", e))?;
+
+    Ok(delete_video(&state.site_client, id).await)
+}
+
+#[tauri::command]
+pub async fn videos_bulk_delete(
+    state: State<'_, AppState>,
+    payload: Option<Value>,
+) -> Result<VideosBulkDeleteResult, IpcError> {
+    let ids =
+        parse_video_bulk_delete(payload).map_err(|e| rejected(&state, "videos:bulk-delete", e))?;
+
+    Ok(bulk_delete_videos(&state.site_client, &ids).await)
+}
+
+/// Copies the embed URL, playlist URL or shortcode of a video detail that Rust fetched itself;
+/// the renderer never supplies clipboard text. Only a plain https URL is copied; the shortcode
+/// (same builder as the Queue) needs an https embed URL on the signed-in site.
 pub(crate) fn copy_video_link(
     video: &VideoDetail,
     kind: VideoLinkKind,
     desktop: &dyn JobsDesktop,
+    site_url: Option<&str>,
     logger: &dyn Log,
 ) -> ActionResult {
-    let (url, missing) = match kind {
-        VideoLinkKind::EmbedUrl => (video.embed_url.as_deref(), NO_EMBED_URL),
-        VideoLinkKind::PlaylistUrl => (video.playlist_url.as_deref(), NO_PLAYLIST_URL),
-    };
-    let Some(url) = url else {
-        return ActionResult::err(missing);
+    let text = match kind {
+        VideoLinkKind::EmbedUrl | VideoLinkKind::PlaylistUrl => {
+            let (url, missing) = if kind == VideoLinkKind::EmbedUrl {
+                (video.embed_url.as_deref(), NO_EMBED_URL)
+            } else {
+                (video.playlist_url.as_deref(), NO_PLAYLIST_URL)
+            };
+
+            match url.filter(|url| safe_https_url(url).is_some()) {
+                Some(url) => url.to_string(),
+                None => return ActionResult::err(missing),
+            }
+        }
+        VideoLinkKind::Shortcode => {
+            let Some(embed_url) = video.embed_url.as_deref() else {
+                return ActionResult::err(NO_EMBED_URL);
+            };
+
+            if !is_embed_url_of_site(embed_url, site_url) {
+                return ActionResult::err(FOREIGN_EMBED_URL);
+            }
+
+            match embed_shortcode(&video.public_id) {
+                Some(shortcode) => shortcode,
+                None => return ActionResult::err(INVALID_VIDEO_ID),
+            }
+        }
     };
 
-    if safe_https_url(url).is_none() {
-        return ActionResult::err(missing);
-    }
-
-    match desktop.write_clipboard(url) {
+    match desktop.write_clipboard(&text) {
         Ok(()) => ActionResult::Ok,
         Err(error) => {
             logger.warn(
@@ -240,9 +460,16 @@ pub async fn videos_copy_link<R: Runtime>(
         Err(error) => return Ok(ActionResult::err(error.message)),
     };
     let logger = state.logger.clone();
+    let site = site_url(&state);
 
     Ok(tauri::async_runtime::spawn_blocking(move || {
-        copy_video_link(&video, kind, &TauriJobsDesktop { window }, &*logger)
+        copy_video_link(
+            &video,
+            kind,
+            &TauriJobsDesktop { window },
+            site.as_deref(),
+            &*logger,
+        )
     })
     .await
     .unwrap_or_else(|_| ActionResult::err(CLIPBOARD_FAILED)))
@@ -309,11 +536,11 @@ mod tests {
         let log = RecordingLogger::default();
 
         assert_eq!(
-            copy_video_link(&video, VideoLinkKind::EmbedUrl, &desktop, &log),
+            copy_video_link(&video, VideoLinkKind::EmbedUrl, &desktop, SITE, &log),
             ActionResult::Ok
         );
         assert_eq!(
-            copy_video_link(&video, VideoLinkKind::PlaylistUrl, &desktop, &log),
+            copy_video_link(&video, VideoLinkKind::PlaylistUrl, &desktop, SITE, &log),
             ActionResult::Ok
         );
         assert_eq!(
@@ -332,11 +559,11 @@ mod tests {
         let none = detail(None, None);
 
         assert_eq!(
-            copy_video_link(&none, VideoLinkKind::EmbedUrl, &desktop, &log),
+            copy_video_link(&none, VideoLinkKind::EmbedUrl, &desktop, SITE, &log),
             ActionResult::err(NO_EMBED_URL)
         );
         assert_eq!(
-            copy_video_link(&none, VideoLinkKind::PlaylistUrl, &desktop, &log),
+            copy_video_link(&none, VideoLinkKind::PlaylistUrl, &desktop, SITE, &log),
             ActionResult::err(NO_PLAYLIST_URL)
         );
 
@@ -346,11 +573,11 @@ mod tests {
         insecure.playlist_url = Some("https://user:pw@cdn.example.com/p.m3u8".into());
 
         assert_eq!(
-            copy_video_link(&insecure, VideoLinkKind::EmbedUrl, &desktop, &log),
+            copy_video_link(&insecure, VideoLinkKind::EmbedUrl, &desktop, SITE, &log),
             ActionResult::err(NO_EMBED_URL)
         );
         assert_eq!(
-            copy_video_link(&insecure, VideoLinkKind::PlaylistUrl, &desktop, &log),
+            copy_video_link(&insecure, VideoLinkKind::PlaylistUrl, &desktop, SITE, &log),
             ActionResult::err(NO_PLAYLIST_URL)
         );
         assert!(desktop.clipboard.lock().unwrap().is_empty());
@@ -362,7 +589,72 @@ mod tests {
         let ok = detail(Some("https://site.example.com/embed/a"), None);
 
         assert_eq!(
-            copy_video_link(&ok, VideoLinkKind::EmbedUrl, &failing, &log),
+            copy_video_link(&ok, VideoLinkKind::EmbedUrl, &failing, SITE, &log),
+            ActionResult::err(CLIPBOARD_FAILED)
+        );
+    }
+
+    #[test]
+    fn copy_shortcode_matches_the_queue_format_and_checks_the_embed_url() {
+        let log = RecordingLogger::default();
+        let desktop = FakeDesktop::default();
+        let video = detail(Some("https://site.example.com/embed/abcdefghijkl"), None);
+
+        assert_eq!(
+            copy_video_link(&video, VideoLinkKind::Shortcode, &desktop, SITE, &log),
+            ActionResult::Ok
+        );
+        assert_eq!(
+            *desktop.clipboard.lock().unwrap(),
+            ["[hls_embed_vl id=\"abcdefghijkl\"]"]
+        );
+        // Same string as the Queue copy for the same public id.
+        assert_eq!(
+            embed_shortcode("abcdefghijkl").as_deref(),
+            Some("[hls_embed_vl id=\"abcdefghijkl\"]")
+        );
+
+        let other = FakeDesktop::default();
+        let cases = [
+            (detail(None, None), NO_EMBED_URL),
+            (
+                detail(Some("https://evil.example.net/embed/abcdefghijkl"), None),
+                FOREIGN_EMBED_URL,
+            ),
+        ];
+
+        for (video, expected) in cases {
+            assert_eq!(
+                copy_video_link(&video, VideoLinkKind::Shortcode, &other, SITE, &log),
+                ActionResult::err(expected)
+            );
+        }
+
+        let mut insecure = detail(None, None);
+        insecure.embed_url = Some("http://site.example.com/embed/a".into());
+        assert_eq!(
+            copy_video_link(&insecure, VideoLinkKind::Shortcode, &other, SITE, &log),
+            ActionResult::err(FOREIGN_EMBED_URL)
+        );
+        assert_eq!(
+            copy_video_link(&video, VideoLinkKind::Shortcode, &other, None, &log),
+            ActionResult::err(FOREIGN_EMBED_URL)
+        );
+
+        let mut bad_id = detail(Some("https://site.example.com/embed/a"), None);
+        bad_id.public_id = "A\"b".into();
+        assert_eq!(
+            copy_video_link(&bad_id, VideoLinkKind::Shortcode, &other, SITE, &log),
+            ActionResult::err(INVALID_VIDEO_ID)
+        );
+        assert!(other.clipboard.lock().unwrap().is_empty());
+
+        let failing = FakeDesktop {
+            clipboard_fails: true,
+            ..FakeDesktop::default()
+        };
+        assert_eq!(
+            copy_video_link(&video, VideoLinkKind::Shortcode, &failing, SITE, &log),
             ActionResult::err(CLIPBOARD_FAILED)
         );
     }
@@ -545,6 +837,295 @@ mod tests {
             "secret-upload-id",
         ] {
             assert!(!text.contains(needle), "{needle}: {text}");
+        }
+    }
+
+    mod calls {
+        use std::sync::Arc;
+        use std::time::Duration;
+
+        use super::*;
+        use crate::api::test_server::{Reply, TestServer};
+        use crate::api::SiteClientOptions;
+        use crate::secure::Secret;
+
+        fn client_for(server: &TestServer) -> SiteClient {
+            let base = server.base_url.clone();
+
+            SiteClient::new_for_loopback_tests(
+                SiteClientOptions {
+                    get_base_url: Arc::new(move || base.clone()),
+                    get_token: Arc::new(|| Some(Secret::from("tok-secret"))),
+                    user_agent: "test".into(),
+                    timeout: Duration::from_secs(5),
+                    on_unauthorized: None,
+                    logger: None,
+                },
+                false,
+            )
+        }
+
+        #[tokio::test]
+        async fn delete_and_bulk_results_have_the_documented_shape() {
+            let server = TestServer::start(|request| {
+                if request.path.ends_with("bulk-destroy") {
+                    Reply::json(
+                        200,
+                        json!({ "deleted": 2, "failed": 0, "skipped": 1, "message": "Deleted 2 videos (1 skipped)." }),
+                    )
+                } else {
+                    Reply::json(200, json!({ "status": "skipped", "message": "Still processing." }))
+                }
+            })
+            .await;
+            let client = client_for(&server);
+
+            assert_eq!(
+                serde_json::to_value(delete_video(&client, 5).await).unwrap(),
+                json!({ "ok": true, "status": "skipped", "message": "Still processing." })
+            );
+            assert_eq!(
+                serde_json::to_value(bulk_delete_videos(&client, &[1, 2, 2, 3]).await).unwrap(),
+                json!({ "ok": true, "deleted": 2, "failed": 0, "skipped": 1, "message": "Deleted 2 videos (1 skipped)." })
+            );
+            // The duplicate id was dropped before sending.
+            assert_eq!(
+                server.requests()[1].json(),
+                json!({ "selected_ids": [1, 2, 3] })
+            );
+        }
+
+        #[tokio::test]
+        async fn errors_are_safe_and_never_carry_the_site_body_url_or_token() {
+            let server = TestServer::start(|_| {
+                Reply::json(
+                    500,
+                    json!({ "message": "SQLSTATE secret /var/www tok-secret" }),
+                )
+            })
+            .await;
+            let client = client_for(&server);
+            let results = [
+                serde_json::to_value(delete_video(&client, 5).await).unwrap(),
+                serde_json::to_value(bulk_delete_videos(&client, &[5]).await).unwrap(),
+                serde_json::to_value(update_video_title(&client, 5, "New").await).unwrap(),
+            ];
+
+            for value in results {
+                assert_eq!(value["ok"], false);
+
+                let text = value.to_string();
+
+                for needle in ["SQLSTATE", "/var/www", "tok-secret", "127.0.0.1", "http"] {
+                    assert!(!text.contains(needle), "{needle}: {text}");
+                }
+            }
+        }
+
+        fn png_file(dir: &tempfile::TempDir, name: &str, len: usize) -> String {
+            let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+
+            bytes.resize(len, 1);
+
+            let path = dir.path().join(name);
+
+            std::fs::write(&path, bytes).unwrap();
+            path.to_string_lossy().into_owned()
+        }
+
+        fn desktop_with(path: Option<String>) -> FakeDesktop {
+            FakeDesktop {
+                picked_image: path,
+                ..FakeDesktop::default()
+            }
+        }
+
+        #[tokio::test]
+        async fn set_image_cancel_sends_nothing() {
+            let server = TestServer::start(|_| Reply::json(200, json!({}))).await;
+            let result = set_video_image(&client_for(&server), 5, &desktop_with(None)).await;
+
+            assert_eq!(
+                serde_json::to_value(result).unwrap(),
+                json!({ "ok": true, "canceled": true })
+            );
+            assert!(server.requests().is_empty());
+        }
+
+        #[tokio::test]
+        async fn set_image_uploads_the_picked_file_and_returns_the_new_url() {
+            let dir = tempfile::tempdir().unwrap();
+            // A PNG named .jpg is uploaded as a PNG, under our own file name.
+            let path = png_file(&dir, "holiday-secret.jpg", 64);
+            let server = TestServer::start(|_| {
+                Reply::json(
+                    200,
+                    json!({ "label": "Custom image", "url": "https://cdn.example.com/c.png?v=2" }),
+                )
+            })
+            .await;
+            let result = set_video_image(&client_for(&server), 5, &desktop_with(Some(path))).await;
+
+            assert_eq!(
+                serde_json::to_value(result).unwrap(),
+                json!({ "ok": true, "canceled": false, "imageUrl": "https://cdn.example.com/c.png?v=2" })
+            );
+
+            let body = String::from_utf8_lossy(&server.requests()[0].body).into_owned();
+
+            assert!(body.contains("filename=\"thumbnail.png\""));
+            assert!(body.contains("Content-Type: image/png"));
+            assert!(!body.contains("holiday-secret"));
+        }
+
+        #[tokio::test]
+        async fn set_image_enforces_the_size_limit_before_uploading() {
+            let dir = tempfile::tempdir().unwrap();
+            let max = 5 * 1024 * 1024;
+            let server = TestServer::start(|_| {
+                Reply::json(200, json!({ "url": "https://c.example.com/a.png" }))
+            })
+            .await;
+            let client = client_for(&server);
+
+            let ok = set_video_image(
+                &client,
+                5,
+                &desktop_with(Some(png_file(&dir, "ok.png", max))),
+            )
+            .await;
+
+            assert_eq!(serde_json::to_value(ok).unwrap()["ok"], true);
+            assert_eq!(server.requests().len(), 1);
+
+            let over = set_video_image(
+                &client,
+                5,
+                &desktop_with(Some(png_file(&dir, "big.png", max + 1))),
+            )
+            .await;
+
+            assert_eq!(
+                serde_json::to_value(over).unwrap(),
+                json!({ "ok": false, "error": "The image is larger than 5 MB." })
+            );
+            assert_eq!(server.requests().len(), 1);
+        }
+
+        #[tokio::test]
+        async fn set_image_rejects_non_images_dirs_and_symlinks_without_a_request() {
+            let dir = tempfile::tempdir().unwrap();
+            let fake = dir.path().join("fake.png");
+
+            std::fs::write(&fake, b"GIF89a not accepted").unwrap();
+
+            let server = TestServer::start(|_| Reply::json(200, json!({}))).await;
+            let client = client_for(&server);
+            let mut inputs = vec![
+                (
+                    fake.to_string_lossy().into_owned(),
+                    "Choose a JPG, PNG or WebP image.",
+                ),
+                (
+                    dir.path().to_string_lossy().into_owned(),
+                    "Choose a regular image file.",
+                ),
+            ];
+
+            #[cfg(unix)]
+            {
+                let real = png_file(&dir, "real.png", 32);
+                let link = dir.path().join("link.png");
+
+                std::os::unix::fs::symlink(&real, &link).unwrap();
+                inputs.push((
+                    link.to_string_lossy().into_owned(),
+                    "Choose a regular image file.",
+                ));
+            }
+
+            for (path, message) in inputs {
+                let result = set_video_image(&client, 5, &desktop_with(Some(path.clone()))).await;
+                let value = serde_json::to_value(result).unwrap();
+
+                assert_eq!(value, json!({ "ok": false, "error": message }));
+                assert!(!value.to_string().contains(&path));
+            }
+
+            assert!(server.requests().is_empty());
+        }
+
+        #[tokio::test]
+        async fn set_and_remove_image_errors_never_leak_paths_bodies_urls_or_tokens() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = png_file(&dir, "p.png", 32);
+            let server = TestServer::start(|_| {
+                Reply::json(500, json!({ "error": "image_store_failed", "message": "SQLSTATE /var/www tok-secret" }))
+            })
+            .await;
+            let client = client_for(&server);
+            let results = [
+                serde_json::to_value(
+                    set_video_image(&client, 5, &desktop_with(Some(path.clone()))).await,
+                )
+                .unwrap(),
+                serde_json::to_value(remove_video_image(&client, 5).await).unwrap(),
+            ];
+
+            assert_eq!(results[0]["error"], "Could not save the image.");
+            assert_eq!(results[1]["error"], "Could not remove the image.");
+
+            for value in results {
+                let text = value.to_string();
+
+                for needle in [
+                    "SQLSTATE",
+                    "/var/www",
+                    "tok-secret",
+                    "127.0.0.1",
+                    "http",
+                    path.as_str(),
+                ] {
+                    assert!(!text.contains(needle), "{needle}: {text}");
+                }
+            }
+        }
+
+        #[tokio::test]
+        async fn remove_image_maps_success_and_no_custom_image() {
+            let server = TestServer::start(|request| {
+                if request.path.starts_with("/api/app/videos/1/") {
+                    Reply::json(200, json!({ "ok": true }))
+                } else {
+                    Reply::json(404, json!({ "error": "no_custom_image" }))
+                }
+            })
+            .await;
+            let client = client_for(&server);
+
+            assert_eq!(remove_video_image(&client, 1).await, ActionResult::Ok);
+            assert_eq!(
+                remove_video_image(&client, 2).await,
+                ActionResult::err("No custom thumbnail to remove.")
+            );
+        }
+
+        #[tokio::test]
+        async fn update_title_returns_the_updated_detail() {
+            let server = TestServer::start(|request| {
+                Reply::json(
+                    200,
+                    json!({ "id": 5, "public_id": "abcdefghijkl", "title": request.json()["title"], "status": "ready" }),
+                )
+            })
+            .await;
+            let value = serde_json::to_value(
+                update_video_title(&client_for(&server), 5, "  New name ").await,
+            )
+            .unwrap();
+
+            assert_eq!(value["ok"], true);
+            assert_eq!(value["video"]["title"], "New name");
         }
     }
 }

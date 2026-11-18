@@ -104,6 +104,11 @@ register_commands!(
     videos_get,
     videos_copy_link,
     videos_open_embed,
+    videos_update_title,
+    videos_delete,
+    videos_bulk_delete,
+    videos_set_image,
+    videos_remove_image,
 );
 
 #[cfg(test)]
@@ -140,6 +145,11 @@ mod tests {
         "videos:get",
         "videos:copy-link",
         "videos:open-embed",
+        "videos:update-title",
+        "videos:delete",
+        "videos:bulk-delete",
+        "videos:set-image",
+        "videos:remove-image",
     ];
 
     fn command_of(channel: &str) -> String {

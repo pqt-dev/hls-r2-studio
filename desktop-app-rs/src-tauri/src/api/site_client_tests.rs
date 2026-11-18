@@ -9,7 +9,7 @@ use serde_json::{json, Value};
 use super::*;
 use crate::api::app_config::Resolution;
 use crate::api::test_server::{closed_port_url, Recorded, Reply, TestServer};
-use crate::api::videos::VideoStatus;
+use crate::api::videos::{BulkDeleteOutcome, DeleteStatus, VideoStatus};
 use crate::logger::testing::RecordingLogger;
 
 fn config_body() -> Value {
@@ -1022,4 +1022,566 @@ async fn video_reads_report_401_through_on_unauthorized_and_need_a_token() {
     let error = signed_out.client.get_video(1).await.unwrap_err();
     assert!(error.has_code("not_signed_in"));
     assert!(signed_out.server.requests().is_empty());
+}
+
+// ---- videos (rename + delete + bulk delete) ------------------------------------------------
+
+#[tokio::test]
+async fn update_video_title_puts_the_trimmed_title_and_returns_the_detail() {
+    let t = setup(|request| {
+        let mut body = detail_body("ready");
+        body["title"] = request.json()["title"].clone();
+        Reply::json(200, body)
+    })
+    .await;
+    let video = t
+        .client
+        .update_video_title(12, "  New name  ")
+        .await
+        .unwrap();
+
+    assert_eq!(video.title, "New name");
+    assert_eq!(video.status, VideoStatus::Ready);
+
+    let calls = t.server.requests();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].method, "PUT");
+    assert_eq!(calls[0].path, "/api/app/videos/12");
+    assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+    assert_eq!(calls[0].header("content-type"), Some("application/json"));
+    assert_eq!(calls[0].json(), json!({ "title": "New name" }));
+
+    // The title is never logged.
+    assert!(!t.logger.text().contains("New name"));
+}
+
+#[tokio::test]
+async fn update_video_title_counts_characters_and_rejects_bad_titles_without_a_request() {
+    let t = setup(|_| Reply::json(200, detail_body("ready"))).await;
+
+    // 255 two-byte characters are accepted (510 bytes).
+    t.client
+        .update_video_title(12, &"\u{0111}".repeat(255))
+        .await
+        .unwrap();
+    assert_eq!(t.server.requests().len(), 1);
+
+    for (title, message) in [
+        ("", "Title is required."),
+        ("   \t ", "Title is required."),
+        (
+            &"a".repeat(256)[..],
+            "Title is too long (255 characters at most).",
+        ),
+        ("a\u{7}b", "Title is invalid."),
+        ("a\nb", "Title is invalid."),
+    ] {
+        let error = t.client.update_video_title(12, title).await.unwrap_err();
+        assert_eq!(error.message, message, "{title:?}");
+    }
+
+    assert_eq!(t.server.requests().len(), 1);
+}
+
+#[tokio::test]
+async fn update_video_title_maps_422_404_and_429_to_safe_errors() {
+    let invalid = setup(|_| {
+        Reply::json(
+            422,
+            json!({ "message": "secret server text", "errors": { "title": ["secret"] } }),
+        )
+    })
+    .await;
+    let error = invalid
+        .client
+        .update_video_title(12, "x")
+        .await
+        .unwrap_err();
+    assert_eq!(error.status, Some(422));
+    assert_eq!(error.message, "Title is invalid.");
+
+    let gone = setup(|_| Reply::json(404, json!({ "error": "not_found" }))).await;
+    let error = gone.client.update_video_title(12, "x").await.unwrap_err();
+    assert_eq!(error.status, Some(404));
+    assert_eq!(error.message, "Video not found.");
+
+    let busy = setup(|_| {
+        Reply::json_with(
+            429,
+            json!({ "message": "secret server text" }),
+            &[("Retry-After", "9")],
+        )
+    })
+    .await;
+    let error = busy.client.update_video_title(12, "x").await.unwrap_err();
+    assert_eq!(error.retry_after_seconds, Some(9));
+    assert_eq!(
+        error.message,
+        "Too many requests. Please try again in a moment."
+    );
+
+    let broken = setup(|_| Reply::json(200, json!({ "unexpected": true }))).await;
+    let error = broken.client.update_video_title(12, "x").await.unwrap_err();
+    assert_eq!(error.code.as_deref(), Some("invalid_response"));
+}
+
+#[tokio::test]
+async fn delete_video_parses_deleted_skipped_and_failed() {
+    for (status, expected) in [
+        ("deleted", DeleteStatus::Deleted),
+        ("skipped", DeleteStatus::Skipped),
+        ("failed", DeleteStatus::Failed),
+    ] {
+        let t = setup(move |_| {
+            Reply::json(
+                200,
+                json!({ "status": status, "message": format!("  Message for {status}.\u{7} ") }),
+            )
+        })
+        .await;
+        let outcome = t.client.delete_video(12).await.unwrap();
+
+        assert_eq!(outcome.status, expected);
+        assert_eq!(outcome.message, format!("Message for {status}."));
+
+        let calls = t.server.requests();
+        assert_eq!(calls[0].method, "DELETE");
+        assert_eq!(calls[0].path, "/api/app/videos/12");
+        assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+        assert!(calls[0].body.is_empty());
+    }
+}
+
+#[tokio::test]
+async fn delete_video_caps_the_message_and_rejects_unknown_statuses() {
+    let long = setup(|_| {
+        Reply::json(
+            200,
+            json!({ "status": "deleted", "message": "m".repeat(5000) }),
+        )
+    })
+    .await;
+    assert_eq!(
+        long.client.delete_video(1).await.unwrap().message.len(),
+        300
+    );
+
+    let no_message = setup(|_| Reply::json(200, json!({ "status": "skipped" }))).await;
+    assert!(!no_message
+        .client
+        .delete_video(1)
+        .await
+        .unwrap()
+        .message
+        .is_empty());
+
+    for body in [
+        json!({ "status": "exploded", "message": "x" }),
+        json!({ "message": "x" }),
+        json!({ "status": 5 }),
+    ] {
+        let t = setup(move |_| Reply::json(200, body.clone())).await;
+        let error = t.client.delete_video(1).await.unwrap_err();
+
+        assert_eq!(error.code.as_deref(), Some("invalid_response"));
+    }
+}
+
+#[tokio::test]
+async fn delete_video_maps_404_and_other_failures_to_safe_errors() {
+    let gone = setup(|_| Reply::json(404, json!({ "error": "not_found" }))).await;
+    let error = gone.client.delete_video(1).await.unwrap_err();
+    assert_eq!(error.status, Some(404));
+    assert_eq!(error.message, "Video not found.");
+
+    let broken = setup(|_| Reply::text(500, "<html>/var/www stack trace</html>")).await;
+    let error = broken.client.delete_video(1).await.unwrap_err();
+    assert_eq!(error.message, "Could not delete the video (HTTP 500).");
+}
+
+#[tokio::test]
+async fn bulk_delete_sends_deduped_ids_and_parses_the_counts() {
+    let t = setup(|_| {
+        Reply::json(
+            200,
+            json!({ "deleted": 2, "failed": 1, "skipped": 1, "message": "Deleted 2 videos (1 skipped: still processing)." }),
+        )
+    })
+    .await;
+    let outcome = t.client.bulk_delete_videos(&[3, 1, 3, 2, 1]).await.unwrap();
+
+    assert_eq!(
+        outcome,
+        BulkDeleteOutcome {
+            deleted: 2,
+            failed: 1,
+            skipped: 1,
+            message: "Deleted 2 videos (1 skipped: still processing).".into(),
+        }
+    );
+
+    let calls = t.server.requests();
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].method, "DELETE");
+    assert_eq!(calls[0].path, "/api/app/videos/bulk-destroy");
+    assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+    assert_eq!(calls[0].header("content-type"), Some("application/json"));
+    assert_eq!(calls[0].json(), json!({ "selected_ids": [3, 1, 2] }));
+}
+
+#[tokio::test]
+async fn bulk_delete_accepts_exactly_100_and_rejects_other_sizes_before_any_request() {
+    let t = setup(|_| {
+        Reply::json(
+            200,
+            json!({ "deleted": 100, "failed": 0, "skipped": 0, "message": "ok" }),
+        )
+    })
+    .await;
+    let hundred: Vec<i64> = (1..=100).collect();
+
+    t.client.bulk_delete_videos(&hundred).await.unwrap();
+    assert_eq!(t.server.requests().len(), 1);
+
+    // 100 distinct ids plus duplicates are still 100.
+    let mut with_duplicates = hundred.clone();
+    with_duplicates.extend([1, 2, 3]);
+    t.client.bulk_delete_videos(&with_duplicates).await.unwrap();
+    assert_eq!(t.server.requests().len(), 2);
+
+    let too_many: Vec<i64> = (1..=101).collect();
+
+    for ids in [too_many, vec![], vec![0], vec![5, -1]] {
+        let error = t.client.bulk_delete_videos(&ids).await.unwrap_err();
+
+        assert_eq!(error.code.as_deref(), Some("invalid_selection"), "{ids:?}");
+    }
+
+    assert_eq!(t.server.requests().len(), 2);
+}
+
+#[tokio::test]
+async fn bulk_delete_maps_422_and_rejects_invalid_answers() {
+    let unknown = setup(|_| {
+        Reply::json(
+            422,
+            json!({ "message": "secret", "errors": { "selected_ids.0": ["secret"] } }),
+        )
+    })
+    .await;
+    let error = unknown.client.bulk_delete_videos(&[1]).await.unwrap_err();
+    assert_eq!(error.status, Some(422));
+    assert!(error.message.contains("no longer exist"));
+    assert!(!error.message.contains("secret"));
+
+    for body in [
+        json!({ "deleted": 1 }),
+        json!({ "deleted": -1, "failed": 0, "skipped": 0 }),
+        json!({ "deleted": "1", "failed": 0, "skipped": 0 }),
+        json!({ "deleted": 4294967296u64, "failed": 0, "skipped": 0 }),
+    ] {
+        let t = setup(move |_| Reply::json(200, body.clone())).await;
+        let error = t.client.bulk_delete_videos(&[1]).await.unwrap_err();
+
+        assert_eq!(error.code.as_deref(), Some("invalid_response"));
+    }
+
+    // A missing message falls back to the counts.
+    let t = setup(|_| Reply::json(200, json!({ "deleted": 1, "failed": 0, "skipped": 0 }))).await;
+    let outcome = t.client.bulk_delete_videos(&[1]).await.unwrap();
+    assert_eq!(outcome.message, "Deleted 1, failed 0, skipped 0.");
+}
+
+#[tokio::test]
+async fn video_writes_report_401_and_never_leak_secrets_urls_or_bodies() {
+    let t = setup(|_| Reply::json(401, json!({ "message": "Unauthenticated." }))).await;
+
+    t.client.update_video_title(1, "x").await.unwrap_err();
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 1);
+    t.client.delete_video(1).await.unwrap_err();
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 2);
+    t.client.bulk_delete_videos(&[1]).await.unwrap_err();
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 3);
+
+    let signed_out = setup_with(
+        Opts {
+            token: None,
+            ..Opts::default()
+        },
+        |_, _| Reply::json(200, json!({})),
+    )
+    .await;
+
+    assert!(signed_out
+        .client
+        .update_video_title(1, "x")
+        .await
+        .unwrap_err()
+        .has_code("not_signed_in"));
+    assert!(signed_out
+        .client
+        .delete_video(1)
+        .await
+        .unwrap_err()
+        .has_code("not_signed_in"));
+    assert!(signed_out
+        .client
+        .bulk_delete_videos(&[1])
+        .await
+        .unwrap_err()
+        .has_code("not_signed_in"));
+    assert!(signed_out.server.requests().is_empty());
+
+    let leaky = setup(|_| {
+        Reply::json(
+            500,
+            json!({ "message": "SQLSTATE tok-123 http://internal.example/secret" }),
+        )
+    })
+    .await;
+    let errors = [
+        leaky
+            .client
+            .update_video_title(1, "Secret title")
+            .await
+            .unwrap_err(),
+        leaky.client.delete_video(1).await.unwrap_err(),
+        leaky.client.bulk_delete_videos(&[1]).await.unwrap_err(),
+    ];
+
+    for error in errors {
+        for needle in [
+            "SQLSTATE",
+            "tok-123",
+            "internal.example",
+            "127.0.0.1",
+            "Secret title",
+        ] {
+            assert!(
+                !error.message.contains(needle),
+                "{needle}: {}",
+                error.message
+            );
+        }
+    }
+
+    let logs = leaky.logger.text();
+    assert!(
+        !logs.contains("tok-123")
+            && !logs.contains("Secret title")
+            && !logs.contains("selected_ids")
+    );
+}
+
+// ---- custom thumbnail ---------------------------------------------------------------------
+
+fn png_bytes() -> Vec<u8> {
+    let mut bytes = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
+
+    bytes.extend_from_slice(b"\r\n--not-the-boundary\r\n");
+    bytes
+}
+
+#[tokio::test]
+async fn set_video_image_posts_a_well_formed_multipart_and_returns_the_https_url() {
+    use crate::api::image_upload::ImageKind;
+
+    let t = setup(|_| {
+        Reply::json(
+            200,
+            json!({ "label": "Custom image", "url": "https://cdn.example.com/v/custom.png?v=1" }),
+        )
+    })
+    .await;
+    let data = png_bytes();
+    let url = t
+        .client
+        .set_video_image(12, &data, ImageKind::Png)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        url.as_deref(),
+        Some("https://cdn.example.com/v/custom.png?v=1")
+    );
+
+    let calls = t.server.requests();
+    let call = &calls[0];
+
+    assert_eq!(
+        (call.method.as_str(), call.path.as_str()),
+        ("POST", "/api/app/videos/12/image")
+    );
+    assert_eq!(call.header("authorization"), Some("Bearer tok-123"));
+
+    let content_type = call.header("content-type").unwrap();
+    let boundary = content_type
+        .strip_prefix("multipart/form-data; boundary=")
+        .expect(content_type);
+    let head = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"thumbnail.png\"\r\nContent-Type: image/png\r\n\r\n"
+    );
+    let tail = format!("\r\n--{boundary}--\r\n");
+
+    assert!(call.body.starts_with(head.as_bytes()));
+    assert!(call.body.ends_with(tail.as_bytes()));
+    assert_eq!(
+        &call.body[head.len()..call.body.len() - tail.len()],
+        &data[..]
+    );
+    assert_eq!(
+        call.header("content-length"),
+        Some(call.body.len().to_string().as_str())
+    );
+}
+
+#[tokio::test]
+async fn set_video_image_names_each_type_and_drops_a_non_https_url() {
+    use crate::api::image_upload::ImageKind;
+
+    let t = setup(|_| Reply::json(200, json!({ "url": "http://cdn.example.com/x.jpg" }))).await;
+
+    for (kind, name, mime) in [
+        (ImageKind::Jpeg, "thumbnail.jpg", "image/jpeg"),
+        (ImageKind::Png, "thumbnail.png", "image/png"),
+        (ImageKind::Webp, "thumbnail.webp", "image/webp"),
+    ] {
+        assert_eq!(t.client.set_video_image(1, b"x", kind).await.unwrap(), None);
+
+        let body = String::from_utf8(t.server.requests().last().unwrap().body.clone()).unwrap();
+
+        assert!(body.contains(&format!("filename=\"{name}\"")), "{body}");
+        assert!(
+            body.contains(&format!("Content-Type: {mime}\r\n")),
+            "{body}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn set_video_image_maps_failures_to_safe_errors() {
+    use crate::api::image_upload::ImageKind;
+
+    let rejected = "The image was rejected by the server. Use a JPG, PNG or WebP image up to 5 MB.";
+    let cases: Vec<(u16, Value, &str)> = vec![
+        (404, json!({ "error": "not_found" }), "Video not found."),
+        (
+            422,
+            json!({ "message": "secret", "errors": { "image": ["secret"] } }),
+            rejected,
+        ),
+        (413, json!({}), rejected),
+        (
+            422,
+            json!({ "error": "no_storage_folder", "message": "secret" }),
+            "This video has no storage folder yet.",
+        ),
+        (
+            500,
+            json!({ "error": "image_store_failed", "message": "SQLSTATE /var/www tok-123" }),
+            "Could not save the image.",
+        ),
+        (502, json!({}), "Could not save the image (HTTP 502)."),
+        (
+            401,
+            json!({}),
+            "Your session has expired. Please sign in again.",
+        ),
+    ];
+
+    for (status, body, message) in cases {
+        let t = setup(move |_| Reply::json(status, body.clone())).await;
+        let error = t
+            .client
+            .set_video_image(3, b"x", ImageKind::Jpeg)
+            .await
+            .unwrap_err();
+
+        assert_eq!(error.status, Some(status));
+        assert_eq!(error.message, message);
+
+        let logs = t.logger.text();
+
+        assert!(
+            !logs.contains("tok-123") && !logs.contains("SQLSTATE"),
+            "{logs}"
+        );
+    }
+
+    let busy = setup(|_| Reply::json_with(429, json!({}), &[("Retry-After", "12")])).await;
+    let error = busy
+        .client
+        .set_video_image(3, b"x", ImageKind::Jpeg)
+        .await
+        .unwrap_err();
+
+    assert_eq!(error.retry_after_seconds, Some(12));
+    assert_eq!(
+        error.message,
+        "Too many requests. Please try again in a moment."
+    );
+
+    let unauthorized = setup(|_| Reply::json(401, json!({}))).await;
+
+    unauthorized
+        .client
+        .set_video_image(3, b"x", ImageKind::Jpeg)
+        .await
+        .unwrap_err();
+    assert_eq!(unauthorized.unauthorized.load(Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn delete_video_image_succeeds_and_maps_failures() {
+    let ok = setup(|_| Reply::json(200, json!({ "ok": true }))).await;
+
+    ok.client.delete_video_image(9).await.unwrap();
+
+    let call = &ok.server.requests()[0];
+
+    assert_eq!(
+        (call.method.as_str(), call.path.as_str()),
+        ("DELETE", "/api/app/videos/9/image")
+    );
+
+    let none =
+        setup(|_| Reply::json(404, json!({ "error": "no_custom_image", "message": "x" }))).await;
+    let error = none.client.delete_video_image(9).await.unwrap_err();
+
+    assert!(error.has_code("no_custom_image"));
+    assert_eq!(error.message, "No custom thumbnail to remove.");
+
+    let gone = setup(|_| Reply::json(404, json!({ "error": "not_found" }))).await;
+    let error = gone.client.delete_video_image(9).await.unwrap_err();
+
+    assert!(!error.has_code("no_custom_image"));
+    assert_eq!(error.message, "Video not found.");
+
+    let broken = setup(|_| {
+        Reply::json(
+            500,
+            json!({ "error": "image_delete_failed", "message": "SQLSTATE" }),
+        )
+    })
+    .await;
+
+    assert_eq!(
+        broken
+            .client
+            .delete_video_image(9)
+            .await
+            .unwrap_err()
+            .message,
+        "Could not remove the image."
+    );
+
+    let busy = setup(|_| Reply::json_with(429, json!({}), &[("Retry-After", "3")])).await;
+    let error = busy.client.delete_video_image(9).await.unwrap_err();
+
+    assert_eq!(error.retry_after_seconds, Some(3));
+
+    let expired = setup(|_| Reply::json(401, json!({}))).await;
+
+    expired.client.delete_video_image(9).await.unwrap_err();
+    assert_eq!(expired.unauthorized.load(Ordering::SeqCst), 1);
 }

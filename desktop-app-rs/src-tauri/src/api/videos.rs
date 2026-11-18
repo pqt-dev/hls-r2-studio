@@ -99,7 +99,7 @@ fn cap_opt(value: &mut Option<String>, max_chars: usize) {
 }
 
 /// Keeps only an absolute `https://` URL of sane length.
-fn clean_url(value: &mut Option<String>) {
+pub(crate) fn clean_url(value: &mut Option<String>) {
     let keep = value
         .as_deref()
         .is_some_and(|text| text.len() <= MAX_URL && Url::parse(text).is_ok_and(is_https));
@@ -381,6 +381,122 @@ impl VideoDetail {
         if let Some(grid) = &mut self.embed_storyboard {
             clean_url(&mut grid.url);
         }
+    }
+}
+
+/// The site accepts titles of 1..=255 characters (Laravel counts characters, not bytes).
+pub const MAX_TITLE_CHARS: usize = 255;
+/// `DELETE /api/app/videos/bulk-destroy` takes 1..=100 ids.
+pub const MAX_BULK_DELETE: usize = 100;
+const MAX_DELETE_MESSAGE: usize = 300;
+
+pub const TITLE_REQUIRED: &str = "Title is required.";
+pub const TITLE_TOO_LONG: &str = "Title is too long (255 characters at most).";
+pub const TITLE_INVALID: &str = "Title is invalid.";
+
+/// Trims the title and checks it the way the site does: not empty, at most 255 characters, and
+/// no control characters. Returns the text to send, or a safe English message.
+pub fn normalize_video_title(raw: &str) -> Result<String, &'static str> {
+    let title = raw.trim();
+
+    if title.is_empty() {
+        return Err(TITLE_REQUIRED);
+    }
+
+    if title.chars().count() > MAX_TITLE_CHARS {
+        return Err(TITLE_TOO_LONG);
+    }
+
+    if title.chars().any(char::is_control) {
+        return Err(TITLE_INVALID);
+    }
+
+    Ok(title.to_string())
+}
+
+/// Server text shown to the user: control characters dropped, trimmed and length-capped.
+fn clean_message(raw: &str) -> String {
+    let text: String = raw.chars().filter(|c| !c.is_control()).collect();
+
+    cap_text(text.trim().to_string(), MAX_DELETE_MESSAGE)
+}
+
+/// Outcome of `DELETE /api/app/videos/{id}` (HTTP 200 in all three cases).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum DeleteStatus {
+    Deleted,
+    Skipped,
+    Failed,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VideoDeleteOutcome {
+    pub status: DeleteStatus,
+    /// Sanitized, length-capped server message (never empty).
+    pub message: String,
+}
+
+impl VideoDeleteOutcome {
+    /// `None` when `status` is missing or not one of `deleted|skipped|failed`.
+    pub fn parse(body: &serde_json::Value) -> Option<Self> {
+        let status = match body.get("status")?.as_str()? {
+            "deleted" => DeleteStatus::Deleted,
+            "skipped" => DeleteStatus::Skipped,
+            "failed" => DeleteStatus::Failed,
+            _ => return None,
+        };
+        let message = body
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .map(clean_message)
+            .filter(|text| !text.is_empty())
+            .unwrap_or_else(|| {
+                match status {
+                    DeleteStatus::Deleted => "Video has been deleted.",
+                    DeleteStatus::Skipped => "The video is still processing.",
+                    DeleteStatus::Failed => "The video could not be deleted.",
+                }
+                .to_string()
+            });
+
+        Some(Self { status, message })
+    }
+}
+
+/// Outcome of `DELETE /api/app/videos/bulk-destroy`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BulkDeleteOutcome {
+    pub deleted: u32,
+    pub failed: u32,
+    pub skipped: u32,
+    /// Sanitized, length-capped server message (never empty).
+    pub message: String,
+}
+
+impl BulkDeleteOutcome {
+    /// `None` when a count is missing or not a small non-negative integer.
+    pub fn parse(body: &serde_json::Value) -> Option<Self> {
+        let count = |key: &str| {
+            body.get(key)?
+                .as_u64()
+                .and_then(|n| u32::try_from(n).ok())
+                .filter(|n| *n <= 1_000_000)
+        };
+        let (deleted, failed, skipped) = (count("deleted")?, count("failed")?, count("skipped")?);
+        let message = body
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .map(clean_message)
+            .filter(|text| !text.is_empty())
+            .unwrap_or_else(|| format!("Deleted {deleted}, failed {failed}, skipped {skipped}."));
+
+        Some(Self {
+            deleted,
+            failed,
+            skipped,
+            message,
+        })
     }
 }
 

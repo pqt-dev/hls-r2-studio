@@ -8,6 +8,7 @@ use std::fmt;
 
 use serde_json::{Map, Value};
 
+use crate::api::videos::{normalize_video_title, MAX_BULK_DELETE, MAX_TITLE_CHARS};
 use crate::dto::{CopyKind, VideoLinkKind};
 use crate::secure::Secret;
 use crate::settings::SettingsPatch;
@@ -245,7 +246,7 @@ pub const DEFAULT_VIDEOS_PER_PAGE: u32 = 24;
 pub const MAX_VIDEOS_PER_PAGE: u32 = 50;
 pub const MAX_VIDEOS_QUERY_LENGTH: usize = 100;
 /// Largest integer a JS number holds exactly (the server id is a PHP integer).
-const VIDEO_LINK_KINDS: &[&str] = &["embed-url", "playlist-url"];
+const VIDEO_LINK_KINDS: &[&str] = &["embed-url", "playlist-url", "shortcode"];
 const MAX_VIDEO_ID: i64 = 9_007_199_254_740_991;
 
 /// Validated `videos:list` input.
@@ -296,12 +297,13 @@ pub fn parse_videos_list(payload: Option<Value>) -> Result<VideosListInput> {
     })
 }
 
-/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url`.
+/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url` / `shortcode`.
 pub fn parse_video_link(payload: Option<Value>) -> Result<(i64, VideoLinkKind)> {
     let object = expect_single_object(payload, "video link", &["id", "kind"])?;
     let id = expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)?;
     let kind = match expect_one_of(object.get("kind"), "kind", VIDEO_LINK_KINDS)? {
         "embed-url" => VideoLinkKind::EmbedUrl,
+        "shortcode" => VideoLinkKind::Shortcode,
         _ => VideoLinkKind::PlaylistUrl,
     };
 
@@ -313,6 +315,44 @@ pub fn parse_video_id(payload: Option<Value>) -> Result<i64> {
     let object = expect_single_object(payload, "video", &["id"])?;
 
     expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)
+}
+
+/// `videos:update-title`: `{ id, title }`. The title is trimmed and must be 1..=255 characters
+/// without control characters (the same rule `SiteClient::update_video_title` applies).
+pub fn parse_video_title_update(payload: Option<Value>) -> Result<(i64, String)> {
+    let object = expect_single_object(payload, "video title", &["id", "title"])?;
+    let id = expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)?;
+    // A generous byte bound before the character count, so a huge string is never walked.
+    let raw = expect_string(object.get("title"), "title", 4 * MAX_TITLE_CHARS)?;
+    let title =
+        normalize_video_title(&raw).map_err(|message| IpcValidationError(message.into()))?;
+
+    Ok((id, title))
+}
+
+/// `videos:bulk-delete`: `{ ids }` with 1..=100 positive integers. Duplicates are dropped
+/// (order kept).
+pub fn parse_video_bulk_delete(payload: Option<Value>) -> Result<Vec<i64>> {
+    let object = expect_single_object(payload, "video selection", &["ids"])?;
+    let Some(Value::Array(items)) = object.get("ids") else {
+        return invalid("ids must be an array");
+    };
+
+    if items.is_empty() || items.len() > MAX_BULK_DELETE {
+        return invalid(format!("ids must hold 1 to {MAX_BULK_DELETE} items"));
+    }
+
+    let mut ids: Vec<i64> = Vec::with_capacity(items.len());
+
+    for (index, item) in items.iter().enumerate() {
+        let id = expect_int(Some(item), &format!("ids[{index}]"), 1, MAX_VIDEO_ID)?;
+
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+
+    Ok(ids)
 }
 
 #[cfg(test)]
@@ -638,6 +678,10 @@ mod tests {
             parse_video_link(Some(json!({ "id": 5, "kind": "playlist-url" }))).unwrap(),
             (5, VideoLinkKind::PlaylistUrl)
         );
+        assert_eq!(
+            parse_video_link(Some(json!({ "id": 5, "kind": "shortcode" }))).unwrap(),
+            (5, VideoLinkKind::Shortcode)
+        );
 
         for bad in [
             None,
@@ -646,12 +690,76 @@ mod tests {
             Some(json!({ "id": 0, "kind": "embed-url" })),
             Some(json!({ "id": -2, "kind": "embed-url" })),
             Some(json!({ "id": "5", "kind": "embed-url" })),
-            Some(json!({ "id": 5, "kind": "shortcode" })),
+            Some(json!({ "id": 5, "kind": "Shortcode" })),
+            Some(json!({ "id": 5, "kind": "text" })),
             Some(json!({ "id": 5, "kind": 1 })),
             Some(json!({ "id": 5, "kind": "embed-url", "url": "https://evil.example" })),
             Some(json!({ "id": 5, "kind": "embed-url", "text": "x" })),
         ] {
             assert!(parse_video_link(bad.clone()).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn video_title_update_trims_and_validates() {
+        assert_eq!(
+            parse_video_title_update(Some(json!({ "id": 3, "title": "  Hello  " }))).unwrap(),
+            (3, "Hello".to_string())
+        );
+        // 255 characters (multi-byte) are fine: characters, not bytes.
+        let long = "\u{0111}".repeat(255);
+        assert_eq!(
+            parse_video_title_update(Some(json!({ "id": 1, "title": long.clone() })))
+                .unwrap()
+                .1,
+            long
+        );
+
+        for bad in [
+            None,
+            Some(json!({ "id": 3 })),
+            Some(json!({ "title": "x" })),
+            Some(json!({ "id": 0, "title": "x" })),
+            Some(json!({ "id": 3, "title": "" })),
+            Some(json!({ "id": 3, "title": "   " })),
+            Some(json!({ "id": 3, "title": "a".repeat(256) })),
+            Some(json!({ "id": 3, "title": "a\u{0007}b" })),
+            Some(json!({ "id": 3, "title": "a\nb" })),
+            Some(json!({ "id": 3, "title": 5 })),
+            Some(json!({ "id": 3, "title": "x", "url": "https://evil.example" })),
+        ] {
+            assert!(parse_video_title_update(bad.clone()).is_err(), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn video_bulk_delete_validates_and_dedupes_ids() {
+        assert_eq!(
+            parse_video_bulk_delete(Some(json!({ "ids": [3, 1, 3, 2, 1] }))).unwrap(),
+            vec![3, 1, 2]
+        );
+
+        let max: Vec<i64> = (1..=100).collect();
+        assert_eq!(
+            parse_video_bulk_delete(Some(json!({ "ids": max.clone() }))).unwrap(),
+            max
+        );
+
+        let too_many: Vec<i64> = (1..=101).collect();
+
+        for bad in [
+            None,
+            Some(json!({})),
+            Some(json!({ "ids": [] })),
+            Some(json!({ "ids": [0] })),
+            Some(json!({ "ids": [-1] })),
+            Some(json!({ "ids": [1.5] })),
+            Some(json!({ "ids": ["1"] })),
+            Some(json!({ "ids": 5 })),
+            Some(json!({ "ids": too_many })),
+            Some(json!({ "ids": [1], "extra": true })),
+        ] {
+            assert!(parse_video_bulk_delete(bad.clone()).is_err(), "{bad:?}");
         }
     }
 }

@@ -2,6 +2,7 @@
 
 pub mod app_config;
 pub mod error;
+pub mod image_upload;
 pub mod site_client;
 #[cfg(test)]
 pub mod test_server;

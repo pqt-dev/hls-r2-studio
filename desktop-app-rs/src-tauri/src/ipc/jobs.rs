@@ -35,6 +35,10 @@ pub const CLIPBOARD_FAILED: &str = "Could not copy to the clipboard.";
 pub trait JobsDesktop: Send + Sync {
     /// Native multi-file dialog; `None` when the user cancelled.
     async fn pick_video_files(&self) -> Option<Vec<String>>;
+    /// Native single-image dialog (jpg, jpeg, png, webp); `None` when the user cancelled.
+    async fn pick_image_file(&self) -> Option<String> {
+        None
+    }
     fn write_clipboard(&self, text: &str) -> Result<(), String>;
     /// Opens an https URL that already passed every check.
     fn open_external(&self, url: &str) -> Result<(), String>;
@@ -130,6 +134,12 @@ fn is_friendly_id(id: &str) -> bool {
             .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit())
 }
 
+/// The `[hls_embed_vl id="..."]` shortcode of a video, or `None` when the public id is not
+/// strictly `[a-z0-9]{1,32}`. Shared by the Queue copy and the Library quick action.
+pub(super) fn embed_shortcode(public_id: &str) -> Option<String> {
+    is_friendly_id(public_id).then(|| format!("[hls_embed_vl id=\"{public_id}\"]"))
+}
+
 /// Copies the embed URL or the `[hls_embed_vl id="..."]` shortcode of a registered video.
 pub fn copy(
     queue: &JobQueue,
@@ -150,10 +160,10 @@ pub fn copy(
     };
     let text = match kind {
         CopyKind::EmbedUrl => embed_url.to_string(),
-        CopyKind::Shortcode if is_friendly_id(public_id) => {
-            format!("[hls_embed_vl id=\"{public_id}\"]")
-        }
-        CopyKind::Shortcode => return ActionResult::err(INVALID_VIDEO_ID),
+        CopyKind::Shortcode => match embed_shortcode(public_id) {
+            Some(shortcode) => shortcode,
+            None => return ActionResult::err(INVALID_VIDEO_ID),
+        },
     };
 
     match desktop.write_clipboard(&text) {
@@ -206,6 +216,33 @@ impl<R: Runtime> JobsDesktop for TauriJobsDesktop<R> {
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect(),
             )
+        })
+        .await
+        .ok()
+        .flatten()
+    }
+
+    async fn pick_image_file(&self) -> Option<String> {
+        let parent = self
+            .window
+            .app_handle()
+            .get_webview_window(MAIN_WINDOW_LABEL)
+            .unwrap_or_else(|| self.window.clone());
+
+        // The blocking dialog must not run on the main thread or an async worker.
+        tauri::async_runtime::spawn_blocking(move || {
+            let picked = parent
+                .dialog()
+                .file()
+                .set_parent(&parent)
+                .set_title("Choose a thumbnail image")
+                .add_filter("Images", &["jpg", "jpeg", "png", "webp"])
+                .blocking_pick_file()?;
+
+            picked
+                .into_path()
+                .ok()
+                .map(|p| p.to_string_lossy().into_owned())
         })
         .await
         .ok()
@@ -375,6 +412,7 @@ pub(super) mod tests {
     #[derive(Default)]
     pub(in crate::ipc) struct FakeDesktop {
         pub(in crate::ipc) picked: Option<Vec<String>>,
+        pub(in crate::ipc) picked_image: Option<String>,
         pub(in crate::ipc) clipboard: Mutex<Vec<String>>,
         pub(in crate::ipc) opened: Mutex<Vec<String>>,
         pub(in crate::ipc) clipboard_fails: bool,
@@ -384,6 +422,10 @@ pub(super) mod tests {
     impl JobsDesktop for FakeDesktop {
         async fn pick_video_files(&self) -> Option<Vec<String>> {
             self.picked.clone()
+        }
+
+        async fn pick_image_file(&self) -> Option<String> {
+            self.picked_image.clone()
         }
 
         fn write_clipboard(&self, text: &str) -> Result<(), String> {
