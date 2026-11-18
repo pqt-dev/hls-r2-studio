@@ -85,6 +85,9 @@ describe('Library auto-refresh on a finished job', () => {
     it('shows a notice instead of reloading when there is search text', async () => {
         const { fake, spy } = await openLibrary(() => Promise.resolve(ok([makeVideo()])));
 
+        // Fake timers keep the 400 ms search debounce from firing on a slow machine, which
+        // would turn the typed text into a real search (and a second list call) mid-test.
+        vi.useFakeTimers();
         fireEvent.change(screen.getByLabelText('Search videos'), { target: { value: 'abc' } });
         push(() => fake.emitJobs([RUNNING]));
         push(() => fake.emitJobs([DONE]));
@@ -102,7 +105,7 @@ describe('Library auto-refresh on a finished job', () => {
             );
         });
 
-        await user.click(screen.getByRole('button', { name: 'Next' }));
+        await user.click(screen.getByRole('button', { name: 'Next page' }));
         await screen.findByText('Page 2');
         expect(spy).toHaveBeenCalledTimes(2);
 
@@ -126,7 +129,7 @@ describe('Library auto-refresh on a finished job', () => {
             Promise.resolve(ok([makeVideo({ id: 1, title: 'Holiday' })])),
         );
 
-        await user.click(screen.getByRole('button', { name: /Holiday/ }));
+        await user.click(screen.getByRole('button', { name: /^Holiday/ }));
         push(() => fake.emitJobs([RUNNING]));
         push(() => fake.emitJobs([DONE]));
 

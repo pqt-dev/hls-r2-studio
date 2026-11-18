@@ -1,15 +1,57 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
-import type { VideoListItem, VideoListMeta } from '../../../shared/ipc';
+import {
+    useCallback,
+    useEffect,
+    useLayoutEffect,
+    useRef,
+    useState,
+    type ChangeEvent,
+    type ReactNode,
+} from 'react';
+import type { VideoDetail, VideoListItem, VideoListMeta } from '../../../shared/ipc';
 import type { JobState } from '../../../shared/types';
-import { SearchIcon } from '../components/icons';
+import { ConfirmDialog } from '../components/Dialog';
+import { Pagination } from '../components/Pagination';
+import {
+    GridViewIcon,
+    LinkIcon,
+    ListViewIcon,
+    OpenExternalIcon,
+    SearchIcon,
+    ShortcodeIcon,
+} from '../components/icons';
 import { formatDate, formatDuration, plural } from '../lib/format';
 import { useApp } from '../state/AppProvider';
+import { useToast } from '../state/Toasts';
 import { StatusBadge } from './videoStatus';
 import { VideoDetailPage } from './VideoDetailPage';
 
 const SEARCH_DEBOUNCE_MS = 400;
 const PAGE_SIZE = 24;
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
+
+type ViewMode = 'grid' | 'list';
+
+/** Quick actions of a ready video: Rust fetches the detail and copies/opens, never the renderer. */
+type QuickAction = 'shortcode' | 'embed-url' | 'open';
+
+const VIEW_STORAGE_KEY = 'hls-r2-studio:library-view';
+
+/** The saved view; anything missing, invalid or unreadable means the grid. */
+function readView(): ViewMode {
+    try {
+        return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
+    } catch {
+        return 'grid';
+    }
+}
+
+function saveView(view: ViewMode): void {
+    try {
+        window.localStorage.setItem(VIEW_STORAGE_KEY, view);
+    } catch {
+        // Storage can be blocked: the choice then only lasts until the app closes.
+    }
+}
 
 type Load =
     | { kind: 'loading' }
@@ -36,20 +78,41 @@ function Thumbnail({ url }: { url: string | null }) {
 function VideoRow({
     video,
     onOpen,
+    selecting,
+    picked,
+    disabled,
+    onToggle,
+    view,
+    quickBusy,
+    onQuick,
 }: {
+    view: ViewMode;
+    /** A quick action of this row is in flight: its buttons are disabled. */
+    quickBusy: boolean;
+    onQuick: (video: VideoListItem, action: QuickAction) => void;
     video: VideoListItem;
     onOpen: (video: VideoListItem, opener: HTMLButtonElement) => void;
+    /** Select mode: the whole card is a checkbox label instead of a button that opens details. */
+    selecting: boolean;
+    picked: boolean;
+    disabled: boolean;
+    onToggle: (id: number) => void;
 }) {
     const duration = formatDuration(video.duration);
     const created = formatDate(video.createdAt);
-
-    return (
-        <li className="video-row">
-            <button
-                type="button"
-                className="video-open"
-                onClick={(event) => onOpen(video, event.currentTarget)}
-            >
+    const content =
+        view === 'list' ? (
+            <>
+                <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />
+                <span className="video-title" title={video.title}>
+                    {video.title}
+                </span>
+                <StatusBadge status={video.status} />
+                <span className="video-cell video-duration num">{duration}</span>
+                <span className="video-cell video-created">{created}</span>
+            </>
+        ) : (
+            <>
                 <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />
                 <span className="video-main">
                     <span className="video-title" title={video.title}>
@@ -61,13 +124,69 @@ function VideoRow({
                     </span>
                 </span>
                 <StatusBadge status={video.status} />
+            </>
+        );
+
+    if (selecting) {
+        return (
+            <li className={picked ? 'video-row is-picked' : 'video-row'}>
+                <label className="video-open">
+                    <input
+                        type="checkbox"
+                        className="video-check"
+                        aria-label={`Select ${video.title}`}
+                        checked={picked}
+                        disabled={disabled}
+                        onChange={() => onToggle(video.id)}
+                    />
+                    {content}
+                </label>
+            </li>
+        );
+    }
+
+    // The quick actions are siblings of the open button: never interactive content inside it.
+    const quick = (action: QuickAction, label: string, tip: string, icon: ReactNode) => (
+        <button
+            type="button"
+            className="btn btn-sm btn-accent-share video-quick"
+            aria-label={`${label} for ${video.title}`}
+            title={tip}
+            aria-busy={quickBusy}
+            disabled={quickBusy}
+            onClick={() => onQuick(video, action)}
+        >
+            {icon}
+        </button>
+    );
+
+    return (
+        <li className="video-row">
+            <button
+                type="button"
+                className="video-open"
+                onClick={(event) => onOpen(video, event.currentTarget)}
+            >
+                {content}
             </button>
+            {video.status === 'ready' && (
+                <div
+                    className="video-actions"
+                    role="group"
+                    aria-label={`Quick actions for ${video.title}`}
+                >
+                    {quick('shortcode', 'Copy shortcode', 'Copy shortcode', <ShortcodeIcon />)}
+                    {quick('embed-url', 'Copy embed URL', 'Copy embed URL', <LinkIcon />)}
+                    {quick('open', 'Open in browser', 'Open in browser', <OpenExternalIcon />)}
+                </div>
+            )}
         </li>
     );
 }
 
 export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const { api } = useApp();
+    const toast = useToast();
     const [input, setInput] = useState('');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -82,6 +201,19 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     );
     // True when a finished job added videos the list on screen does not show yet.
     const [stale, setStale] = useState(false);
+    // Select mode: the ids ticked on the page on screen (ids that left the page are ignored).
+    const [selectMode, setSelectMode] = useState(false);
+    const [picked, setPicked] = useState<ReadonlySet<number>>(new Set());
+    const [viewMode, setViewMode] = useState<ViewMode>(readView);
+    const [confirmBulk, setConfirmBulk] = useState(false);
+    const [bulkBusy, setBulkBusy] = useState(false);
+    // Rows with a quick action in flight (the ref also blocks a double click before re-render).
+    const quickBusy = useRef(new Set<number>());
+    const [quickBusyIds, setQuickBusyIds] = useState<ReadonlySet<number>>(new Set());
+    const pendingFocus = useRef<'toggle' | 'bulk' | 'heading' | null>(null);
+    const toggleRef = useRef<HTMLButtonElement>(null);
+    const bulkRef = useRef<HTMLButtonElement>(null);
+    const headingRef = useRef<HTMLHeadingElement>(null);
     const rootRef = useRef<HTMLElement>(null);
     const openerRef = useRef<HTMLButtonElement | null>(null);
     const savedScroll = useRef(0);
@@ -111,7 +243,13 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         } else if (wasOpen.current) {
             if (panel !== null) panel.scrollTop = savedScroll.current;
 
-            openerRef.current?.focus({ preventScroll: true });
+            if (pendingFocus.current === 'heading') {
+                // The video is gone, so there is no row to return to.
+                pendingFocus.current = null;
+                headingRef.current?.focus({ preventScroll: true });
+            } else {
+                openerRef.current?.focus({ preventScroll: true });
+            }
         }
 
         wasOpen.current = isOpen;
@@ -131,6 +269,40 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
 
         return () => document.removeEventListener('keydown', onKeyDown);
     }, [isOpen]);
+
+    // Esc leaves select mode (a dialog or the rename field handles its own Esc first).
+    useEffect(() => {
+        if (!selectMode || isOpen) return;
+
+        function onKeyDown(event: KeyboardEvent): void {
+            if (event.key === 'Escape' && !event.defaultPrevented) {
+                event.preventDefault();
+                setSelectMode(false);
+                setPicked(new Set());
+                pendingFocus.current = 'toggle';
+            }
+        }
+
+        document.addEventListener('keydown', onKeyDown);
+
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [selectMode, isOpen]);
+
+    // A new page or search starts with nothing ticked.
+    useEffect(() => {
+        setPicked(new Set());
+    }, [page, search]);
+
+    // Puts the focus back on a control that was disabled or removed while an action ran.
+    useEffect(() => {
+        if (pendingFocus.current === 'toggle' && !selectMode) {
+            pendingFocus.current = null;
+            toggleRef.current?.focus();
+        } else if (pendingFocus.current === 'bulk' && !bulkBusy && !confirmBulk) {
+            pendingFocus.current = null;
+            bulkRef.current?.focus();
+        }
+    });
 
     // Typing is applied after a pause and always goes back to the first page.
     useEffect(() => {
@@ -234,6 +406,147 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         return unsubscribe;
     }, [api, refresh]);
 
+    function onRenamed(id: number, title: string): void {
+        setSelected((current) => (current?.id === id ? { ...current, title } : current));
+        setLoad((current) =>
+            current.kind === 'ready'
+                ? {
+                      ...current,
+                      items: current.items.map((item) =>
+                          item.id === id ? { ...item, title } : item,
+                      ),
+                  }
+                : current,
+        );
+    }
+
+    /**
+     * The thumbnail changed. List URLs carry no cache-buster, so the row takes the detail's
+     * URLs (cache-busted by the site) instead of reloading the list.
+     */
+    function onImageChanged(video: VideoDetail): void {
+        const thumbnailUrl = video.customImageUrl ?? video.thumbnailUrl;
+
+        setLoad((current) =>
+            current.kind === 'ready'
+                ? {
+                      ...current,
+                      items: current.items.map((item) =>
+                          item.id === video.id
+                              ? { ...item, thumbnailUrl, hasCustomImage: video.hasCustomImage }
+                              : item,
+                      ),
+                  }
+                : current,
+        );
+    }
+
+    /** `removed` rows left the page: reload it, or go back one page when it is now empty. */
+    function reloadAfterRemoval(removed: number): void {
+        const shown = load.kind === 'ready' ? load.items.length : 0;
+
+        if (page > 1 && removed >= shown) setPage(page - 1);
+        else refresh();
+    }
+
+    function onDeleted(): void {
+        pendingFocus.current = 'heading';
+        setSelected(null);
+        reloadAfterRemoval(1);
+    }
+
+    /** Page change from the pager: fetches through the `page` effect and returns to the list top. */
+    function changePage(next: number): void {
+        setPage(next);
+
+        const panel = scroller();
+
+        if (panel !== null) panel.scrollTop = 0;
+    }
+
+    function runQuick(video: VideoListItem, action: QuickAction): void {
+        const id = video.id;
+
+        if (quickBusy.current.has(id)) return;
+
+        quickBusy.current.add(id);
+        setQuickBusyIds(new Set(quickBusy.current));
+
+        const request =
+            action === 'open' ? api.videos.openEmbed(id) : api.videos.copyLink(id, action);
+
+        request
+            .then((result) => {
+                if (!result.ok) toast.show('error', result.error);
+                else if (action === 'open') toast.show('success', 'Opened in your browser.');
+                else
+                    toast.show(
+                        'success',
+                        action === 'shortcode' ? 'Shortcode copied.' : 'Embed URL copied.',
+                    );
+            })
+            .catch(() => toast.show('error', GENERIC_ERROR))
+            .finally(() => {
+                quickBusy.current.delete(id);
+                setQuickBusyIds(new Set(quickBusy.current));
+            });
+    }
+
+    function chooseView(next: ViewMode): void {
+        setViewMode(next);
+        saveView(next);
+    }
+
+    function toggleSelectMode(): void {
+        setSelectMode((on) => !on);
+        setPicked(new Set());
+    }
+
+    function togglePicked(id: number): void {
+        setPicked((current) => {
+            const next = new Set(current);
+
+            if (next.has(id)) next.delete(id);
+            else next.add(id);
+
+            return next;
+        });
+    }
+
+    const items = load.kind === 'ready' ? load.items : [];
+    const pickedIds = items.filter((item) => picked.has(item.id)).map((item) => item.id);
+
+    function deleteSelected(): void {
+        const ids = pickedIds;
+
+        setConfirmBulk(false);
+        setBulkBusy(true);
+        api.videos
+            .bulkDelete(ids)
+            .then((result) => {
+                if (!result.ok) {
+                    toast.show('error', result.error);
+                    pendingFocus.current = 'bulk';
+
+                    return;
+                }
+
+                toast.show(
+                    result.failed > 0 ? 'error' : result.deleted > 0 ? 'success' : 'info',
+                    result.message,
+                );
+                pendingFocus.current = 'toggle';
+                setSelectMode(false);
+                setPicked(new Set());
+                reloadAfterRemoval(result.deleted);
+            })
+            .catch(() => {
+                toast.show('error', GENERIC_ERROR);
+                pendingFocus.current = 'bulk';
+            })
+            .finally(() => setBulkBusy(false));
+    }
+
     function showNewVideos(): void {
         setPage(1);
         refresh();
@@ -253,16 +566,86 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                     id={selected.id}
                     fallbackTitle={selected.title}
                     onBack={closeVideo}
+                    onRenamed={onRenamed}
+                    onDeleted={onDeleted}
+                    onImageChanged={onImageChanged}
                 />
             )}
 
             <div hidden={selected !== null}>
                 <div className="section-head">
-                    <h2 id="library-heading">Library</h2>
-                    <button type="button" className="btn btn-sm" onClick={refresh}>
-                        Refresh
-                    </button>
+                    <h2 id="library-heading" ref={headingRef} tabIndex={-1}>
+                        Library
+                    </h2>
+                    <div className="row">
+                        <div className="segmented" role="group" aria-label="View">
+                            <button
+                                type="button"
+                                className="btn btn-sm"
+                                aria-pressed={viewMode === 'grid'}
+                                onClick={() => chooseView('grid')}
+                            >
+                                <GridViewIcon />
+                                Grid
+                            </button>
+                            <button
+                                type="button"
+                                className="btn btn-sm"
+                                aria-pressed={viewMode === 'list'}
+                                onClick={() => chooseView('list')}
+                            >
+                                <ListViewIcon />
+                                List
+                            </button>
+                        </div>
+                        <button
+                            ref={toggleRef}
+                            type="button"
+                            className="btn btn-sm"
+                            aria-pressed={selectMode}
+                            disabled={bulkBusy}
+                            onClick={toggleSelectMode}
+                        >
+                            Select
+                        </button>
+                        <button type="button" className="btn btn-sm" onClick={refresh}>
+                            Refresh
+                        </button>
+                    </div>
                 </div>
+
+                {selectMode && (
+                    <div className="library-tools" role="toolbar" aria-label="Selection">
+                        <span className="library-count" role="status">
+                            {pickedIds.length} selected
+                        </span>
+                        <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={bulkBusy || items.length === 0}
+                            onClick={() => setPicked(new Set(items.map((item) => item.id)))}
+                        >
+                            Select all on this page
+                        </button>
+                        <button
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={bulkBusy || pickedIds.length === 0}
+                            onClick={() => setPicked(new Set())}
+                        >
+                            Clear
+                        </button>
+                        <button
+                            ref={bulkRef}
+                            type="button"
+                            className="btn btn-sm btn-accent-danger"
+                            disabled={bulkBusy || pickedIds.length === 0}
+                            onClick={() => setConfirmBulk(true)}
+                        >
+                            Delete selected
+                        </button>
+                    </div>
+                )}
 
                 <div className="field library-search">
                     <label htmlFor="library-search">Search videos</label>
@@ -310,39 +693,71 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                 )}
 
                 {load.kind === 'ready' && load.items.length > 0 && (
-                    <ul className="videos" aria-label="Videos">
-                        {load.items.map((video) => (
-                            <VideoRow key={video.id} video={video} onOpen={openVideo} />
-                        ))}
-                    </ul>
+                    <div
+                        className={
+                            viewMode === 'list'
+                                ? selectMode
+                                    ? 'videos-wrap is-list is-selecting'
+                                    : 'videos-wrap is-list'
+                                : 'videos-wrap'
+                        }
+                    >
+                        {viewMode === 'list' && (
+                            <div className="videos-head" aria-hidden="true">
+                                <span>Preview</span>
+                                <span>Title</span>
+                                <span>Status</span>
+                                <span className="video-duration">Duration</span>
+                                <span className="video-created">Created</span>
+                            </div>
+                        )}
+                        <ul
+                            className={viewMode === 'list' ? 'videos videos-list' : 'videos'}
+                            aria-label="Videos"
+                        >
+                            {load.items.map((video) => (
+                                <VideoRow
+                                    key={video.id}
+                                    video={video}
+                                    view={viewMode}
+                                    onOpen={openVideo}
+                                    selecting={selectMode}
+                                    picked={picked.has(video.id)}
+                                    disabled={bulkBusy}
+                                    onToggle={togglePicked}
+                                    quickBusy={quickBusyIds.has(video.id)}
+                                    onQuick={runQuick}
+                                />
+                            ))}
+                        </ul>
+                    </div>
                 )}
 
                 {meta !== null && (
-                    <nav className="pager" aria-label="Pagination">
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            disabled={meta.page <= 1}
-                            onClick={() => setPage(Math.max(1, meta.page - 1))}
-                        >
-                            Previous
-                        </button>
-                        <span className="num" role="status">
-                            Page {meta.page} of {Math.max(1, meta.lastPage)}
-                            {' · '}
-                            {plural(meta.total, 'video')}
-                        </span>
-                        <button
-                            type="button"
-                            className="btn btn-sm"
-                            disabled={meta.page >= meta.lastPage}
-                            onClick={() => setPage(meta.page + 1)}
-                        >
-                            Next
-                        </button>
-                    </nav>
+                    <Pagination
+                        page={meta.page}
+                        lastPage={meta.lastPage}
+                        total={meta.total}
+                        onPageChange={changePage}
+                    />
                 )}
             </div>
+
+            {confirmBulk && (
+                <ConfirmDialog
+                    title={`Delete ${plural(pickedIds.length, 'video')}`}
+                    message={`Delete ${plural(pickedIds.length, 'video')}? This removes ${
+                        pickedIds.length === 1 ? 'it' : 'them'
+                    } from the site and may remove ${
+                        pickedIds.length === 1 ? 'its' : 'their'
+                    } files from storage. This cannot be undone.`}
+                    confirmLabel="Delete"
+                    cancelLabel="Cancel"
+                    danger
+                    onConfirm={deleteSelected}
+                    onCancel={() => setConfirmBulk(false)}
+                />
+            )}
         </section>
     );
 }

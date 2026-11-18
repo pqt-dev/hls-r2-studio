@@ -86,7 +86,7 @@ describe('Library screen', () => {
 
         await screen.findAllByRole('listitem');
         await act(async () => {
-            fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+            fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
         });
         await waitFor(() => expect(spy).toHaveBeenLastCalledWith({ page: 2, perPage: 24 }));
 
@@ -116,14 +116,14 @@ describe('Library screen', () => {
         });
 
         await screen.findByText('Page 1 of 2 · 30 videos');
-        expect(screen.getByRole('button', { name: 'Previous' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Previous page' })).toBeDisabled();
 
-        await user.click(screen.getByRole('button', { name: 'Next' }));
+        await user.click(screen.getByRole('button', { name: 'Next page' }));
         await screen.findByText('Page 2 of 2 · 30 videos');
         expect(spy).toHaveBeenLastCalledWith({ page: 2, perPage: 24 });
-        expect(screen.getByRole('button', { name: 'Next' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Next page' })).toBeDisabled();
 
-        await user.click(screen.getByRole('button', { name: 'Previous' }));
+        await user.click(screen.getByRole('button', { name: 'Previous page' }));
         await screen.findByText('Page 1 of 2 · 30 videos');
         expect(spy).toHaveBeenLastCalledWith({ page: 1, perPage: 24 });
     });

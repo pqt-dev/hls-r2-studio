@@ -3,6 +3,9 @@ import type { JobDto } from '../../../shared/ipc';
 import { formatBytes, formatDateTime, formatRelativeTime, stageLabel } from '../lib/format';
 import { hasDetailsView, isRunning, STATUS_ICON, statusKind } from '../lib/jobState';
 
+/** Accent group of a button (see the accent tokens): meaning, not position. */
+type Accent = 'share' | 'recover' | 'danger';
+
 export type JobAction =
     | 'cancel'
     | 'retry'
@@ -88,23 +91,11 @@ export function JobRow({
     const paused = job.state === 'upload_interrupted';
     const stage = job.waitingForNetwork ? 'Waiting for network…' : stageLabel(job.state);
 
-    const button = (
-        action: JobAction,
-        label: string,
-        enabled = true,
-        danger = false,
-        primary = false,
-    ) =>
+    const button = (action: JobAction, label: string, accent: Accent, enabled = true) =>
         enabled ? (
             <button
                 type="button"
-                className={
-                    danger
-                        ? 'btn btn-sm btn-danger-quiet'
-                        : primary
-                          ? 'btn btn-sm btn-primary'
-                          : 'btn btn-sm'
-                }
+                className={`btn btn-sm btn-accent-${accent}`}
                 disabled={pending}
                 aria-label={`${label}: ${job.fileName}`}
                 onClick={() => onAction(action, job)}
@@ -117,6 +108,7 @@ export function JobRow({
         <li
             className={`job job-${kind}`}
             data-state={job.state}
+            data-job-id={job.id}
             data-network-wait={job.waitingForNetwork ? 'true' : undefined}
         >
             <div className="job-main">
@@ -165,20 +157,20 @@ export function JobRow({
             </div>
 
             <div className="job-actions">
-                {button('resume', 'Resume', job.canResume, false, true)}
-                {button('cancel', 'Cancel', job.canCancel)}
-                {button('retry', paused ? 'Start over' : 'Retry', job.canRetry)}
-                {button('retry-register', 'Retry register', job.canRetryRegister)}
+                {button('resume', 'Resume', 'recover', job.canResume)}
+                {button('cancel', 'Cancel', 'danger', job.canCancel)}
+                {button('retry', paused ? 'Start over' : 'Retry', 'recover', job.canRetry)}
+                {button('retry-register', 'Retry register', 'recover', job.canRetryRegister)}
                 {job.state === 'done' && job.embedUrl !== null && (
                     <>
-                        {button('copy-url', 'Copy embed URL')}
-                        {button('copy-shortcode', 'Copy shortcode')}
-                        {button('open', 'Open on site')}
+                        {button('copy-url', 'Copy embed URL', 'share')}
+                        {button('copy-shortcode', 'Copy shortcode', 'share')}
+                        {button('open', 'Open on site', 'share')}
                     </>
                 )}
-                {job.state === 'done' && button('view-library', 'View in Library')}
-                {hasDetailsView(job.state) && button('details', 'View details')}
-                {button('remove', 'Remove', job.canRemove, true)}
+                {job.state === 'done' && button('view-library', 'View in Library', 'share')}
+                {hasDetailsView(job.state) && button('details', 'View details', 'share')}
+                {button('remove', 'Remove', 'danger', job.canRemove)}
             </div>
         </li>
     );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent } from 'react';
 import type { ActionResult, JobDto } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { DetailsDialog } from '../components/DetailsDialog';
@@ -7,6 +7,7 @@ import { JobRow, useNow, type JobAction } from '../components/JobRow';
 import { QueueBanners } from '../components/QueueBanners';
 import { plural } from '../lib/format';
 import { isRunning } from '../lib/jobState';
+import { sortJobsForQueue } from '../lib/queueOrder';
 import { finishedCount, useApp } from '../state/AppProvider';
 import { useNavigation } from '../state/Navigation';
 import { useToast } from '../state/Toasts';
@@ -27,8 +28,65 @@ export function QueueScreen() {
     const [confirm, setConfirm] = useState<Confirm>(null);
     const [detailsId, setDetailsId] = useState<string | null>(null);
 
+    const listRef = useRef<HTMLUListElement>(null);
+    // The job button that has the focus, so the focus survives a job moving to another group.
+    const focusTarget = useRef<{ id: string; label: string } | null>(null);
+
     const details = detailsId === null ? undefined : jobs.find((job) => job.id === detailsId);
     const finished = finishedCount(jobs);
+    // Display order only; `details` above and the footer counts use the original list.
+    const ordered = useMemo(() => sortJobsForQueue(jobs), [jobs]);
+
+    // Rows are keyed by job id, so a job that changes group is moved, not recreated. Moving a DOM
+    // node can drop its focus: give it back when it vanished with the reorder (not when the user
+    // moved the focus away on purpose; focusout/pointerdown clear the target in that case).
+    useLayoutEffect(() => {
+        const target = focusTarget.current;
+        const list = listRef.current;
+
+        if (target === null || list === null) return;
+
+        const active = document.activeElement;
+
+        if (active !== null && active !== document.body && list.contains(active)) return;
+
+        for (const row of list.querySelectorAll<HTMLElement>('li[data-job-id]')) {
+            if (row.dataset.jobId !== target.id) continue;
+
+            for (const button of row.querySelectorAll<HTMLButtonElement>('button')) {
+                if (button.getAttribute('aria-label') === target.label) {
+                    button.focus({ preventScroll: true });
+                }
+            }
+        }
+    }, [ordered]);
+
+    useEffect(() => {
+        function onPointerDown(event: PointerEvent): void {
+            if (!(event.target instanceof Node) || !listRef.current?.contains(event.target)) {
+                focusTarget.current = null;
+            }
+        }
+
+        document.addEventListener('pointerdown', onPointerDown, true);
+
+        return () => document.removeEventListener('pointerdown', onPointerDown, true);
+    }, []);
+
+    function trackFocus(event: FocusEvent<HTMLUListElement>): void {
+        const button = event.target;
+        const id = button.closest<HTMLElement>('li[data-job-id]')?.dataset.jobId;
+
+        focusTarget.current =
+            id !== undefined && button.tagName === 'BUTTON'
+                ? { id, label: button.getAttribute('aria-label') ?? '' }
+                : null;
+    }
+
+    function releaseFocus(event: FocusEvent<HTMLUListElement>): void {
+        // Focus moving to another element is deliberate; a plain blur (null) may be a DOM move.
+        if (event.relatedTarget !== null) focusTarget.current = null;
+    }
 
     /** Runs an action; failures from the main process are shown as an error toast. */
     async function run(
@@ -115,7 +173,7 @@ export function QueueScreen() {
                     <h2 id="queue-heading">Queue</h2>
                     <button
                         type="button"
-                        className="btn btn-sm"
+                        className="btn btn-sm btn-accent-danger"
                         disabled={finished === 0}
                         onClick={clearFinished}
                     >
@@ -126,8 +184,14 @@ export function QueueScreen() {
                 {jobs.length === 0 ? (
                     <p className="empty">Drop video files here, or click Add videos</p>
                 ) : (
-                    <ul className="jobs" aria-label="Video queue">
-                        {jobs.map((job) => (
+                    <ul
+                        ref={listRef}
+                        className="jobs"
+                        aria-label="Video queue"
+                        onFocus={trackFocus}
+                        onBlur={releaseFocus}
+                    >
+                        {ordered.map((job) => (
                             <JobRow
                                 key={job.id}
                                 job={job}

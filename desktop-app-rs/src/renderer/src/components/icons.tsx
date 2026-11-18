@@ -66,6 +66,82 @@ export function SearchIcon() {
     );
 }
 
+export function GridViewIcon() {
+    return (
+        <Icon>
+            <rect x="3.5" y="3.5" width="5.5" height="5.5" rx="1" />
+            <rect x="11" y="3.5" width="5.5" height="5.5" rx="1" />
+            <rect x="3.5" y="11" width="5.5" height="5.5" rx="1" />
+            <rect x="11" y="11" width="5.5" height="5.5" rx="1" />
+        </Icon>
+    );
+}
+
+export function ListViewIcon() {
+    return (
+        <Icon>
+            <path d="M3.5 5.5h1M3.5 10h1M3.5 14.5h1M7.5 5.5h9M7.5 10h9M7.5 14.5h9" />
+        </Icon>
+    );
+}
+
+/** Two chain links: copy the embed URL. */
+export function LinkIcon() {
+    return (
+        <Icon>
+            <path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-.8.8" />
+            <path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l.8-.8" />
+        </Icon>
+    );
+}
+
+/** Square brackets: copy the `[shortcode]`. */
+export function ShortcodeIcon() {
+    return (
+        <Icon>
+            <path d="M7.5 4.5h-2v11h2M12.5 4.5h2v11h-2" />
+            <path d="M9 10h2" />
+        </Icon>
+    );
+}
+
+/** A list with a play triangle: copy the playlist URL. */
+export function PlaylistIcon() {
+    return (
+        <Icon>
+            <path d="M3.5 5.5h9M3.5 9.5h6M3.5 13.5h4" />
+            <path d="M12.5 11v5l4-2.5z" />
+        </Icon>
+    );
+}
+
+/** A box with an arrow leaving it: open outside the app. */
+export function OpenExternalIcon() {
+    return (
+        <Icon>
+            <path d="M8 4.5H5.5a1.5 1.5 0 0 0-1.5 1.5v8.5A1.5 1.5 0 0 0 5.5 16H14a1.5 1.5 0 0 0 1.5-1.5V12" />
+            <path d="M11.5 3.5h5v5M16.5 3.5 9.5 10.5" />
+        </Icon>
+    );
+}
+
+export function PencilIcon() {
+    return (
+        <Icon>
+            <path d="m12.5 4.5 3 3L7 16H4v-3z" />
+            <path d="m11 6 3 3" />
+        </Icon>
+    );
+}
+
+export function TrashIcon() {
+    return (
+        <Icon>
+            <path d="M4 6h12M8 6V4.5h4V6M5.5 6l.7 9.5h7.6l.7-9.5M8.5 9v4M11.5 9v4" />
+        </Icon>
+    );
+}
+
 /** Placeholder brand mark: a rounded tile with a play triangle. */
 export function BrandMark({ size = 28 }: { size?: number }) {
     return (

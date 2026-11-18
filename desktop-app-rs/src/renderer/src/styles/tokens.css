@@ -1,7 +1,7 @@
 /*
  * Design tokens. Shapes, type and layout follow Fluent 2; tonal colour pairs and state layers
  * follow Material 3 ideas. Three themes: light (default), dark and Windows high contrast.
- * Contrast (WCAG AA) was checked for the text/surface and primary pairs of light and dark.
+ * Contrast (WCAG AA) was checked for the text/surface, primary and accent pairs of light and dark.
  */
 :root {
     color-scheme: light dark;
@@ -70,6 +70,28 @@
     --focus-ring: #0f62c4;
     --scrim: rgb(16 18 22 / 50%);
 
+    /*
+     * Accent groups, by meaning: create (blue), share/open (teal), edit (amber), recover
+     * (violet), danger (red). Each has a tonal container, the text/icon colour on it and a solid
+     * colour for borders. Contrast is scripted: text on container (also under the hover and
+     * pressed layers) >= 4.5:1, solid border against surface and container >= 3:1.
+     */
+    --accent-create: #0f62c4;
+    --accent-create-container: #dbe8fb;
+    --on-accent-create-container: #08376e;
+    --accent-share: #0b7a75;
+    --accent-share-container: #d3f0ee;
+    --on-accent-share-container: #00504d;
+    --accent-edit: #9a5f00;
+    --accent-edit-container: #fdebc8;
+    --on-accent-edit-container: #6b4100;
+    --accent-recover: #6d4ac7;
+    --accent-recover-container: #e7e1fa;
+    --on-accent-recover-container: #4b2a9a;
+    --accent-danger: #c0343c;
+    --accent-danger-container: #fde7e9;
+    --on-accent-danger-container: #8c1f25;
+
     /* State layers: translucent overlays mixed over the element colour */
     --state-hover: rgb(27 28 31 / 6%);
     --state-pressed: rgb(27 28 31 / 12%);
@@ -107,6 +129,22 @@
         --focus-ring: #79b4ff;
         --scrim: rgb(0 0 0 / 60%);
 
+        --accent-create: #79b4ff;
+        --accent-create-container: #1d3a5f;
+        --on-accent-create-container: #d3e5ff;
+        --accent-share: #4fc7bf;
+        --accent-share-container: #12403f;
+        --on-accent-share-container: #c2f0ec;
+        --accent-edit: #e0a63a;
+        --accent-edit-container: #463108;
+        --on-accent-edit-container: #fde3ac;
+        --accent-recover: #a592f0;
+        --accent-recover-container: #35296b;
+        --on-accent-recover-container: #e3dcff;
+        --accent-danger: #ff8a91;
+        --accent-danger-container: #4a1a1e;
+        --on-accent-danger-container: #ffd9db;
+
         --state-hover: rgb(236 236 239 / 8%);
         --state-pressed: rgb(236 236 239 / 14%);
         --state-hover-on-primary: rgb(0 0 0 / 10%);
@@ -143,6 +181,22 @@
         --on-neutral-container: CanvasText;
         --focus-ring: Highlight;
         --scrim: Canvas;
+
+        --accent-create: ButtonText;
+        --accent-create-container: Canvas;
+        --on-accent-create-container: ButtonText;
+        --accent-share: ButtonText;
+        --accent-share-container: Canvas;
+        --on-accent-share-container: ButtonText;
+        --accent-edit: ButtonText;
+        --accent-edit-container: Canvas;
+        --on-accent-edit-container: ButtonText;
+        --accent-recover: ButtonText;
+        --accent-recover-container: Canvas;
+        --on-accent-recover-container: ButtonText;
+        --accent-danger: ButtonText;
+        --accent-danger-container: Canvas;
+        --on-accent-danger-container: ButtonText;
 
         --state-hover: transparent;
         --state-pressed: transparent;

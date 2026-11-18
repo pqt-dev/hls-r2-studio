@@ -171,6 +171,70 @@ h2 {
     color: var(--danger);
 }
 
+/*
+ * Accent buttons: tonal (soft container, coloured text and icon, solid-colour border), grouped
+ * by meaning. They reuse the .btn state layers; forced-colors maps every accent token to system
+ * colours, so these buttons look like plain buttons there.
+ */
+.btn-accent-create,
+.btn-accent-share,
+.btn-accent-edit,
+.btn-accent-recover,
+.btn-accent-danger {
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: center;
+    border-color: var(--btn-accent);
+    background: var(--btn-container);
+    color: var(--btn-on);
+}
+
+.btn-accent-create {
+    --btn-accent: var(--accent-create);
+    --btn-container: var(--accent-create-container);
+    --btn-on: var(--on-accent-create-container);
+}
+
+.btn-accent-share {
+    --btn-accent: var(--accent-share);
+    --btn-container: var(--accent-share-container);
+    --btn-on: var(--on-accent-share-container);
+}
+
+.btn-accent-edit {
+    --btn-accent: var(--accent-edit);
+    --btn-container: var(--accent-edit-container);
+    --btn-on: var(--on-accent-edit-container);
+}
+
+.btn-accent-recover {
+    --btn-accent: var(--accent-recover);
+    --btn-container: var(--accent-recover-container);
+    --btn-on: var(--on-accent-recover-container);
+}
+
+.btn-accent-danger {
+    --btn-accent: var(--accent-danger);
+    --btn-container: var(--accent-danger-container);
+    --btn-on: var(--on-accent-danger-container);
+}
+
+.btn.btn-accent-create:disabled,
+.btn.btn-accent-share:disabled,
+.btn.btn-accent-edit:disabled,
+.btn.btn-accent-recover:disabled,
+.btn.btn-accent-danger:disabled {
+    border-color: var(--border);
+    background: var(--surface);
+    color: var(--on-surface-muted);
+}
+
+.detail-actionbar .icon {
+    width: 16px;
+    height: 16px;
+}
+
 .btn-block {
     width: 100%;
     min-height: 40px;
@@ -1173,6 +1237,50 @@ progress::-moz-progress-bar {
     border-color: var(--border);
 }
 
+/*
+ * Quick actions (copy shortcode / copy embed URL / open): siblings of .video-open. In the grid
+ * they overlay the top-right of the thumbnail, hidden by opacity only so they stay focusable;
+ * they show on hover and while focus is inside the card.
+ */
+.video-actions {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    display: flex;
+    gap: var(--space-1);
+    opacity: 0;
+    transition: opacity var(--dur-fast) var(--ease);
+}
+
+.video-row:hover .video-actions,
+.video-row:focus-within .video-actions {
+    opacity: 1;
+}
+
+@media (hover: none) {
+    .video-actions {
+        opacity: 1;
+    }
+}
+
+.btn.video-quick {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 2px;
+}
+
+.video-quick .icon {
+    width: 16px;
+    height: 16px;
+}
+
+.video-quick[aria-busy='true'] {
+    cursor: progress;
+}
+
 .thumb {
     display: block;
     width: 100%;
@@ -1213,12 +1321,221 @@ progress::-moz-progress-bar {
     line-height: var(--lh-caption);
 }
 
-.pager {
+/* ---- library list view ---------------------------------------------------------------------- */
+
+.segmented {
+    display: inline-flex;
+}
+
+.segmented .btn {
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: center;
+    border-radius: 0;
+}
+
+.segmented .btn:first-child {
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+
+.segmented .btn:last-child {
+    margin-left: -1px;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+
+.segmented .btn[aria-pressed='true'] {
+    border-color: var(--primary);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.videos-wrap {
+    container: library-list / inline-size;
+    --list-cols: 96px minmax(0, 1fr) auto 72px 120px;
+}
+
+.videos-wrap.is-selecting {
+    --list-cols: 20px 96px minmax(0, 1fr) auto 72px 120px;
+}
+
+.videos-head {
+    display: grid;
+    grid-template-columns: var(--list-cols);
+    gap: var(--space-3);
+    align-items: center;
+    padding: 0 var(--space-3) var(--space-2);
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+}
+
+.videos-wrap.is-selecting .videos-head::before {
+    content: '';
+}
+
+.videos-list {
     display: flex;
-    gap: var(--space-4);
+    flex-direction: column;
+    gap: var(--space-2);
+    margin: 0;
+}
+
+.videos-list .video-row {
+    flex-direction: row;
+}
+
+/* List: the actions sit at the end of the row and are always visible, icon-only at any width. */
+.videos-wrap {
+    --quick-w: calc(3 * 28px + 2 * var(--space-1) + var(--space-3));
+}
+
+.videos-wrap.is-list:not(.is-selecting) .video-row {
+    padding-right: var(--quick-w);
+}
+
+.videos-wrap.is-list:not(.is-selecting) .videos-head {
+    padding-right: calc(var(--quick-w) + var(--space-3));
+}
+
+.videos-list .video-actions {
+    top: 50%;
+    right: var(--space-3);
+    opacity: 1;
+    transform: translateY(-50%);
+}
+
+.videos-list .video-open {
+    display: grid;
+    grid-template-columns: var(--list-cols);
+    gap: var(--space-3);
+    align-items: center;
+    padding: var(--space-2) var(--space-3);
+}
+
+.videos-list .video-open > .chip {
+    position: static;
+    justify-self: start;
+}
+
+.videos-list .video-check {
+    position: static;
+}
+
+.videos-list .video-title {
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.videos-list .video-cell {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    white-space: nowrap;
+}
+
+@container library-list (max-width: 699px) {
+    .videos-wrap {
+        --list-cols: 96px minmax(0, 1fr) auto 72px;
+    }
+
+    .videos-wrap.is-selecting {
+        --list-cols: 20px 96px minmax(0, 1fr) auto 72px;
+    }
+
+    .video-created {
+        display: none;
+    }
+}
+
+@container library-list (max-width: 479px) {
+    .videos-wrap {
+        --list-cols: 96px minmax(0, 1fr) auto;
+    }
+
+    .videos-wrap.is-selecting {
+        --list-cols: 20px 96px minmax(0, 1fr) auto;
+    }
+
+    .video-duration {
+        display: none;
+    }
+}
+
+.pager {
+    container: pager / inline-size;
+    display: grid;
+    gap: var(--space-3);
+    justify-items: center;
+    margin-top: var(--space-5);
+}
+
+.pager-summary {
+    color: var(--on-surface-muted);
+}
+
+.pager-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
     align-items: center;
     justify-content: center;
-    margin-top: var(--space-5);
+}
+
+.pager-controls .btn {
+    min-width: 32px;
+    padding-inline: var(--space-2);
+}
+
+.pager-controls .btn[aria-current='page'] {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--on-primary);
+}
+
+.pager-controls .btn[aria-current='page']:hover:not(:disabled)::after {
+    background: var(--state-hover-on-primary);
+}
+
+.pager-gap {
+    min-width: 24px;
+    color: var(--on-surface-muted);
+    text-align: center;
+    user-select: none;
+}
+
+.pager-jump {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    justify-content: center;
+}
+
+.pager-jump label {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+}
+
+.pager-jump input[type='text'] {
+    width: 72px;
+    min-height: 28px;
+    padding: 2px var(--space-2);
+    text-align: center;
+}
+
+.pager-hint {
+    flex-basis: 100%;
+    margin: 0;
+    color: var(--danger);
+    font-size: var(--text-caption);
+    text-align: center;
+}
+
+/* Narrow container: only First / Previous / current / Next / Last stay. */
+@container pager (max-width: 519px) {
+    .pager-controls .pager-number:not([aria-current='page']),
+    .pager-controls .pager-gap {
+        display: none;
+    }
 }
 
 /* ---- video detail page ---------------------------------------------------------------------- */
@@ -1232,7 +1549,57 @@ progress::-moz-progress-bar {
     flex-wrap: wrap;
     gap: var(--space-3);
     align-items: center;
-    margin-bottom: var(--space-4);
+    margin-bottom: var(--space-3);
+}
+
+/*
+ * Sticky action bar under the title row. It sticks to the top of the .panel scroll container
+ * (the negative offsets cancel the panel padding so it spans the full width). Below dialogs
+ * (z-index 20) and toasts (30).
+ */
+.detail-actionbar {
+    position: sticky;
+    top: calc(var(--space-5) * -1);
+    z-index: 5;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+    margin: 0 calc(var(--space-5) * -1) var(--space-4);
+    padding: var(--space-2) var(--space-5);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
+}
+
+.detail-actionbar .action-spacer {
+    flex: 1 1 0;
+}
+
+@media (max-width: 899px) {
+    .detail-actionbar {
+        top: calc(var(--space-4) * -1);
+        margin: 0 calc(var(--space-4) * -1) var(--space-4);
+        padding: var(--space-2) var(--space-4);
+    }
+}
+
+/* Narrow page: the buttons keep their icon and accessible name, the visible label goes away. */
+@container detail (max-width: 639px) {
+    .detail-actionbar .btn-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    .detail-actionbar .btn {
+        min-width: 36px;
+        min-height: 36px;
+        padding: 2px var(--space-2);
+    }
 }
 
 .breadcrumb {
@@ -1287,6 +1654,15 @@ progress::-moz-progress-bar {
     margin-bottom: var(--space-3);
     font-size: var(--text-subtitle);
     font-weight: var(--weight-semibold);
+}
+
+.detail-card-head {
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.detail-card-head > h3 {
+    margin-bottom: 0;
 }
 
 .detail-note {
@@ -1373,6 +1749,54 @@ progress::-moz-progress-bar {
     font-size: var(--text-caption);
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+}
+
+.title-edit {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.title-edit .form-error {
+    margin: 0;
+}
+
+.library-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    margin: 0 0 var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+}
+
+.library-tools .library-count {
+    margin-right: auto;
+    font-weight: var(--weight-semibold);
+}
+
+.video-check {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: 1;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+
+.video-row.is-picked {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary);
+}
+
+.video-open:has(.video-check:focus-visible) {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
 }
 
 /* ---- high contrast: make every boundary and state visible ---------------------------------- */

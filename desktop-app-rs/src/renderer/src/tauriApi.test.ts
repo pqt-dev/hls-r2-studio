@@ -55,6 +55,11 @@ describe('createTauriApi', () => {
         await api.videos.get(7);
         await api.videos.copyLink(7, 'playlist-url');
         await api.videos.openEmbed(7);
+        await api.videos.updateTitle(7, 'New');
+        await api.videos.delete(7);
+        await api.videos.bulkDelete([1, 2]);
+        await api.videos.setImage(7);
+        await api.videos.removeImage(7);
 
         expect(calls).toEqual([
             ['app_get_version', undefined],
@@ -69,6 +74,11 @@ describe('createTauriApi', () => {
             ['videos_get', { payload: { id: 7 } }],
             ['videos_copy_link', { payload: { id: 7, kind: 'playlist-url' } }],
             ['videos_open_embed', { payload: { id: 7 } }],
+            ['videos_update_title', { payload: { id: 7, title: 'New' } }],
+            ['videos_delete', { payload: { id: 7 } }],
+            ['videos_bulk_delete', { payload: { ids: [1, 2] } }],
+            ['videos_set_image', { payload: { id: 7 } }],
+            ['videos_remove_image', { payload: { id: 7 } }],
         ]);
     });
 

@@ -48,7 +48,7 @@ async function openLibrary(options: Options = {}) {
 }
 
 async function openFirst(user: Awaited<ReturnType<typeof openLibrary>>['user']) {
-    await user.click(await screen.findByRole('button', { name: /Holiday/ }));
+    await user.click(await screen.findByRole('button', { name: /^Holiday/ }));
 }
 
 function detail(partial: Partial<VideoDetail>): Options {
@@ -61,7 +61,7 @@ describe('Video detail page', () => {
     it('opens from a row (a real button) and loads the video once', async () => {
         const { user, get } = await openLibrary();
 
-        const row = await screen.findByRole('button', { name: /Holiday/ });
+        const row = await screen.findByRole('button', { name: /^Holiday/ });
 
         expect(row.tagName).toBe('BUTTON');
 
@@ -82,13 +82,13 @@ describe('Video detail page', () => {
     it('opens with the keyboard (Enter and Space)', async () => {
         const { user, get } = await openLibrary();
 
-        (await screen.findByRole('button', { name: /Holiday/ })).focus();
+        (await screen.findByRole('button', { name: /^Holiday/ })).focus();
         await user.keyboard('{Enter}');
         await screen.findByText('Information');
         expect(get).toHaveBeenCalledTimes(1);
 
         await user.click(screen.getByRole('button', { name: '← Library' }));
-        screen.getByRole('button', { name: /Holiday/ }).focus();
+        screen.getByRole('button', { name: /^Holiday/ }).focus();
         await user.keyboard(' ');
         await screen.findByText('Information');
         expect(get).toHaveBeenCalledTimes(2);
@@ -103,8 +103,8 @@ describe('Video detail page', () => {
             },
         });
 
-        await screen.findByRole('button', { name: /Holiday/ });
-        await user.click(screen.getByRole('button', { name: 'Next' }));
+        await screen.findByRole('button', { name: /^Holiday/ });
+        await user.click(screen.getByRole('button', { name: 'Next page' }));
         await screen.findByText('Page 2 of 3 · 30 videos');
         await user.type(screen.getByLabelText('Search videos'), 'ho');
 
@@ -120,7 +120,7 @@ describe('Video detail page', () => {
         expect(screen.getByText('Page 2 of 3 · 30 videos')).toBeVisible();
         expect(screen.queryByText('Information')).toBeNull();
         // The focus goes back to the row that was opened.
-        expect(screen.getByRole('button', { name: /Holiday/ })).toHaveFocus();
+        expect(screen.getByRole('button', { name: /^Holiday/ })).toHaveFocus();
 
         await openFirst(user);
         await screen.findByText('Information');
@@ -387,7 +387,7 @@ describe('Video detail page', () => {
         const { user } = await openLibrary();
         const panel = screen.getByRole('tabpanel');
 
-        await screen.findByRole('button', { name: /Holiday/ });
+        await screen.findByRole('button', { name: /^Holiday/ });
         panel.scrollTop = 240;
         await openFirst(user);
         await screen.findByText('Information');

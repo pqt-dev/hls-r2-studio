@@ -242,6 +242,11 @@ export function createFakeApi(initial: Partial<FakeState> = {}): FakeApi {
             get: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
             copyLink: () => Promise.resolve(OK),
             openEmbed: () => Promise.resolve(OK),
+            updateTitle: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
+            delete: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
+            bulkDelete: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
+            setImage: () => Promise.resolve({ ok: true, canceled: true }),
+            removeImage: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
         },
     };
 

@@ -29,6 +29,11 @@
  *   videos:get                        videos_get               { payload: {id} }
  *   videos:copy-link                  videos_copy_link         { payload: {id,kind} }
  *   videos:open-embed                 videos_open_embed        { payload: {id} }
+ *   videos:update-title               videos_update_title      { payload: {id,title} }
+ *   videos:delete                     videos_delete            { payload: {id} }
+ *   videos:bulk-delete                videos_bulk_delete       { payload: {ids} }
+ *   videos:set-image                  videos_set_image         { payload: {id} }
+ *   videos:remove-image               videos_remove_image      { payload: {id} }
  *
  *   IpcEvents (Rust -> renderer)      Tauri event name
  *   --------------------------------  ----------------
@@ -64,8 +69,12 @@ import type {
     SettingsDto,
     SettingsResult,
     Unsubscribe,
+    VideosBulkDeleteResult,
+    VideosSetImageResult,
+    VideosDeleteResult,
     VideosGetResult,
     VideosListResult,
+    VideosUpdateTitleResult,
 } from '../../shared/ipc';
 
 export type InvokeFn = (command: string, args?: Record<string, unknown>) => Promise<unknown>;
@@ -182,6 +191,13 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
             get: (id) => send<VideosGetResult>(IpcChannels.videosGet, { id }),
             copyLink: (id, kind) => send<ActionResult>(IpcChannels.videosCopyLink, { id, kind }),
             openEmbed: (id) => send<ActionResult>(IpcChannels.videosOpenEmbed, { id }),
+            updateTitle: (id, title) =>
+                send<VideosUpdateTitleResult>(IpcChannels.videosUpdateTitle, { id, title }),
+            delete: (id) => send<VideosDeleteResult>(IpcChannels.videosDelete, { id }),
+            bulkDelete: (ids) =>
+                send<VideosBulkDeleteResult>(IpcChannels.videosBulkDelete, { ids }),
+            setImage: (id) => send<VideosSetImageResult>(IpcChannels.videosSetImage, { id }),
+            removeImage: (id) => send<ActionResult>(IpcChannels.videosRemoveImage, { id }),
         },
     };
 }

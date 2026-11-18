@@ -122,7 +122,7 @@ export function SettingsScreen() {
                         />
                         <button
                             type="button"
-                            className="btn"
+                            className="btn btn-accent-edit"
                             disabled={busyJobs || saving === 'tmp'}
                             onClick={() => void chooseFolder()}
                         >
