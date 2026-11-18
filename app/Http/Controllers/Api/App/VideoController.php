@@ -12,6 +12,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 
 class VideoController extends Controller
 {
@@ -19,16 +20,30 @@ class VideoController extends Controller
 
     private const LIST_COLUMNS = [
         'id', 'public_id', 'title', 'original_filename', 'original_size_bytes', 'status', 'duration',
-        'output_width', 'output_height', 'output_codec', 'disk_prefix', 'playlist_path', 'thumbnail_path',
+        'output_width', 'output_height', 'output_fps', 'output_bitrate_kbps', 'output_codec', 'disk_prefix', 'playlist_path', 'thumbnail_path',
         'custom_image_path', 'storyboards', 'created_at',
     ];
+
+    /** Accepted values of the `sort` query parameter of the list. */
+    private const SORTS = ['newest', 'oldest', 'title_asc', 'title_desc', 'duration_desc', 'size_desc'];
+
+    /** Accepted values of the `status` query parameter of the list (exact match on `videos.status`). */
+    private const STATUSES = ['pending', 'processing', 'ready', 'failed'];
+
+    /** Words of `q` that are used; more are ignored (the text is at most 100 characters anyway). */
+    private const MAX_SEARCH_WORDS = 10;
 
     private const BULK_DELETE_LIMIT = 100;
 
     public function __construct(private VideoManager $videos) {}
 
     /**
-     * Paginated, read-only list of the site's videos (all statuses), newest first.
+     * Paginated, read-only list of the site's videos (all statuses). Newest first unless `sort` says otherwise.
+     *
+     * `status` (optional, whitelisted) keeps only videos in that status; absent means all statuses.
+     * `q` is split on whitespace; every word must appear in the title or the original filename (any order). With
+     * the default MySQL collation (utf8mb4_unicode_ci) LIKE is case- and accent-insensitive; "đ" still differs
+     * from "d" there. `sort` is whitelisted (SORTS); ties are broken by id so pages never overlap.
      */
     public function index(Request $request): JsonResponse
     {
@@ -36,26 +51,36 @@ class VideoController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
             'q' => ['nullable', 'string', 'max:100'],
+            'sort' => ['nullable', 'string', Rule::in(self::SORTS)],
+            'status' => ['nullable', 'string', Rule::in(self::STATUSES)],
         ]);
 
         $search = trim((string) ($validated['q'] ?? ''));
+        $words = array_slice(preg_split('/\s+/u', $search, -1, PREG_SPLIT_NO_EMPTY) ?: [], 0, self::MAX_SEARCH_WORDS);
 
-        $paginator = Video::query()
-            ->when($search !== '', function ($query) use ($search) {
-                $query->where(function ($q) use ($search) {
-                    // "!" is the escape character (same approach as the web dashboard search).
-                    $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $search).'%';
+        $query = Video::query();
 
-                    $q->whereRaw("title LIKE ? ESCAPE '!'", [$pattern])
-                        ->orWhereRaw("original_filename LIKE ? ESCAPE '!'", [$pattern]);
-                });
-            })
-            ->orderByDesc('id')
-            ->paginate(
-                perPage: (int) ($validated['per_page'] ?? 24),
-                columns: self::LIST_COLUMNS,
-                page: (int) ($validated['page'] ?? 1),
-            );
+        if (($validated['status'] ?? null) !== null && $validated['status'] !== '') {
+            $query->where('status', $validated['status']);
+        }
+
+        foreach ($words as $word) {
+            // "!" is the escape character (same approach as the web dashboard search).
+            $pattern = '%'.str_replace(['!', '%', '_'], ['!!', '!%', '!_'], $word).'%';
+
+            $query->where(function ($q) use ($pattern) {
+                $q->whereRaw("title LIKE ? ESCAPE '!'", [$pattern])
+                    ->orWhereRaw("original_filename LIKE ? ESCAPE '!'", [$pattern]);
+            });
+        }
+
+        $this->applySort($query, $validated['sort'] ?? 'newest');
+
+        $paginator = $query->paginate(
+            perPage: (int) ($validated['per_page'] ?? 24),
+            columns: self::LIST_COLUMNS,
+            page: (int) ($validated['page'] ?? 1),
+        );
 
         return response()->json([
             'data' => $paginator->getCollection()->map(fn (Video $video) => $this->listItem($video))->all(),
@@ -341,6 +366,23 @@ class VideoController extends Controller
     /**
      * @return array<string, mixed>
      */
+    /**
+     * Orders the list. Videos without a duration/size (still processing) come last; `id` breaks every tie.
+     *
+     * @param  \Illuminate\Database\Eloquent\Builder<Video>  $query
+     */
+    private function applySort($query, string $sort): void
+    {
+        match ($sort) {
+            'oldest' => $query->orderBy('id'),
+            'title_asc' => $query->orderBy('title')->orderByDesc('id'),
+            'title_desc' => $query->orderByDesc('title')->orderByDesc('id'),
+            'duration_desc' => $query->orderByRaw('duration IS NULL')->orderByDesc('duration')->orderByDesc('id'),
+            'size_desc' => $query->orderByRaw('original_size_bytes IS NULL')->orderByDesc('original_size_bytes')->orderByDesc('id'),
+            default => $query->orderByDesc('id'),
+        };
+    }
+
     private function listItem(Video $video): array
     {
         return [
@@ -353,6 +395,8 @@ class VideoController extends Controller
             'duration' => $video->duration,
             'output_width' => $video->output_width,
             'output_height' => $video->output_height,
+            'output_fps' => $video->output_fps,
+            'output_bitrate_kbps' => $video->output_bitrate_kbps,
             'output_codec' => $video->output_codec,
             'disk_prefix' => $video->disk_prefix,
             'playlist_path' => $video->playlist_path,

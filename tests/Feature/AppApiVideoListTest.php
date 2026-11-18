@@ -51,6 +51,8 @@ class AppApiVideoListTest extends TestCase
             'duration' => 12.5,
             'output_width' => 1280,
             'output_height' => 720,
+            'output_fps' => 29.97,
+            'output_bitrate_kbps' => 2400,
             'output_codec' => 'h264',
             'disk_prefix' => $prefix,
             'playlist_path' => $prefix.'playlist.m3u8',
@@ -75,6 +77,8 @@ class AppApiVideoListTest extends TestCase
                 'duration' => 12.5,
                 'output_width' => 1280,
                 'output_height' => 720,
+                'output_fps' => 29.97,
+                'output_bitrate_kbps' => 2400,
                 'output_codec' => 'h264',
                 'disk_prefix' => $prefix,
                 'playlist_path' => $prefix.'playlist.m3u8',
@@ -99,7 +103,7 @@ class AppApiVideoListTest extends TestCase
 
         $this->assertEqualsCanonicalizing([
             'id', 'public_id', 'title', 'original_filename', 'original_size_bytes', 'status', 'duration',
-            'output_width', 'output_height', 'output_codec', 'disk_prefix', 'playlist_path', 'thumbnail_path',
+            'output_width', 'output_height', 'output_fps', 'output_bitrate_kbps', 'output_codec', 'disk_prefix', 'playlist_path', 'thumbnail_path',
             'custom_image_path', 'storyboards', 'embed_url', 'created_at',
         ], array_keys($item));
         $this->assertStringNotContainsString('secret trace', json_encode($item));
@@ -185,5 +189,138 @@ class AppApiVideoListTest extends TestCase
         $this->list(['page' => 0])->assertUnprocessable()->assertJsonValidationErrors('page');
         $this->list(['page' => 'abc'])->assertUnprocessable()->assertJsonValidationErrors('page');
         $this->list(['q' => str_repeat('a', 101)])->assertUnprocessable()->assertJsonValidationErrors('q');
+    }
+
+    private function ids(array $query): array
+    {
+        return array_column($this->list($query)->assertOk()->json('data'), 'id');
+    }
+
+    public function test_q_requires_every_word_in_any_order(): void
+    {
+        $both = $this->makeVideo(['title' => 'Summer holiday trip', 'original_filename' => 'a.mp4']);
+        $reversed = $this->makeVideo(['title' => 'Trip of the holiday', 'original_filename' => 'b.mp4']);
+        $this->makeVideo(['title' => 'Holiday only', 'original_filename' => 'c.mp4']);
+        $this->makeVideo(['title' => 'Trip only', 'original_filename' => 'd.mp4']);
+
+        $this->assertSame([$reversed->id, $both->id], $this->ids(['q' => ' trip   HOLIDAY ']));
+        $this->list(['q' => 'trip holiday'])->assertJsonPath('meta.total', 2);
+        $this->assertSame([], $this->ids(['q' => 'holiday missing']));
+    }
+
+    public function test_each_word_may_match_title_or_filename(): void
+    {
+        $video = $this->makeVideo(['title' => 'Holiday', 'original_filename' => 'raw-trip.mov']);
+        $this->makeVideo(['title' => 'Holiday', 'original_filename' => 'other.mov']);
+
+        $this->assertSame([$video->id], $this->ids(['q' => 'holiday trip']));
+    }
+
+    public function test_wildcards_are_escaped_per_word(): void
+    {
+        $match = $this->makeVideo(['title' => '100% my_clip done']);
+        $this->makeVideo(['title' => '100 myXclip done']);
+
+        $this->assertSame([$match->id], $this->ids(['q' => '% my_clip']));
+    }
+
+    public function test_default_sort_is_newest_and_oldest_reverses_it(): void
+    {
+        $first = $this->makeVideo(['title' => 'B']);
+        $second = $this->makeVideo(['title' => 'A']);
+
+        $this->assertSame([$second->id, $first->id], $this->ids([]));
+        $this->assertSame([$second->id, $first->id], $this->ids(['sort' => 'newest']));
+        $this->assertSame([$first->id, $second->id], $this->ids(['sort' => 'oldest']));
+    }
+
+    public function test_sort_by_title_uses_id_as_tie_breaker(): void
+    {
+        $b = $this->makeVideo(['title' => 'Banana']);
+        $a1 = $this->makeVideo(['title' => 'Apple']);
+        $a2 = $this->makeVideo(['title' => 'Apple']);
+        $c = $this->makeVideo(['title' => 'Cherry']);
+
+        $this->assertSame([$a2->id, $a1->id, $b->id, $c->id], $this->ids(['sort' => 'title_asc']));
+        $this->assertSame([$c->id, $b->id, $a2->id, $a1->id], $this->ids(['sort' => 'title_desc']));
+    }
+
+    public function test_sort_by_duration_and_size_puts_missing_values_last(): void
+    {
+        $short = $this->makeVideo(['title' => 'Short', 'duration' => 10, 'original_size_bytes' => 5000]);
+        $long = $this->makeVideo(['title' => 'Long', 'duration' => 300, 'original_size_bytes' => 100]);
+        $unknown = $this->makeVideo(['title' => 'Unknown', 'status' => 'processing']);
+
+        $this->assertSame([$long->id, $short->id, $unknown->id], $this->ids(['sort' => 'duration_desc']));
+        $this->assertSame([$short->id, $long->id, $unknown->id], $this->ids(['sort' => 'size_desc']));
+    }
+
+    public function test_sort_and_search_combine_and_paginate_without_overlap(): void
+    {
+        $ids = [];
+
+        foreach (['d', 'b', 'e', 'a', 'c'] as $letter) {
+            $ids[$letter] = $this->makeVideo(['title' => "Clip $letter"])->id;
+        }
+
+        $this->makeVideo(['title' => 'Other', 'original_filename' => 'x.mp4']);
+
+        $page1 = array_column($this->list(['q' => 'clip', 'sort' => 'title_asc', 'per_page' => 2, 'page' => 1])->json('data'), 'id');
+        $page2 = array_column($this->list(['q' => 'clip', 'sort' => 'title_asc', 'per_page' => 2, 'page' => 2])->json('data'), 'id');
+        $page3 = array_column($this->list(['q' => 'clip', 'sort' => 'title_asc', 'per_page' => 2, 'page' => 3])->json('data'), 'id');
+
+        $this->assertSame([$ids['a'], $ids['b']], $page1);
+        $this->assertSame([$ids['c'], $ids['d']], $page2);
+        $this->assertSame([$ids['e']], $page3);
+    }
+
+    public function test_invalid_sort_returns_422(): void
+    {
+        $this->list(['sort' => 'random'])->assertUnprocessable()->assertJsonValidationErrors('sort');
+        $this->list(['sort' => 'id; DROP TABLE videos'])->assertUnprocessable()->assertJsonValidationErrors('sort');
+    }
+
+    public function test_status_filter_keeps_only_that_status(): void
+    {
+        $ready = $this->makeVideo(['title' => 'R', 'status' => 'ready']);
+        $processing = $this->makeVideo(['title' => 'P', 'status' => 'processing']);
+        $failed = $this->makeVideo(['title' => 'F', 'status' => 'failed']);
+        $pending = $this->makeVideo(['title' => 'N', 'status' => 'pending']);
+
+        $this->assertSame([$ready->id], $this->ids(['status' => 'ready']));
+        $this->assertSame([$processing->id], $this->ids(['status' => 'processing']));
+        $this->assertSame([$failed->id], $this->ids(['status' => 'failed']));
+        $this->assertSame([$pending->id], $this->ids(['status' => 'pending']));
+        $this->list(['status' => 'ready'])->assertJsonPath('meta.total', 1);
+    }
+
+    public function test_absent_or_blank_status_returns_every_status(): void
+    {
+        $this->makeVideo(['status' => 'ready']);
+        $this->makeVideo(['status' => 'failed']);
+
+        $this->list()->assertOk()->assertJsonPath('meta.total', 2);
+        $this->list(['status' => ''])->assertOk()->assertJsonPath('meta.total', 2);
+    }
+
+    public function test_status_combines_with_search_sort_and_pagination(): void
+    {
+        $a = $this->makeVideo(['title' => 'Clip a', 'status' => 'ready', 'original_filename' => 'x.mp4']);
+        $c = $this->makeVideo(['title' => 'Clip c', 'status' => 'ready', 'original_filename' => 'x.mp4']);
+        $b = $this->makeVideo(['title' => 'Clip b', 'status' => 'ready', 'original_filename' => 'x.mp4']);
+        $this->makeVideo(['title' => 'Clip z', 'status' => 'failed', 'original_filename' => 'x.mp4']);
+        $this->makeVideo(['title' => 'Other', 'status' => 'ready', 'original_filename' => 'y.mp4']);
+
+        $query = ['status' => 'ready', 'q' => 'clip', 'sort' => 'title_asc', 'per_page' => 2];
+
+        $this->assertSame([$a->id, $b->id], $this->ids($query + ['page' => 1]));
+        $this->assertSame([$c->id], $this->ids($query + ['page' => 2]));
+        $this->list($query)->assertJsonPath('meta.total', 3);
+    }
+
+    public function test_invalid_status_returns_422(): void
+    {
+        $this->list(['status' => 'done'])->assertUnprocessable()->assertJsonValidationErrors('status');
+        $this->list(['status' => "ready' OR 1=1"])->assertUnprocessable()->assertJsonValidationErrors('status');
     }
 }
