@@ -120,7 +120,8 @@ describe('Login screen', () => {
     it('unsubscribes from all events on unmount', async () => {
         const { fake, unmount } = await renderApp();
 
-        expect(fake.listenerCount()).toBe(3);
+        // Auth, jobs and summary (app state) plus the jobs listener of the Home screen.
+        expect(fake.listenerCount()).toBe(4);
         unmount();
         expect(fake.listenerCount()).toBe(0);
     });

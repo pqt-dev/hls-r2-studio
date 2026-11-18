@@ -1799,11 +1799,319 @@ progress::-moz-progress-bar {
     outline-offset: -2px;
 }
 
+/* ---- home ---------------------------------------------------------------------------------- */
+
+.home {
+    container: home / inline-size;
+    display: grid;
+    gap: var(--space-4);
+}
+
+.home-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3) var(--space-4);
+    align-items: center;
+    justify-content: space-between;
+}
+
+.home-greeting {
+    min-width: 0;
+}
+
+.home-greeting h2 {
+    font-size: var(--text-title);
+    line-height: var(--lh-title);
+    overflow-wrap: anywhere;
+}
+
+.home-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+}
+
+@container home (min-width: 720px) {
+    .home-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .home-card-wide {
+        grid-column: 1 / -1;
+    }
+}
+
+.home-card {
+    display: grid;
+    align-content: start;
+    gap: var(--space-3);
+    min-width: 0;
+    padding: var(--space-4);
+}
+
+.home-card-head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+}
+
+.home-card-head h3 {
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-subtitle);
+}
+
+.home-error {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+}
+
+.tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: var(--space-3);
+    padding: 0;
+    list-style: none;
+}
+
+/* Tile colours reuse the chip pairs (container + text colour of the same meaning). */
+.tile {
+    display: grid;
+    gap: var(--space-1);
+    width: 100%;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--neutral-container);
+    color: var(--on-neutral-container);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.tile:hover {
+    background-image: linear-gradient(var(--state-hover), var(--state-hover));
+}
+
+.tile:active {
+    background-image: linear-gradient(var(--state-pressed), var(--state-pressed));
+}
+
+.tile-value {
+    font-size: var(--text-title);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-title);
+}
+
+.tile-label {
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-caption);
+    /* A longer label wraps to a second line instead of being cut off. */
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
+
+.tile-total {
+    background-color: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.tile-ready {
+    background-color: var(--success-container);
+    color: var(--success);
+}
+
+.tile-processing {
+    background-color: var(--warning-container);
+    color: var(--warning);
+}
+
+.tile-failed {
+    background-color: var(--danger-container);
+    color: var(--danger);
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+    gap: var(--space-3);
+}
+
+.stats dt {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+}
+
+.stats dd {
+    font-size: var(--text-title);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-title);
+}
+
+.recent,
+.attention,
+.log-list {
+    display: grid;
+    gap: var(--space-2);
+    padding: 0;
+    list-style: none;
+}
+
+.recent-row {
+    display: grid;
+    grid-template-columns: 64px minmax(0, 1fr) auto auto auto;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+/* The shared quick actions sit in the row instead of overlaying a thumbnail. */
+.recent-row .video-actions {
+    position: static;
+    opacity: 1;
+}
+
+.recent-row .thumb {
+    border-radius: var(--radius-xs);
+}
+
+.recent-title,
+.attention-title,
+.log-title {
+    min-width: 0;
+    padding: 0;
+    overflow: hidden;
+    border: 0;
+    background: none;
+    color: var(--primary);
+    font: inherit;
+    font-weight: var(--weight-semibold);
+    text-align: left;
+    text-decoration: underline;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+@container home (max-width: 479px) {
+    .recent-row {
+        grid-template-columns: 64px minmax(0, 1fr) auto;
+    }
+
+    .recent-duration {
+        display: none;
+    }
+
+    .recent-row .video-actions {
+        grid-column: 2 / -1;
+    }
+}
+
+.attention-row {
+    display: grid;
+    gap: 2px;
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border);
+}
+
+.attention-message {
+    color: var(--danger);
+    overflow-wrap: anywhere;
+}
+
+.attention-local {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* ---- logs ---------------------------------------------------------------------------------- */
+
+.logs {
+    display: grid;
+    gap: var(--space-4);
+    align-content: start;
+}
+
+.logs-filter {
+    justify-self: start;
+}
+
+.log-sections {
+    display: grid;
+    gap: var(--space-5);
+}
+
+.log-section {
+    display: grid;
+    gap: var(--space-2);
+}
+
+.log-section h3 {
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-subtitle);
+}
+
+.log-row {
+    display: grid;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+}
+
+.log-main {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.log-title {
+    flex: 1 1 auto;
+}
+
+.log-time {
+    flex: none;
+}
+
+.log-progress {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+}
+
+.log-progress progress {
+    flex: 1 1 auto;
+}
+
+.log-error {
+    color: var(--danger);
+    overflow-wrap: anywhere;
+}
+
+.log-details {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: start;
+}
+
+.log-details .log {
+    width: 100%;
+}
+
 /* ---- high contrast: make every boundary and state visible ---------------------------------- */
 
 @media (forced-colors: active) {
     .card,
     .job,
+    .log-row,
     .video-row,
     .dialog,
     .toast,
@@ -1836,6 +2144,19 @@ progress::-moz-progress-bar {
         border-color: GrayText;
         color: GrayText;
         opacity: 1;
+    }
+
+    .tile {
+        border-color: ButtonText;
+        forced-color-adjust: none;
+        background: Canvas;
+        color: CanvasText;
+    }
+
+    .recent-title,
+    .attention-title,
+    .log-title {
+        color: LinkText;
     }
 
     progress {

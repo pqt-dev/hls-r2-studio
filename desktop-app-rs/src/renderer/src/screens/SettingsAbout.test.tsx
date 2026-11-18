@@ -11,15 +11,16 @@ describe('Tabs', () => {
     it('switches panels and supports arrow-key navigation', async () => {
         const { user } = await renderApp();
 
-        expect(screen.getByRole('tab', { name: 'Queue' })).toHaveAttribute('aria-selected', 'true');
+        // Home is the first and default tab; Settings is now the fifth (Logs sits before it).
+        expect(screen.getByRole('tab', { name: 'Home' })).toHaveAttribute('aria-selected', 'true');
 
-        screen.getByRole('tab', { name: 'Queue' }).focus();
-        await user.keyboard('{ArrowRight}');
+        screen.getByRole('tab', { name: 'Home' }).focus();
+        await user.keyboard('{ArrowRight}{ArrowRight}');
         expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute(
             'aria-selected',
             'true',
         );
-        await user.keyboard('{ArrowRight}');
+        await user.keyboard('{ArrowRight}{ArrowRight}');
         expect(screen.getByRole('tab', { name: 'Settings' })).toHaveAttribute(
             'aria-selected',
             'true',
@@ -30,7 +31,7 @@ describe('Tabs', () => {
         await user.keyboard('{End}');
         expect(screen.getByRole('tab', { name: 'About' })).toHaveAttribute('aria-selected', 'true');
         await user.keyboard('{ArrowRight}');
-        expect(screen.getByRole('tab', { name: 'Queue' })).toHaveAttribute('aria-selected', 'true');
+        expect(screen.getByRole('tab', { name: 'Home' })).toHaveAttribute('aria-selected', 'true');
     });
 });
 

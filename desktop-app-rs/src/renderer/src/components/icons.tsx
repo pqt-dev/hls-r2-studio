@@ -21,6 +21,15 @@ function Icon({ children }: { children: ReactNode }) {
     );
 }
 
+export function HomeIcon() {
+    return (
+        <Icon>
+            <path d="M3.5 9.5 10 4l6.5 5.5" />
+            <path d="M5 8.5V16h10V8.5M8.5 16v-4h3v4" />
+        </Icon>
+    );
+}
+
 export function QueueIcon() {
     return (
         <Icon>
@@ -34,6 +43,16 @@ export function LibraryIcon() {
         <Icon>
             <rect x="3" y="4" width="14" height="12" rx="2" />
             <path d="M8.5 7.5v5l4-2.5z" />
+        </Icon>
+    );
+}
+
+/** A page with text lines: the site's processing logs. */
+export function LogsIcon() {
+    return (
+        <Icon>
+            <path d="M5.5 3.5h6l3.5 3.5v9a1 1 0 0 1-1 1h-8.5a1 1 0 0 1-1-1v-11.5a1 1 0 0 1 1-1z" />
+            <path d="M11.5 3.5V7H15M7.5 10.5h5M7.5 13.5h5" />
         </Icon>
     );
 }

@@ -1,25 +1,35 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { AboutIcon, BrandMark, LibraryIcon, QueueIcon, SettingsIcon } from '../components/icons';
+import {
+    AboutIcon,
+    BrandMark,
+    HomeIcon,
+    LibraryIcon,
+    LogsIcon,
+    QueueIcon,
+    SettingsIcon,
+} from '../components/icons';
 import { siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
-import { NavigationContext, type NavigationApi } from '../state/Navigation';
+import { NavigationContext, type NavigationApi, type Tab } from '../state/Navigation';
 import { AboutScreen } from './AboutScreen';
+import { HomeScreen } from './HomeScreen';
 import { LibraryScreen } from './LibraryScreen';
+import { LogsScreen } from './LogsScreen';
 import { QueueScreen } from './QueueScreen';
 import { SettingsScreen } from './SettingsScreen';
 
-type Tab = 'queue' | 'library' | 'settings' | 'about';
-
 const TABS: ReadonlyArray<{ id: Tab; label: string; icon: ReactNode }> = [
+    { id: 'home', label: 'Home', icon: <HomeIcon /> },
     { id: 'queue', label: 'Queue', icon: <QueueIcon /> },
     { id: 'library', label: 'Library', icon: <LibraryIcon /> },
+    { id: 'logs', label: 'Logs', icon: <LogsIcon /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon /> },
     { id: 'about', label: 'About', icon: <AboutIcon /> },
 ];
 
 export function MainScreen() {
     const { auth, settings, summary } = useApp();
-    const [tab, setTab] = useState<Tab>('queue');
+    const [tab, setTab] = useState<Tab>('home');
     // The video the Library should open when it mounts; cleared by any tab change of the user.
     const [libraryVideoId, setLibraryVideoId] = useState<number | undefined>(undefined);
     const refs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
@@ -40,6 +50,12 @@ export function MainScreen() {
                 setTab('library');
                 // The detail page takes focus itself; otherwise the selected tab does.
                 if (id === undefined) refs.current.library?.focus();
+            },
+            openTab: (next) => {
+                setLibraryVideoId(undefined);
+                setTab(next);
+                // The clicked button leaves the page with its screen: the selected tab takes focus.
+                refs.current[next]?.focus();
             },
         }),
         [],
@@ -154,8 +170,10 @@ export function MainScreen() {
                         aria-labelledby={`tab-${tab}`}
                     >
                         <div className="panel-inner">
+                            {tab === 'home' && <HomeScreen />}
                             {tab === 'queue' && <QueueScreen />}
                             {tab === 'library' && <LibraryScreen initialVideoId={libraryVideoId} />}
+                            {tab === 'logs' && <LogsScreen />}
                             {tab === 'settings' && <SettingsScreen />}
                             {tab === 'about' && <AboutScreen />}
                         </div>

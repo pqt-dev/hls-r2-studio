@@ -7,6 +7,9 @@ import type {
     AuthState,
     DiagnosticsDto,
     JobDto,
+    LogCounts,
+    LogItem,
+    Overview,
     PickDirectoryResult,
     QueueSummary,
     RendererApi,
@@ -86,6 +89,35 @@ export function makeVideoDetail(partial: Partial<VideoDetail> = {}): VideoDetail
         embedStoryboard: null,
         createdAt: '2026-01-01T10:00:00.000Z',
         updatedAt: '2026-01-02T10:00:00.000Z',
+        ...partial,
+    };
+}
+
+export function makeLogItem(partial: Partial<LogItem> = {}): LogItem {
+    return {
+        id: 1,
+        publicId: 'abcdefghijkl',
+        title: 'Holiday video',
+        originalFilename: 'holiday.mp4',
+        status: 'ready',
+        stage: null,
+        progress: null,
+        errorMessage: null,
+        errorDetail: null,
+        failedAt: null,
+        createdAt: '2026-01-01T10:00:00.000Z',
+        updatedAt: '2026-01-01T10:05:00.000Z',
+        ...partial,
+    };
+}
+
+export function makeLogCounts(partial: Partial<LogCounts> = {}): LogCounts {
+    return { total: 0, success: 0, error: 0, processing: 0, ...partial };
+}
+
+export function makeOverview(partial: Partial<Overview> = {}): Overview {
+    return {
+        videos: { total: 0, ready: 0, processing: 0, failed: 0 },
         ...partial,
     };
 }
@@ -247,6 +279,20 @@ export function createFakeApi(initial: Partial<FakeState> = {}): FakeApi {
             bulkDelete: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
             setImage: () => Promise.resolve({ ok: true, canceled: true }),
             removeImage: () => Promise.resolve({ ok: false, error: 'Video not found.' }),
+        },
+        overview: {
+            get: () => Promise.resolve({ ok: true, overview: makeOverview() }),
+        },
+        logs: {
+            get: () =>
+                Promise.resolve({
+                    ok: true,
+                    view: 'summary',
+                    counts: makeLogCounts(),
+                    success: [],
+                    error: [],
+                    processing: [],
+                }),
         },
     };
 

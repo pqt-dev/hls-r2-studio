@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { JobDto } from '../../../shared/ipc';
 import type { JobState } from '../../../shared/types';
 import { makeJob, makeSummary } from '../testing/fakeApi';
-import { push, renderApp } from '../testing/renderApp';
+import { push, renderQueue } from '../testing/renderApp';
 
 const EMBED = 'https://site.example.com/embed/abc123';
 
@@ -127,17 +127,17 @@ function actionsIn(item: HTMLElement): string[] {
 
 describe('Queue screen', () => {
     it('shows the empty state and the drop zone', async () => {
-        await renderApp();
+        await renderQueue();
 
         expect(
-            screen.getAllByText('Drop video files here, or click Add videos').length,
+            screen.getAllByText('Drop videos here to upload, or click Upload videos').length,
         ).toBeGreaterThan(0);
-        expect(screen.getByRole('button', { name: 'Add videos' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Upload videos' })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Clear finished' })).toBeDisabled();
     });
 
     it.each(CASES)('renders a $state job with the right stage and actions', async (c) => {
-        await renderApp({ jobs: [makeJob({ id: 'x', state: c.state, ...c.job })] });
+        await renderQueue({ jobs: [makeJob({ id: 'x', state: c.state, ...c.job })] });
 
         const item = screen.getByRole('listitem');
 
@@ -159,7 +159,7 @@ describe('Queue screen', () => {
     });
 
     it('shows a paused upload with its message, help text and a non-color status icon', async () => {
-        await renderApp({
+        await renderQueue({
             jobs: [
                 makeJob({
                     id: 'p',
@@ -185,7 +185,7 @@ describe('Queue screen', () => {
     });
 
     it('shows "Waiting for network" while an upload retries, keeping the progress bar', async () => {
-        const { fake } = await renderApp({
+        const { fake } = await renderQueue({
             jobs: [
                 makeJob({
                     state: 'uploading',
@@ -230,7 +230,7 @@ describe('Queue screen', () => {
             });
 
         it('Resume calls the API directly without a confirmation', async () => {
-            const { fake, user } = await renderApp({ jobs: [paused()] });
+            const { fake, user } = await renderQueue({ jobs: [paused()] });
             const resume = vi.spyOn(fake.api.jobs, 'resume');
 
             await user.click(screen.getByRole('button', { name: /^Resume:/ }));
@@ -256,7 +256,7 @@ describe('Queue screen', () => {
                 api: 'remove' as const,
             },
         ])('$title asks first and only calls the API after confirming', async (c) => {
-            const { fake, user } = await renderApp({ jobs: [paused()] });
+            const { fake, user } = await renderQueue({ jobs: [paused()] });
             const spy = vi.spyOn(fake.api.jobs, c.api);
 
             await user.click(screen.getByRole('button', { name: c.button }));
@@ -276,7 +276,7 @@ describe('Queue screen', () => {
             { button: /^Start over:/, cancel: 'Keep paused', api: 'retry' as const },
             { button: /^Remove:/, cancel: 'Keep', api: 'remove' as const },
         ])('the cancel button does nothing ($api)', async (c) => {
-            const { fake, user } = await renderApp({ jobs: [paused()] });
+            const { fake, user } = await renderQueue({ jobs: [paused()] });
             const spy = vi.spyOn(fake.api.jobs, c.api);
 
             await user.click(screen.getByRole('button', { name: c.button }));
@@ -289,7 +289,7 @@ describe('Queue screen', () => {
         it.each([{ button: /^Start over:/ }, { button: /^Remove:/ }])(
             'Escape closes the dialog and restores focus to the opener',
             async (c) => {
-                const { fake, user } = await renderApp({ jobs: [paused()] });
+                const { fake, user } = await renderQueue({ jobs: [paused()] });
                 const retry = vi.spyOn(fake.api.jobs, 'retry');
                 const remove = vi.spyOn(fake.api.jobs, 'remove');
                 const opener = screen.getByRole('button', { name: c.button });
@@ -305,7 +305,7 @@ describe('Queue screen', () => {
         );
 
         it('other states keep Retry and Remove without a confirmation', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'f', state: 'failed', canRetry: true, canRemove: true })],
             });
             const retry = vi.spyOn(fake.api.jobs, 'retry');
@@ -321,7 +321,7 @@ describe('Queue screen', () => {
     });
 
     it('shows an error toast when Resume is refused', async () => {
-        const { fake, user } = await renderApp({
+        const { fake, user } = await renderQueue({
             jobs: [makeJob({ id: 'p', state: 'upload_interrupted', canResume: true })],
         });
 
@@ -334,7 +334,7 @@ describe('Queue screen', () => {
     });
 
     it('shows the file name with a tooltip, formatted size and relative time', async () => {
-        await renderApp({
+        await renderQueue({
             jobs: [
                 makeJob({
                     fileName: 'a-very-long-name.mp4',
@@ -354,7 +354,7 @@ describe('Queue screen', () => {
     });
 
     it('updates the progress bar when a jobs:updated event is pushed', async () => {
-        const { fake } = await renderApp({
+        const { fake } = await renderQueue({
             jobs: [makeJob({ state: 'transcoding', progress: 10, canCancel: true })],
         });
 
@@ -371,7 +371,7 @@ describe('Queue screen', () => {
     });
 
     it('renders the summary footer from queue:summary events', async () => {
-        const { fake } = await renderApp();
+        const { fake } = await renderQueue();
 
         push(() => fake.emitSummary(makeSummary({ running: 2, waiting: 3, done: 4, failed: 1 })));
 
@@ -385,14 +385,14 @@ describe('Queue screen', () => {
     });
 
     it('counts paused uploads under "need attention" in the footer', async () => {
-        const { fake } = await renderApp();
+        const { fake } = await renderQueue();
 
         push(() => fake.emitSummary(makeSummary({ attention: 2, total: 2 })));
         expect(screen.getByText('2 need attention').closest('footer')).toBeInTheDocument();
     });
 
     it('computes the local attention count from the jobs before the first summary', async () => {
-        await renderApp({
+        await renderQueue({
             jobs: [
                 makeJob({ id: 'a', state: 'upload_interrupted' }),
                 makeJob({ id: 'b', state: 'register_failed' }),
@@ -403,7 +403,7 @@ describe('Queue screen', () => {
     });
 
     it('adds dropped files through the preload helper', async () => {
-        const { fake } = await renderApp();
+        const { fake } = await renderQueue();
         const addDropped = vi.spyOn(fake.api.jobs, 'addDroppedFiles');
         const files = [
             new File(['a'], 'one.mp4', { type: 'video/mp4' }),
@@ -418,7 +418,7 @@ describe('Queue screen', () => {
     });
 
     it('ignores drops without files and highlights the zone while dragging', async () => {
-        const { fake } = await renderApp();
+        const { fake } = await renderQueue();
         const addDropped = vi.spyOn(fake.api.jobs, 'addDroppedFiles');
         const zone = screen.getByTestId('dropzone');
 
@@ -429,15 +429,15 @@ describe('Queue screen', () => {
         expect(addDropped).not.toHaveBeenCalled();
     });
 
-    it('opens the native dialog from the Add videos button and reports skipped files', async () => {
-        const { fake, user } = await renderApp();
+    it('opens the native dialog from the Upload videos button and reports skipped files', async () => {
+        const { fake, user } = await renderQueue();
 
         vi.spyOn(fake.api.jobs, 'addFiles').mockResolvedValue({
             added: 1,
             rejected: [{ name: 'notes.txt', reason: 'Not a video file' }],
             canceled: false,
         });
-        await user.click(screen.getByRole('button', { name: 'Add videos' }));
+        await user.click(screen.getByRole('button', { name: 'Upload videos' }));
 
         expect(await screen.findByText('Added 1 video to the queue.')).toBeInTheDocument();
         expect(
@@ -446,15 +446,15 @@ describe('Queue screen', () => {
     });
 
     it('shows nothing when the file dialog was cancelled', async () => {
-        const { user } = await renderApp();
+        const { user } = await renderQueue();
 
-        await user.click(screen.getByRole('button', { name: 'Add videos' }));
+        await user.click(screen.getByRole('button', { name: 'Upload videos' }));
         expect(screen.queryByText(/Added/)).not.toBeInTheDocument();
     });
 
     describe('banners', () => {
         it('shows the offline banner with a working Reload config button', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 auth: { status: 'offline', username: 'a', siteUrl: 'https://s.example.com' },
             });
             const reload = vi.spyOn(fake.api.auth, 'reloadConfig');
@@ -465,7 +465,7 @@ describe('Queue screen', () => {
         });
 
         it('explains how to fix an R2 setup that is missing on the site', async () => {
-            await renderApp({
+            await renderQueue({
                 auth: {
                     status: 'signed_in',
                     username: 'a',
@@ -480,7 +480,7 @@ describe('Queue screen', () => {
         });
 
         it('shows a blocking banner when the ffmpeg self-check failed', async () => {
-            await renderApp({
+            await renderQueue({
                 diagnostics: {
                     appVersion: '1',
                     platform: 'win32 x64',
@@ -500,7 +500,7 @@ describe('Queue screen', () => {
         });
 
         it('picks up the ffmpeg result when the self-check finishes after startup', async () => {
-            const { fake } = await renderApp({
+            const { fake } = await renderQueue({
                 diagnostics: {
                     appVersion: '1',
                     platform: 'win32 x64',
@@ -521,7 +521,7 @@ describe('Queue screen', () => {
         });
 
         it('tells the user to sign in again for jobs that need it', async () => {
-            await renderApp({
+            await renderQueue({
                 jobs: [
                     makeJob({ id: 'a', state: 'needs_sign_in' }),
                     makeJob({ id: 'b', state: 'needs_sign_in' }),
@@ -532,7 +532,7 @@ describe('Queue screen', () => {
         });
 
         it('shows no banner when everything is fine', async () => {
-            await renderApp();
+            await renderQueue();
 
             expect(screen.queryByRole('alert')).not.toBeInTheDocument();
         });
@@ -540,7 +540,7 @@ describe('Queue screen', () => {
 
     describe('actions, toasts and confirmations', () => {
         it('copies the embed URL and shortcode and confirms with a toast', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'j', state: 'done', embedUrl: EMBED, canRemove: true })],
             });
             const copy = vi.spyOn(fake.api.jobs, 'copy');
@@ -555,7 +555,7 @@ describe('Queue screen', () => {
         });
 
         it('opens the video on the site', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'j', state: 'done', embedUrl: EMBED })],
             });
             const open = vi.spyOn(fake.api.jobs, 'openEmbed');
@@ -565,7 +565,7 @@ describe('Queue screen', () => {
         });
 
         it('announces errors returned by an action in an aria-live toast', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'j', state: 'failed', canRetry: true })],
             });
 
@@ -584,7 +584,7 @@ describe('Queue screen', () => {
         });
 
         it('shows a generic error when the call itself rejects', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'j', state: 'cancelled', canRemove: true })],
             });
 
@@ -594,7 +594,7 @@ describe('Queue screen', () => {
         });
 
         it('asks before cancelling a running job and only cancels after confirming', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'j', state: 'uploading', canCancel: true, progress: 50 })],
             });
             const cancel = vi.spyOn(fake.api.jobs, 'cancel');
@@ -613,7 +613,7 @@ describe('Queue screen', () => {
         });
 
         it('cancels a waiting job without a confirmation', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'w', state: 'waiting', canCancel: true })],
             });
             const cancel = vi.spyOn(fake.api.jobs, 'cancel');
@@ -624,7 +624,7 @@ describe('Queue screen', () => {
         });
 
         it('confirms Clear finished only when something would be removed', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [
                     makeJob({ id: 'a', state: 'done', canRemove: true }),
                     makeJob({ id: 'b', state: 'failed', canRemove: true }),
@@ -645,7 +645,7 @@ describe('Queue screen', () => {
         });
 
         it('does not clear when the confirmation is dismissed with Escape', async () => {
-            const { fake, user } = await renderApp({
+            const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'a', state: 'done', canRemove: true })],
             });
             const clear = vi.spyOn(fake.api.jobs, 'clearFinished');
@@ -672,7 +672,7 @@ describe('Queue screen', () => {
         });
 
         it('shows message, failing step, exit code and the stderr tail', async () => {
-            const { user } = await renderApp({ jobs: [failed] });
+            const { user } = await renderQueue({ jobs: [failed] });
 
             await user.click(screen.getByRole('button', { name: /^View details/ }));
 
@@ -691,7 +691,7 @@ describe('Queue screen', () => {
         });
 
         it('shows the message of a paused upload without an ffmpeg log', async () => {
-            const { user } = await renderApp({
+            const { user } = await renderQueue({
                 jobs: [
                     makeJob({
                         id: 'p',
@@ -713,7 +713,7 @@ describe('Queue screen', () => {
         });
 
         it('copies the details and closes with Escape, restoring focus', async () => {
-            const { user } = await renderApp({ jobs: [failed] });
+            const { user } = await renderQueue({ jobs: [failed] });
             const opener = screen.getByRole('button', { name: /^View details/ });
 
             await user.click(opener);
@@ -733,7 +733,7 @@ describe('Queue screen', () => {
         });
 
         it('shows an error toast when copying is not possible', async () => {
-            const { user } = await renderApp({ jobs: [failed] });
+            const { user } = await renderQueue({ jobs: [failed] });
 
             vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
             await user.click(screen.getByRole('button', { name: /^View details/ }));
@@ -744,7 +744,7 @@ describe('Queue screen', () => {
 
     describe('modal focus handling', () => {
         it('traps Tab inside the dialog and wraps in both directions', async () => {
-            const { user } = await renderApp({
+            const { user } = await renderQueue({
                 jobs: [makeJob({ id: 'a', state: 'done', canRemove: true })],
             });
 
@@ -764,7 +764,7 @@ describe('Queue screen', () => {
         });
 
         it('closes when the backdrop is pressed', async () => {
-            const { user } = await renderApp({
+            const { user } = await renderQueue({
                 jobs: [makeJob({ id: 'a', state: 'done', canRemove: true })],
             });
 
@@ -777,7 +777,7 @@ describe('Queue screen', () => {
 
 describe('Queue "View in Library"', () => {
     it('is offered for done jobs only', async () => {
-        await renderApp({
+        await renderQueue({
             jobs: [
                 makeJob({ id: 'a', state: 'done', canRemove: true }),
                 makeJob({ id: 'b', state: 'uploading', canCancel: true }),
@@ -789,7 +789,7 @@ describe('Queue "View in Library"', () => {
     });
 
     it('opens the video detail page when the cloud id is known', async () => {
-        const { fake, user } = await renderApp({
+        const { fake, user } = await renderQueue({
             jobs: [makeJob({ id: 'a', fileName: 'clip.mp4', state: 'done', videoId: 42 })],
         });
         const get = vi.spyOn(fake.api.videos, 'get');
@@ -805,7 +805,7 @@ describe('Queue "View in Library"', () => {
     });
 
     it('shows the reloaded list when the cloud id is unknown', async () => {
-        const { fake, user } = await renderApp({
+        const { fake, user } = await renderQueue({
             jobs: [makeJob({ id: 'a', fileName: 'clip.mp4', state: 'done' })],
         });
         const list = vi.spyOn(fake.api.videos, 'list');

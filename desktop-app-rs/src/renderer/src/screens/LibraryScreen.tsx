@@ -1,27 +1,18 @@
-import {
-    useCallback,
-    useEffect,
-    useLayoutEffect,
-    useRef,
-    useState,
-    type ChangeEvent,
-    type ReactNode,
-} from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ChangeEvent } from 'react';
 import type { VideoDetail, VideoListItem, VideoListMeta } from '../../../shared/ipc';
-import type { JobState } from '../../../shared/types';
 import { ConfirmDialog } from '../components/Dialog';
 import { Pagination } from '../components/Pagination';
+import { GridViewIcon, ListViewIcon, SearchIcon } from '../components/icons';
+import { Thumbnail } from '../components/Thumbnail';
 import {
-    GridViewIcon,
-    LinkIcon,
-    ListViewIcon,
-    OpenExternalIcon,
-    SearchIcon,
-    ShortcodeIcon,
-} from '../components/icons';
+    QuickActionButtons,
+    useQuickActions,
+    type QuickAction,
+} from '../components/VideoQuickActions';
 import { formatDate, formatDuration, plural } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
+import { useJobFinished } from '../state/useJobFinished';
 import { StatusBadge } from './videoStatus';
 import { VideoDetailPage } from './VideoDetailPage';
 
@@ -30,9 +21,6 @@ const PAGE_SIZE = 24;
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
 type ViewMode = 'grid' | 'list';
-
-/** Quick actions of a ready video: Rust fetches the detail and copies/opens, never the renderer. */
-type QuickAction = 'shortcode' | 'embed-url' | 'open';
 
 const VIEW_STORAGE_KEY = 'hls-r2-studio:library-view';
 
@@ -57,23 +45,6 @@ type Load =
     | { kind: 'loading' }
     | { kind: 'error'; message: string }
     | { kind: 'ready'; items: VideoListItem[]; meta: VideoListMeta };
-
-/** The image falls back to a placeholder when there is no URL or it fails to load. */
-function Thumbnail({ url }: { url: string | null }) {
-    const [failed, setFailed] = useState(false);
-
-    if (url === null || failed) {
-        return (
-            <div className="thumb thumb-placeholder" aria-hidden="true">
-                No preview
-            </div>
-        );
-    }
-
-    return (
-        <img className="thumb" src={url} alt="" loading="lazy" onError={() => setFailed(true)} />
-    );
-}
 
 function VideoRow({
     video,
@@ -145,21 +116,6 @@ function VideoRow({
         );
     }
 
-    // The quick actions are siblings of the open button: never interactive content inside it.
-    const quick = (action: QuickAction, label: string, tip: string, icon: ReactNode) => (
-        <button
-            type="button"
-            className="btn btn-sm btn-accent-share video-quick"
-            aria-label={`${label} for ${video.title}`}
-            title={tip}
-            aria-busy={quickBusy}
-            disabled={quickBusy}
-            onClick={() => onQuick(video, action)}
-        >
-            {icon}
-        </button>
-    );
-
     return (
         <li className="video-row">
             <button
@@ -170,15 +126,11 @@ function VideoRow({
                 {content}
             </button>
             {video.status === 'ready' && (
-                <div
-                    className="video-actions"
-                    role="group"
-                    aria-label={`Quick actions for ${video.title}`}
-                >
-                    {quick('shortcode', 'Copy shortcode', 'Copy shortcode', <ShortcodeIcon />)}
-                    {quick('embed-url', 'Copy embed URL', 'Copy embed URL', <LinkIcon />)}
-                    {quick('open', 'Open in browser', 'Open in browser', <OpenExternalIcon />)}
-                </div>
+                <QuickActionButtons
+                    title={video.title}
+                    busy={quickBusy}
+                    onQuick={(action) => onQuick(video, action)}
+                />
             )}
         </li>
     );
@@ -187,6 +139,7 @@ function VideoRow({
 export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const { api } = useApp();
     const toast = useToast();
+    const quick = useQuickActions();
     const [input, setInput] = useState('');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -207,9 +160,6 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const [viewMode, setViewMode] = useState<ViewMode>(readView);
     const [confirmBulk, setConfirmBulk] = useState(false);
     const [bulkBusy, setBulkBusy] = useState(false);
-    // Rows with a quick action in flight (the ref also blocks a double click before re-render).
-    const quickBusy = useRef(new Set<number>());
-    const [quickBusyIds, setQuickBusyIds] = useState<ReadonlySet<number>>(new Set());
     const pendingFocus = useRef<'toggle' | 'bulk' | 'heading' | null>(null);
     const toggleRef = useRef<HTMLButtonElement>(null);
     const bulkRef = useRef<HTMLButtonElement>(null);
@@ -359,52 +309,36 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
 
     view.current = { page, search, input, selected, kind: load.kind };
 
-    // A job that newly becomes `done` adds a video at the top of the list. The first snapshot
-    // after mount is only the baseline. This screen is unmounted while another tab is active, so
-    // it loads fresh data when the tab is opened again.
-    useEffect(() => {
-        let previous: Map<string, JobState> | null = null;
+    // A job that newly becomes `done` adds a video at the top of the list. This screen is
+    // unmounted while another tab is active, so it loads fresh data when the tab is opened again.
+    useJobFinished(() => {
+        const now = view.current;
+        const atTop = now.page === 1 && now.search === '' && now.input.trim() === '';
 
-        const unsubscribe = api.jobs.onUpdated((jobs) => {
-            const next = new Map(jobs.map((job) => [job.id, job.state]));
-            const finished =
-                previous !== null &&
-                jobs.some((job) => job.state === 'done' && previous?.get(job.id) !== 'done');
+        if (!atTop || now.selected !== null) {
+            setStale(true);
 
-            previous = next;
+            return;
+        }
 
-            if (!finished) return;
+        // Quiet reload of page 1: no loading state, an older or failed answer changes nothing.
+        if (now.kind !== 'ready') {
+            refresh();
 
-            const now = view.current;
-            const atTop = now.page === 1 && now.search === '' && now.input.trim() === '';
+            return;
+        }
 
-            if (!atTop || now.selected !== null) {
-                setStale(true);
+        const request = ++latest.current;
 
-                return;
-            }
-
-            // Quiet reload of page 1: no loading state, an older or failed answer changes nothing.
-            if (now.kind !== 'ready') {
-                refresh();
-
-                return;
-            }
-
-            const request = ++latest.current;
-
-            api.videos
-                .list({ page: 1, perPage: PAGE_SIZE })
-                .then((result) => {
-                    if (request === latest.current && result.ok) {
-                        setLoad({ kind: 'ready', items: result.data, meta: result.meta });
-                    }
-                })
-                .catch(() => undefined);
-        });
-
-        return unsubscribe;
-    }, [api, refresh]);
+        api.videos
+            .list({ page: 1, perPage: PAGE_SIZE })
+            .then((result) => {
+                if (request === latest.current && result.ok) {
+                    setLoad({ kind: 'ready', items: result.data, meta: result.meta });
+                }
+            })
+            .catch(() => undefined);
+    });
 
     function onRenamed(id: number, title: string): void {
         setSelected((current) => (current?.id === id ? { ...current, title } : current));
@@ -462,34 +396,6 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         const panel = scroller();
 
         if (panel !== null) panel.scrollTop = 0;
-    }
-
-    function runQuick(video: VideoListItem, action: QuickAction): void {
-        const id = video.id;
-
-        if (quickBusy.current.has(id)) return;
-
-        quickBusy.current.add(id);
-        setQuickBusyIds(new Set(quickBusy.current));
-
-        const request =
-            action === 'open' ? api.videos.openEmbed(id) : api.videos.copyLink(id, action);
-
-        request
-            .then((result) => {
-                if (!result.ok) toast.show('error', result.error);
-                else if (action === 'open') toast.show('success', 'Opened in your browser.');
-                else
-                    toast.show(
-                        'success',
-                        action === 'shortcode' ? 'Shortcode copied.' : 'Embed URL copied.',
-                    );
-            })
-            .catch(() => toast.show('error', GENERIC_ERROR))
-            .finally(() => {
-                quickBusy.current.delete(id);
-                setQuickBusyIds(new Set(quickBusy.current));
-            });
     }
 
     function chooseView(next: ViewMode): void {
@@ -725,8 +631,8 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                                     picked={picked.has(video.id)}
                                     disabled={bulkBusy}
                                     onToggle={togglePicked}
-                                    quickBusy={quickBusyIds.has(video.id)}
-                                    onQuick={runQuick}
+                                    quickBusy={quick.busyIds.has(video.id)}
+                                    onQuick={(item, action) => quick.run(item.id, action)}
                                 />
                             ))}
                         </ul>

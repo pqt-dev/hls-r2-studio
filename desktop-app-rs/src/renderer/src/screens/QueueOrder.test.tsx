@@ -2,7 +2,7 @@ import { screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 import type { JobDto } from '../../../shared/ipc';
 import { makeJob, makeSummary } from '../testing/fakeApi';
-import { push, renderApp } from '../testing/renderApp';
+import { push, renderQueue } from '../testing/renderApp';
 
 const names = () =>
     within(screen.getByRole('list', { name: 'Video queue' }))
@@ -13,7 +13,7 @@ const EMBED = 'https://site.example.com/embed/abc123';
 
 describe('Queue order', () => {
     it('shows a running job before a done job, and a newer job before an older one', async () => {
-        await renderApp({
+        await renderQueue({
             jobs: [
                 makeJob({
                     id: 'a',
@@ -74,7 +74,7 @@ describe('Queue order', () => {
             canCancel: true,
             createdAt: '2026-01-02T10:00:00.000Z',
         });
-        const { fake, user } = await renderApp({ jobs: [waiting, failed] });
+        const { fake, user } = await renderQueue({ jobs: [waiting, failed] });
 
         push(() => fake.emitSummary(makeSummary({ waiting: 1, failed: 1, total: 2 })));
         expect(names()).toEqual(['broken.mp4', 'next.mp4']);
@@ -111,7 +111,7 @@ describe('Queue order', () => {
             canCancel: true,
             createdAt: '2026-01-01T10:00:00.000Z',
         });
-        const { fake } = await renderApp({ jobs: [first, second] });
+        const { fake } = await renderQueue({ jobs: [first, second] });
 
         expect(names()).toEqual(['first.mp4', 'second.mp4']);
 
@@ -141,7 +141,7 @@ describe('Queue order', () => {
             canCancel: true,
             createdAt: '2026-01-01T10:00:00.000Z',
         });
-        const { fake, user } = await renderApp({ jobs: [first, second] });
+        const { fake, user } = await renderQueue({ jobs: [first, second] });
 
         screen.getByRole('button', { name: 'Cancel: second.mp4' }).focus();
         await user.tab({ shift: true });
@@ -153,7 +153,7 @@ describe('Queue order', () => {
     });
 
     it('colours job buttons by meaning', async () => {
-        await renderApp({
+        await renderQueue({
             jobs: [
                 makeJob({ id: 'r', fileName: 'run.mp4', state: 'uploading', canCancel: true }),
                 makeJob({
@@ -195,8 +195,8 @@ describe('Queue order', () => {
         expect(screen.getByRole('button', { name: 'Clear finished' }).className).toContain(
             'btn-accent-danger',
         );
-        // Add videos stays the solid primary action.
-        expect(screen.getByRole('button', { name: 'Add videos' }).className).toContain(
+        // Upload videos stays the solid primary action.
+        expect(screen.getByRole('button', { name: 'Upload videos' }).className).toContain(
             'btn-primary',
         );
     });

@@ -182,7 +182,7 @@ export function QueueScreen() {
                 </div>
 
                 {jobs.length === 0 ? (
-                    <p className="empty">Drop video files here, or click Add videos</p>
+                    <p className="empty">Drop videos here to upload, or click Upload videos</p>
                 ) : (
                     <ul
                         ref={listRef}

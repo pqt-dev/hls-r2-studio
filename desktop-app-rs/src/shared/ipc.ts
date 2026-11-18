@@ -34,6 +34,8 @@ export const IpcChannels = {
     videosBulkDelete: 'videos:bulk-delete',
     videosSetImage: 'videos:set-image',
     videosRemoveImage: 'videos:remove-image',
+    overviewGet: 'overview:get',
+    logsGet: 'logs:get',
 } as const;
 
 /** Main -> renderer push events. */
@@ -281,6 +283,72 @@ export type VideosSetImageResult =
 /** Which URL of a video the main process copies (it fetches the video itself). */
 export type VideoLinkKind = 'embed-url' | 'playlist-url' | 'shortcode';
 
+// ---- overview + logs (site dashboard numbers) ----------------------------------------------
+
+export interface OverviewVideoCounts {
+    total: number;
+    ready: number;
+    processing: number;
+    failed: number;
+}
+
+export interface Overview {
+    videos: OverviewVideoCounts;
+}
+
+export type OverviewGetResult = { ok: true; overview: Overview } | { ok: false; error: string };
+
+export type LogType = 'success' | 'error' | 'processing';
+
+export interface LogsParams {
+    /** Omitted: the summary view (three short lists). */
+    type?: LogType;
+    /** Only used with `type`. */
+    page?: number;
+    /** 1..50; only used with `type`. */
+    perPage?: number;
+}
+
+export interface LogCounts {
+    total: number;
+    success: number;
+    error: number;
+    processing: number;
+}
+
+/**
+ * One log row. All text is plain text from the site (control characters stripped, length capped):
+ * render it as text, never as HTML. `errorDetail` may hold line breaks.
+ */
+export interface LogItem {
+    id: number;
+    publicId: string;
+    title: string;
+    originalFilename: string | null;
+    status: VideoStatus;
+    stage: string | null;
+    /** Whole percent 0..100. */
+    progress: number | null;
+    errorMessage: string | null;
+    errorDetail: string | null;
+    failedAt: string | null;
+    createdAt: string | null;
+    updatedAt: string | null;
+}
+
+/** `error` is safe English text (never the site's body, URL or token). */
+export type LogsGetResult =
+    | {
+          ok: true;
+          view: 'summary';
+          counts: LogCounts;
+          success: LogItem[];
+          error: LogItem[];
+          processing: LogItem[];
+      }
+    | { ok: true; view: 'page'; counts: LogCounts; data: LogItem[]; meta: VideoListMeta }
+    | { ok: false; error: string };
+
 // ---- preload API --------------------------------------------------------------------------
 
 /** Function that removes a subscription. */
@@ -351,12 +419,23 @@ export interface VideosApi {
     removeImage(id: number): Promise<ActionResult>;
 }
 
+export interface OverviewApi {
+    get(): Promise<OverviewGetResult>;
+}
+
+export interface LogsApi {
+    /** No `type`: the summary view; with `type`: one paginated page. */
+    get(params?: LogsParams): Promise<LogsGetResult>;
+}
+
 export interface RendererApi {
     app: AppApi;
     auth: AuthApi;
     settings: SettingsApi;
     jobs: JobsApi;
     videos: VideosApi;
+    overview: OverviewApi;
+    logs: LogsApi;
 }
 
 /** Name of the property exposed on `window` through contextBridge. */

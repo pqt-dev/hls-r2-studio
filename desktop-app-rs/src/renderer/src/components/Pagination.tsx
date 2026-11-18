@@ -11,11 +11,14 @@ export function Pagination({
     page,
     lastPage,
     total,
+    noun = 'video',
     onPageChange,
 }: {
     page: number;
     lastPage: number;
     total: number;
+    /** What is counted in the summary ("3 videos", "3 logs"). */
+    noun?: string;
     onPageChange: (page: number) => void;
 }) {
     const last = Math.max(1, lastPage);
@@ -49,7 +52,7 @@ export function Pagination({
         <span className="num pager-summary" role="status">
             Page {current} of {last}
             {' · '}
-            {plural(total, 'video')}
+            {plural(total, noun)}
         </span>
     );
 

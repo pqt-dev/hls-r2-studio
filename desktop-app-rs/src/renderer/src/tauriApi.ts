@@ -34,6 +34,8 @@
  *   videos:bulk-delete                videos_bulk_delete       { payload: {ids} }
  *   videos:set-image                  videos_set_image         { payload: {id} }
  *   videos:remove-image               videos_remove_image      { payload: {id} }
+ *   overview:get                      overview_get             (no payload)
+ *   logs:get                          logs_get                 { payload: {type?,page?,perPage?} }
  *
  *   IpcEvents (Rust -> renderer)      Tauri event name
  *   --------------------------------  ----------------
@@ -62,6 +64,8 @@ import type {
     DiagnosticsDto,
     DroppedFile,
     JobDto,
+    LogsGetResult,
+    OverviewGetResult,
     PickDirectoryResult,
     QueueSummary,
     RejectedFile,
@@ -199,6 +203,12 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
             setImage: (id) => send<VideosSetImageResult>(IpcChannels.videosSetImage, { id }),
             removeImage: (id) => send<ActionResult>(IpcChannels.videosRemoveImage, { id }),
         },
+        overview: {
+            get: () => send<OverviewGetResult>(IpcChannels.overviewGet),
+        },
+        logs: {
+            get: (params) => send<LogsGetResult>(IpcChannels.logsGet, params ?? {}),
+        },
     };
 }
 
@@ -258,7 +268,7 @@ export function installTauriApi(): void {
     });
 
     installDragDrop().catch(() => {
-        // Without drag and drop the "Add videos" button still works.
+        // Without drag and drop the "Upload videos" button still works.
     });
 }
 

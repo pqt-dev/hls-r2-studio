@@ -60,6 +60,9 @@ describe('createTauriApi', () => {
         await api.videos.bulkDelete([1, 2]);
         await api.videos.setImage(7);
         await api.videos.removeImage(7);
+        await api.overview.get();
+        await api.logs.get();
+        await api.logs.get({ type: 'error', page: 2, perPage: 10 });
 
         expect(calls).toEqual([
             ['app_get_version', undefined],
@@ -79,6 +82,9 @@ describe('createTauriApi', () => {
             ['videos_bulk_delete', { payload: { ids: [1, 2] } }],
             ['videos_set_image', { payload: { id: 7 } }],
             ['videos_remove_image', { payload: { id: 7 } }],
+            ['overview_get', undefined],
+            ['logs_get', { payload: {} }],
+            ['logs_get', { payload: { type: 'error', page: 2, perPage: 10 } }],
         ]);
     });
 
