@@ -1649,6 +1649,8 @@ mod tests {
 
             let server = TestServer::start(|_| Reply::json(200, json!({}))).await;
             let client = client_for(&server);
+            // `inputs` is only mutated in the unix-only symlink block below.
+            #[cfg_attr(not(unix), allow(unused_mut))]
             let mut inputs = vec![
                 (
                     fake.to_string_lossy().into_owned(),
