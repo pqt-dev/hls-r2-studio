@@ -16,6 +16,8 @@ Cách chuẩn bị domain dự phòng và chuyển sang chúng khi một domain 
 
 Server: một VPS aaPanel chạy cả hai site, thao tác qua SSH bằng root. Dashboard: `/www/wwwroot/embed-site.com`. WordPress: `/www/wwwroot/main-site.com`. PHP CLI: `/www/server/php/84/bin/php`. User của site: `www`. Bản WP Staging: `/www/wwwroot/main-site.com/staging` (Verify đường dẫn thật một lần; nhãn aaPanel và plugin cũng thay đổi theo phiên bản).
 
+WP-CLI phải chạy bằng user của site: `sudo -u www wp ... --path=...`. Chạy bằng root sẽ bị từ chối kèm thông báo yêu cầu chạy bằng chủ sở hữu site.
+
 Backup: playbook này dựa vào backup tự động của aaPanel và không tự tạo backup.
 
 | Thiết lập | Nơi sửa |
@@ -27,6 +29,7 @@ Backup: playbook này dựa vào backup tự động của aaPanel và không t�
 | Cache và Redirect rule, DNS, chế độ SSL, Origin certificate | Cloudflare, trong zone của domain đó |
 | Thêm domain, cài certificate | aaPanel > Website > site hiện có |
 | URL tuyệt đối của ảnh FIFU và của chính WordPress | Database WordPress, bằng `wp search-replace` |
+| `WP_HOME`, `WP_SITEURL`, `COOKIE_DOMAIN`, `DOMAIN_CURRENT_SITE` | `wp-config.php` của website WordPress, sửa tay. KHÔNG được `wp search-replace` đổi, và chúng ghi đè `home` / `siteurl` trong database |
 
 ## Site embed (`embed-site.com` sang `new-embed-site.com`)
 
@@ -136,22 +139,44 @@ WordPress lưu URL tuyệt đối của chính domain của nó (posts, postmeta
    ```bash
    sudo -u www wp search-replace 'https://main-site.com' 'https://new-main-site.com' --all-tables-with-prefix --skip-columns=guid --dry-run --report-changed-only --path=/www/wwwroot/main-site.com
    ```
-4. Diễn tập toàn bộ việc chuyển đổi trên WP Staging (`--path=/www/wwwroot/main-site.com/staging`) và ghi lại thời gian.
+4. Tìm các tham chiếu domain nằm trong FILE, thứ mà dry run trên database không thấy được. Các nơi hay gặp: `wp-config.php`, file config của plugin cache, mu-plugins, URL hard-code trong theme hoặc child theme, và rule nginx rewrite/redirect trong aaPanel (Website > site > Config / Redirect; Verify nhãn).
+
+   ```bash
+   grep -nE "WP_HOME|WP_SITEURL|COOKIE_DOMAIN|DOMAIN_CURRENT_SITE" /www/wwwroot/main-site.com/wp-config.php
+   ```
+   ```bash
+   grep -rn "main-site.com" /www/wwwroot/main-site.com --include=*.php --include=.htaccess --exclude-dir=uploads --exclude-dir=cache --exclude-dir=staging --exclude-dir=node_modules
+   ```
+5. Diễn tập toàn bộ việc chuyển đổi trên WP Staging (`--path=/www/wwwroot/main-site.com/staging`) và ghi lại thời gian.
 
 ### Ứng phó
 
 1. Xác nhận bị chặn từ một mạng ở Việt Nam.
 2. aaPanel: Website > site WordPress > Domain Manager > thêm domain mới (không bao giờ clone site). Sau đó làm DNS, Origin certificate MỚI, SSL và Full (strict) như Chuẩn bị bước 1 và 2 của site embed.
 3. Trước khi thay đổi database, kiểm tra trong aaPanel rằng bản backup tự động mới nhất của database WordPress đã tồn tại.
-4. Chạy thật. Nếu còn link cũ `http://main-site.com` hoặc dạng `www.`, chạy cùng lệnh với `http://main-site.com` sang `http://new-main-site.com` (và host `www.`). Search-replace đã ghi đè `home` và `siteurl`; kiểm tra Settings > General hiển thị địa chỉ mới.
+4. Chạy thật. Nếu còn link cũ `http://main-site.com` hoặc dạng `www.`, chạy cùng lệnh với `http://main-site.com` sang `http://new-main-site.com` (và host `www.`). Search-replace chỉ ghi đè `home` và `siteurl` trong database; các constant trong `wp-config.php` ghi đè lại chúng (bước kế tiếp). Kiểm tra Settings > General: các ô bị mờ (khóa) khi constant còn tồn tại.
 
    ```bash
    sudo -u www wp search-replace 'https://main-site.com' 'https://new-main-site.com' --all-tables-with-prefix --skip-columns=guid --report-changed-only --path=/www/wwwroot/main-site.com
    ```
-5. Dashboard: thêm `new-main-site.com` và `www.new-main-site.com` vào Embed allowlist (Dashboard Settings > Embed protection > Embed allowlist). Danh sách nằm trong database và cũng quy định CORS và host của báo cáo: không cần sửa `.env`, `config:clear` hay restart.
-6. Purge TẤT CẢ page cache. Trang embed có thể mất tới 5 phút mới hiển thị thay đổi allowlist.
-7. Cloudflare, zone cũ > Redirect Rules: 301 tới `https://new-main-site.com`, giữ path và query. Search Console: Change of Address. Giữ redirect ít nhất 1 năm (Google yêu cầu tối thiểu 180 ngày).
-8. Kiểm tra trên domain mới: video phát được, thumbnail load được.
+5. Cập nhật `wp-config.php` TRƯỚC khi bật bất kỳ redirect nào. Nếu `WP_HOME` và `WP_SITEURL` vẫn là domain cũ, WordPress redirect mới về cũ trong khi zone cũ redirect cũ sang mới: lỗi ERR_TOO_MANY_REDIRECTS. Backup trước, rồi đặt `WP_HOME` và `WP_SITEURL` (và `COOKIE_DOMAIN` / `DOMAIN_CURRENT_SITE` nếu có) thành `https://new-main-site.com`, hoặc xóa các constant để dùng giá trị trong database.
+
+   ```bash
+   cp /www/wwwroot/main-site.com/wp-config.php /www/wwwroot/main-site.com/wp-config.php.bak
+   ```
+   Verify: cả hai lệnh phải hiển thị domain mới.
+
+   ```bash
+   sudo -u www wp option get home --path=/www/wwwroot/main-site.com
+   ```
+   ```bash
+   sudo -u www wp option get siteurl --path=/www/wwwroot/main-site.com
+   ```
+6. Chạy lại dry run ở Chuẩn bị bước 3. Mong đợi 0 replacement (bảng rỗng).
+7. Dashboard: thêm `new-main-site.com` và `www.new-main-site.com` vào Embed allowlist (Dashboard Settings > Embed protection > Embed allowlist). Danh sách nằm trong database và cũng quy định CORS và host của báo cáo: không cần sửa `.env`, `config:clear` hay restart.
+8. Purge TẤT CẢ page cache. Trang embed có thể mất tới 5 phút mới hiển thị thay đổi allowlist.
+9. Cloudflare, zone cũ > Redirect Rules: 301 tới `https://new-main-site.com`, giữ path và query. Dùng Redirect Rules của Cloudflare trên zone CŨ, không dùng redirect cấp site của aaPanel: domain mới nằm trên cùng site nên sẽ tự redirect về chính nó. Search Console: Change of Address. Giữ redirect ít nhất 1 năm (Google yêu cầu tối thiểu 180 ngày).
+10. Kiểm tra trên domain mới: video phát được, thumbnail load được.
 
 ## Runbook (theo thứ tự này)
 
@@ -180,6 +205,12 @@ Thêm: [DEPLOYMENT.vi.md](DEPLOYMENT.vi.md#các-lỗi-thường-gặp-khi-deploy
 | Vẫn hiển thị host cũ | Page cache chưa được purge |
 | Live progress của dashboard dừng | `REVERB_*` sai, chưa chạy `npm run build`, hoặc chưa restart Reverb |
 | Cloudflare 521 / 526 | Chưa cài Origin certificate, hoặc đặt Full (strict) trước khi cài |
+| ERR_TOO_MANY_REDIRECTS trên domain chính mới | `WP_HOME` / `WP_SITEURL` trong `wp-config.php` vẫn là domain cũ; redirect cấp site của aaPanel cũng áp dụng cho domain mới; Cloudflare SSL đang để Flexible; redirect cũ còn trong cache. Chẩn đoán bằng lệnh bên dưới: header `x-redirect-by: WordPress` nghĩa là chính WordPress đang redirect |
+| wp-cli từ chối chạy, hoặc gợi ý `sudo -u USER -i -- wp` | Chạy bằng user của site: `sudo -u www wp ... --path=...` |
+
+```bash
+curl -sIL --max-redirs 6 https://new-main-site.com | grep -iE "^(HTTP|location)"
+```
 
 ## Cũng nên làm
 
