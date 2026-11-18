@@ -1,0 +1,2340 @@
+<!doctype html>
+<!--
+  HLS R2 Studio desktop app (Tauri + React) - static UI mockup.
+  Generated from the source on 2026-11-17 at commit eb76150 (plus uncommitted working-tree changes).
+  FOR DESIGN REVIEW ONLY. Not shipped with the app, not used by any build. Fake data only.
+  The CSS between the "app styles" markers is the real tokens.css + styles.css, mechanically scoped under
+  .app-frame (media queries on viewport width became container queries on the frame width; dark tokens are
+  applied via [data-theme=dark]). Everything prefixed mk- is mockup chrome and not part of the app.
+
+  Traceability (screen -> source files, all under desktop-app-rs/src/renderer/src/):
+    Splash / Login ........ App.tsx, screens/LoginScreen.tsx, components/icons.tsx (BrandMark)
+    Shell ................. screens/MainScreen.tsx, components/icons.tsx, state/Navigation.tsx
+    Queue ................. screens/QueueScreen.tsx, components/{JobRow,QueueBanners,Banner,DropZone,DetailsDialog,Dialog}.tsx,
+                            lib/{format,jobState}.ts, ../../shared/{ipc,types}.ts, src-tauri/src/queue/job_dto.rs (can_* flags)
+    Library ............... screens/LibraryScreen.tsx, screens/videoStatus.tsx, lib/format.ts
+    Video detail .......... screens/VideoDetailPage.tsx (Thumbnail card: designed from the step 3b spec, not yet in source)
+    Settings / About ...... screens/{SettingsScreen,AboutScreen}.tsx, components/Feedback.tsx
+    Toasts ................ state/Toasts.tsx
+    Native dialogs ........ src-tauri/src/lifecycle/{quit,startup}.rs, src-tauri/src/ipc/{jobs,settings}.rs
+    Styles ................ styles/tokens.css, styles.css
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HLS R2 Studio UI mockup</title>
+<style>
+/* ===== app styles: tokens.css (scoped) ===== */
+.app-frame {
+    color-scheme: light;
+
+    
+    --font: 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+    --mono: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, 'Liberation Mono', monospace;
+    --text-caption: 12px;
+    --text-body: 14px;
+    --text-subtitle: 16px;
+    --text-title: 20px;
+    --lh-caption: 16px;
+    --lh-body: 20px;
+    --lh-subtitle: 22px;
+    --lh-title: 28px;
+    --weight-regular: 400;
+    --weight-medium: 500;
+    --weight-semibold: 600;
+
+    
+    --radius-xs: 4px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-pill: 999px;
+
+    
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 24px;
+    --space-6: 32px;
+
+    
+    --sidebar-w: 220px;
+    --sidebar-w-rail: 64px;
+    --content-max: 960px;
+
+    
+    --dur-fast: 100ms;
+    --dur-base: 160ms;
+    --ease: cubic-bezier(0.33, 0, 0.67, 1);
+
+    
+    --canvas: #f5f5f7;
+    --surface: #ffffff;
+    --surface-raised: #ffffff;
+    --surface-sunken: #eef0f3;
+    --on-surface: #1b1c1f;
+    --on-surface-muted: #585c64;
+    --border: #e1e3e8;
+    --border-strong: #8a8f98;
+    --primary: #0f62c4;
+    --on-primary: #ffffff;
+    --primary-container: #dbe8fb;
+    --on-primary-container: #08376e;
+    --success: #0b6a31;
+    --success-container: #dff3e6;
+    --warning: #7a4a00;
+    --warning-container: #fff0cf;
+    --danger: #a4262c;
+    --danger-container: #fde7e9;
+    --neutral-container: #e8eaee;
+    --on-neutral-container: #3b3f46;
+    --focus-ring: #0f62c4;
+    --scrim: rgb(16 18 22 / 50%);
+
+    
+    --state-hover: rgb(27 28 31 / 6%);
+    --state-pressed: rgb(27 28 31 / 12%);
+    --state-hover-on-primary: rgb(255 255 255 / 12%);
+    --state-pressed-on-primary: rgb(0 0 0 / 16%);
+
+    
+    --shadow-1: 0 1px 2px rgb(16 18 22 / 8%), 0 0 1px rgb(16 18 22 / 10%);
+    --shadow-2: 0 4px 12px rgb(16 18 22 / 10%), 0 0 1px rgb(16 18 22 / 12%);
+    --shadow-3: 0 12px 32px rgb(16 18 22 / 18%), 0 0 1px rgb(16 18 22 / 16%);
+}
+/* dark: same overrides as the source media query, under a data-theme selector */
+.app-frame[data-theme="dark"] {
+ color-scheme: dark;
+        --canvas: #17181b;
+        --surface: #232427;
+        --surface-raised: #2b2c30;
+        --surface-sunken: #1d1e21;
+        --on-surface: #ececef;
+        --on-surface-muted: #a9acb4;
+        --border: #36373c;
+        --border-strong: #8b8f98;
+        --primary: #79b4ff;
+        --on-primary: #05213f;
+        --primary-container: #1d3a5f;
+        --on-primary-container: #d3e5ff;
+        --success: #8fe0ac;
+        --success-container: #153524;
+        --warning: #f5c870;
+        --warning-container: #3d2e10;
+        --danger: #ff9ea3;
+        --danger-container: #46181b;
+        --neutral-container: #2f3035;
+        --on-neutral-container: #cfd1d8;
+        --focus-ring: #79b4ff;
+        --scrim: rgb(0 0 0 / 60%);
+
+        --state-hover: rgb(236 236 239 / 8%);
+        --state-pressed: rgb(236 236 239 / 14%);
+        --state-hover-on-primary: rgb(0 0 0 / 10%);
+        --state-pressed-on-primary: rgb(0 0 0 / 20%);
+
+        --shadow-1: 0 1px 2px rgb(0 0 0 / 40%), 0 0 1px rgb(0 0 0 / 50%);
+        --shadow-2: 0 4px 12px rgb(0 0 0 / 40%), 0 0 1px rgb(0 0 0 / 50%);
+        --shadow-3: 0 12px 32px rgb(0 0 0 / 55%), 0 0 1px rgb(0 0 0 / 60%);
+    }
+@media (forced-colors: active) {
+.app-frame {
+        --canvas: Canvas;
+        --surface: Canvas;
+        --surface-raised: Canvas;
+        --surface-sunken: Canvas;
+        --on-surface: CanvasText;
+        --on-surface-muted: CanvasText;
+        --border: CanvasText;
+        --border-strong: ButtonText;
+        --primary: Highlight;
+        --on-primary: HighlightText;
+        --primary-container: Canvas;
+        --on-primary-container: LinkText;
+        --success: CanvasText;
+        --success-container: Canvas;
+        --warning: CanvasText;
+        --warning-container: Canvas;
+        --danger: CanvasText;
+        --danger-container: Canvas;
+        --neutral-container: Canvas;
+        --on-neutral-container: CanvasText;
+        --focus-ring: Highlight;
+        --scrim: Canvas;
+
+        --state-hover: transparent;
+        --state-pressed: transparent;
+        --state-hover-on-primary: transparent;
+        --state-pressed-on-primary: transparent;
+
+        --shadow-1: none;
+        --shadow-2: none;
+        --shadow-3: none;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+.app-frame {
+        --dur-fast: 0.01ms;
+        --dur-base: 0.01ms;
+    }
+}
+/* ===== app styles: styles.css (scoped) ===== */
+.app-frame *,
+.app-frame *::before,
+.app-frame *::after {
+    box-sizing: border-box;
+}
+.app-frame .app-viewport,
+.app-frame .app-root {
+    height: 100%;
+}
+.app-frame .app-viewport {
+    margin: 0;
+    overflow-x: hidden;
+    background: var(--canvas);
+    color: var(--on-surface);
+    font-family: var(--font);
+    font-size: var(--text-body);
+    line-height: var(--lh-body);
+}
+.app-frame h1,
+.app-frame h2,
+.app-frame h3,
+.app-frame p,
+.app-frame dl,
+.app-frame dd,
+.app-frame ul {
+    margin: 0;
+}
+.app-frame h1 {
+    font-size: var(--text-title);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-title);
+}
+.app-frame h2 {
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-subtitle);
+}
+.app-frame .muted {
+    color: var(--on-surface-muted);
+}
+.app-frame .small {
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+}
+.app-frame .break {
+    overflow-wrap: anywhere;
+}
+.app-frame .num {
+    font-variant-numeric: tabular-nums;
+}
+.app-frame .wordmark {
+    margin: 0;
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-subtitle);
+}
+.app-frame .clipboard-scratch {
+    position: fixed;
+    top: 0;
+    left: -9999px;
+    opacity: 0;
+}
+.app-frame :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+.app-frame .icon {
+    flex: none;
+}
+.app-frame .btn {
+    position: relative;
+    min-height: 32px;
+    padding: 4px var(--space-4);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--on-surface);
+    font: inherit;
+    font-weight: var(--weight-semibold);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.app-frame .btn::after {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: transparent;
+    content: '';
+    pointer-events: none;
+}
+.app-frame .btn:hover:not(:disabled)::after {
+    background: var(--state-hover);
+}
+.app-frame .btn:active:not(:disabled)::after {
+    background: var(--state-pressed);
+}
+.app-frame .btn:disabled {
+    border-color: var(--border);
+    color: var(--on-surface-muted);
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.app-frame .btn-sm {
+    min-height: 28px;
+    padding: 2px var(--space-3);
+    font-size: var(--text-caption);
+}
+.app-frame .btn-primary {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--on-primary);
+}
+.app-frame .btn-primary:hover:not(:disabled)::after {
+    background: var(--state-hover-on-primary);
+}
+.app-frame .btn-primary:active:not(:disabled)::after {
+    background: var(--state-pressed-on-primary);
+}
+.app-frame .btn-tonal {
+    border-color: transparent;
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+.app-frame .btn-text {
+    border-color: transparent;
+    background: transparent;
+}
+.app-frame .btn-danger {
+    border-color: var(--danger);
+    background: var(--danger);
+    color: var(--surface);
+}
+.app-frame .btn-danger:hover:not(:disabled)::after {
+    background: var(--state-hover-on-primary);
+}
+.app-frame .btn-danger-quiet {
+    border-color: var(--border-strong);
+    color: var(--danger);
+}
+.app-frame .btn-block {
+    width: 100%;
+    min-height: 40px;
+}
+.app-frame input[type='text'],
+.app-frame input[type='url'],
+.app-frame input[type='password'],
+.app-frame select {
+    width: 100%;
+    min-height: 36px;
+    padding: 6px var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-bottom-width: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    color: var(--on-surface);
+    font: inherit;
+    transition: border-color var(--dur-fast) var(--ease);
+}
+.app-frame input::placeholder {
+    color: var(--on-surface-muted);
+}
+.app-frame input:hover:not(:disabled):not([readonly]),
+.app-frame select:hover:not(:disabled) {
+    border-color: var(--on-surface-muted);
+}
+.app-frame input:focus-visible,
+.app-frame select:focus-visible {
+    border-color: var(--primary);
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 0;
+}
+.app-frame input[readonly] {
+    background: var(--surface-sunken);
+    text-overflow: ellipsis;
+}
+.app-frame input:disabled,
+.app-frame select:disabled {
+    background: var(--surface-sunken);
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+.app-frame .field {
+    display: grid;
+    gap: var(--space-1);
+    margin-top: var(--space-4);
+}
+.app-frame .field label {
+    font-weight: var(--weight-semibold);
+}
+.app-frame .help {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+}
+.app-frame .row {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+}
+.app-frame .row > input {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.app-frame .row > .btn {
+    flex: none;
+}
+.app-frame .row-wrap {
+    flex-wrap: wrap;
+    margin-top: var(--space-4);
+}
+.app-frame .check {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin-top: var(--space-4);
+}
+.app-frame .check input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: var(--primary);
+}
+.app-frame .feedback {
+    min-height: 0;
+    font-size: var(--text-caption);
+}
+.app-frame .feedback-success {
+    color: var(--success);
+}
+.app-frame .feedback-error {
+    color: var(--danger);
+}
+.app-frame .form-error {
+    min-height: 20px;
+    margin: var(--space-2) 0;
+    color: var(--danger);
+    font-size: var(--text-caption);
+}
+.app-frame .form-error:not(:empty) {
+    padding: var(--space-2) var(--space-3);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-sm);
+    background: var(--danger-container);
+}
+.app-frame .card {
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-1);
+}
+.app-frame .card p + p {
+    margin-top: var(--space-2);
+}
+.app-frame .chip {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    padding: 2px var(--space-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    background: var(--neutral-container);
+    color: var(--on-neutral-container);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-caption);
+    white-space: nowrap;
+}
+.app-frame .chip-icon {
+    font-size: 10px;
+}
+.app-frame .chip-running {
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+.app-frame .chip-done {
+    background: var(--success-container);
+    color: var(--success);
+}
+.app-frame .chip-failed {
+    background: var(--danger-container);
+    color: var(--danger);
+}
+.app-frame .chip-attention,
+.app-frame .chip-paused {
+    background: var(--warning-container);
+    color: var(--warning);
+}
+.app-frame progress {
+    width: 100%;
+    height: 6px;
+    border: 0;
+    border-radius: var(--radius-pill);
+    background: var(--neutral-container);
+    accent-color: var(--primary);
+    appearance: none;
+    overflow: hidden;
+}
+.app-frame progress::-webkit-progress-bar {
+    background: var(--neutral-container);
+}
+.app-frame progress::-webkit-progress-value {
+    border-radius: var(--radius-pill);
+    background: var(--primary);
+}
+.app-frame progress::-moz-progress-bar {
+    border-radius: var(--radius-pill);
+    background: var(--primary);
+}
+.app-frame .empty {
+    padding: var(--space-6) var(--space-5);
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--on-surface-muted);
+    text-align: center;
+}
+.app-frame .empty > * + * {
+    margin-top: var(--space-2);
+}
+.app-frame .login,
+.app-frame .splash {
+    display: grid;
+    place-items: center;
+    min-height: 100%;
+    padding: var(--space-5);
+}
+.app-frame .splash {
+    align-content: center;
+    gap: var(--space-2);
+    justify-items: center;
+}
+.app-frame .login-card {
+    width: min(100%, 400px);
+    box-shadow: var(--shadow-2);
+}
+.app-frame .login-brand {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+}
+.app-frame .login-title {
+    margin-top: var(--space-4);
+}
+.app-frame .shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+    height: 100%;
+}
+.app-frame .sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-height: 0;
+    padding: var(--space-4) var(--space-3);
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+}
+.app-frame .sidebar-brand {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    padding: 0 var(--space-2);
+}
+.app-frame .nav {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 auto;
+    gap: var(--space-1);
+}
+.app-frame .tab {
+    position: relative;
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    width: 100%;
+    min-height: 40px;
+    padding: var(--space-2) var(--space-3);
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--on-surface-muted);
+    font: inherit;
+    font-weight: var(--weight-semibold);
+    text-align: left;
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+.app-frame .tab:hover {
+    background: var(--state-hover);
+    color: var(--on-surface);
+}
+.app-frame .tab:active {
+    background: var(--state-pressed);
+}
+.app-frame .tab[aria-selected='true'] {
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+.app-frame .tab-secondary {
+    margin-top: auto;
+}
+.app-frame .tab-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.app-frame .tab-count {
+    min-width: 20px;
+    margin-left: auto;
+    padding: 0 6px;
+    border-radius: var(--radius-pill);
+    background: var(--primary);
+    color: var(--on-primary);
+    font-size: var(--text-caption);
+    text-align: center;
+}
+.app-frame .sidebar-footer {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    min-width: 0;
+    padding: var(--space-3) var(--space-2) 0;
+    border-top: 1px solid var(--border);
+}
+.app-frame .avatar {
+    display: grid;
+    flex: none;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: var(--radius-pill);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+}
+.app-frame .account {
+    display: grid;
+    min-width: 0;
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+}
+.app-frame .account-name,
+.app-frame .account-site {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.app-frame .account-name {
+    color: var(--on-surface);
+    font-size: var(--text-body);
+    line-height: var(--lh-body);
+}
+.app-frame .workspace {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+.app-frame .topbar {
+    display: flex;
+    flex: none;
+    gap: var(--space-3);
+    align-items: center;
+    min-height: 48px;
+    padding: 0 var(--space-5);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+.app-frame .topbar-brand {
+    display: none;
+    font-weight: var(--weight-semibold);
+    white-space: nowrap;
+}
+.app-frame .page-title {
+    min-width: 0;
+    overflow: hidden;
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.app-frame .topbar-status {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin-left: auto;
+}
+.app-frame .panel {
+    flex: 1 1 auto;
+    min-height: 0;
+    padding: var(--space-5);
+    overflow-x: hidden;
+    overflow-y: auto;
+}
+.app-frame .panel-inner {
+    max-width: var(--content-max);
+    min-height: 100%;
+    margin: 0 auto;
+}
+@container appframe (max-width: 899px) {
+.app-frame .shell {
+        grid-template-columns: var(--sidebar-w-rail) minmax(0, 1fr);
+    }
+.app-frame .sidebar {
+        align-items: center;
+        padding: var(--space-4) var(--space-2);
+    }
+.app-frame .sidebar-brand {
+        padding: 0;
+    }
+.app-frame .sidebar-brand .wordmark,
+.app-frame .account {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+.app-frame .nav {
+        align-items: center;
+    }
+.app-frame .tab {
+        justify-content: center;
+        width: 44px;
+        padding: var(--space-2);
+    }
+.app-frame .tab-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+    }
+.app-frame .tab-count {
+        position: absolute;
+        top: 0;
+        right: 0;
+        min-width: 16px;
+        padding: 0 4px;
+        font-size: 11px;
+        line-height: 16px;
+    }
+.app-frame .sidebar-footer {
+        padding: var(--space-3) 0 0;
+    }
+.app-frame .topbar {
+        padding: 0 var(--space-4);
+    }
+.app-frame .topbar-brand {
+        display: block;
+    }
+.app-frame .topbar-brand::after {
+        margin-left: var(--space-3);
+        color: var(--on-surface-muted);
+        content: '/';
+        font-weight: var(--weight-regular);
+    }
+.app-frame .panel {
+        padding: var(--space-4);
+    }
+}
+.app-frame .settings,
+.app-frame .about {
+    display: grid;
+    gap: var(--space-4);
+    max-width: 720px;
+}
+.app-frame .facts {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 6px var(--space-5);
+    margin: var(--space-4) 0;
+}
+.app-frame .facts dt {
+    color: var(--on-surface-muted);
+}
+.app-frame .plain-list {
+    padding-left: var(--space-5);
+}
+.app-frame .queue {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+    min-height: 100%;
+}
+.app-frame .banners {
+    display: grid;
+    gap: var(--space-2);
+}
+.app-frame .banners:empty {
+    display: none;
+}
+.app-frame .banner {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+}
+.app-frame .banner-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    color: var(--on-surface);
+}
+.app-frame .banner-action {
+    flex: none;
+}
+.app-frame .banner-icon {
+    display: inline-grid;
+    flex: none;
+    width: 20px;
+    height: 20px;
+    place-items: center;
+    border: 2px solid currentcolor;
+    border-radius: 50%;
+    font-size: 11px;
+    font-weight: 700;
+}
+.app-frame .banner-list {
+    margin: var(--space-1) 0 0;
+    padding-left: var(--space-5);
+}
+.app-frame .banner-info {
+    border-color: var(--border);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+.app-frame .banner-warning {
+    border-color: var(--warning);
+    background: var(--warning-container);
+    color: var(--warning);
+}
+.app-frame .banner-danger {
+    border-color: var(--danger);
+    background: var(--danger-container);
+    color: var(--danger);
+}
+.app-frame .banner-text {
+    color: var(--on-surface);
+}
+.app-frame .dropzone {
+    display: grid;
+    gap: var(--space-2);
+    justify-items: center;
+    padding: var(--space-6) var(--space-4);
+    border: 2px dashed var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    text-align: center;
+    transition: background-color var(--dur-base) var(--ease);
+}
+.app-frame .dropzone.is-compact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-4);
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-4);
+}
+.app-frame .dropzone.is-dragging {
+    border-color: var(--primary);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+.app-frame .dropzone-text {
+    font-weight: var(--weight-semibold);
+}
+.app-frame .section-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+.app-frame .queue-list {
+    flex: 1 1 auto;
+}
+.app-frame .jobs {
+    display: grid;
+    gap: var(--space-3);
+    padding: 0;
+    list-style: none;
+}
+.app-frame .job {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-1);
+}
+.app-frame .job-running {
+    border-left-color: var(--primary);
+}
+.app-frame .job-done {
+    border-left-color: var(--success);
+}
+.app-frame .job-failed {
+    border-left-color: var(--danger);
+}
+.app-frame .job-attention,
+.app-frame .job-paused {
+    border-left-color: var(--warning);
+}
+.app-frame .job-main,
+.app-frame .job-status {
+    min-width: 0;
+}
+.app-frame .job-name {
+    overflow: hidden;
+    font-weight: var(--weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.app-frame .job-meta,
+.app-frame .job-note {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+}
+.app-frame .job-note {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.app-frame .job-progress {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    margin-top: var(--space-2);
+}
+.app-frame .job-progress progress {
+    flex: 1 1 auto;
+    min-width: 0;
+}
+.app-frame .job-percent {
+    min-width: 40px;
+    text-align: right;
+    font-size: var(--text-caption);
+}
+.app-frame .job-actions {
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 1 / -1;
+    gap: var(--space-2);
+}
+@container appframe (min-width: 1000px) {
+.app-frame .job {
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 340px;
+    }
+.app-frame .job-actions {
+        grid-column: auto;
+        justify-content: flex-end;
+    }
+}
+.app-frame .queue-footer {
+    position: sticky;
+    bottom: calc(var(--space-5) * -1);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-5);
+    margin: 0 calc(var(--space-5) * -1) calc(var(--space-5) * -1);
+    padding: var(--space-2) var(--space-5);
+    border-top: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+}
+@container appframe (max-width: 899px) {
+.app-frame .queue-footer {
+        bottom: calc(var(--space-4) * -1);
+        margin: 0 calc(var(--space-4) * -1) calc(var(--space-4) * -1);
+        padding: var(--space-2) var(--space-4);
+    }
+}
+.app-frame .backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    padding: var(--space-4);
+    background: var(--scrim);
+}
+.app-frame .dialog {
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 440px);
+    max-height: 100%;
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-3);
+    color: var(--on-surface);
+}
+.app-frame .dialog-wide {
+    width: min(100%, 640px);
+}
+.app-frame .dialog-title {
+    margin-bottom: var(--space-2);
+}
+.app-frame .dialog-body {
+    min-height: 0;
+    overflow-y: auto;
+}
+.app-frame .dialog-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    justify-content: flex-end;
+    margin-top: var(--space-4);
+}
+.app-frame .log {
+    max-height: 220px;
+    margin: 6px 0 0;
+    padding: var(--space-2);
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-sunken);
+    font-family: var(--mono);
+    font-size: var(--text-caption);
+    line-height: 1.4;
+    white-space: pre;
+}
+.app-frame .toasts {
+    position: fixed;
+    right: var(--space-4);
+    bottom: var(--space-4);
+    z-index: 30;
+    display: grid;
+    gap: var(--space-2);
+    width: min(360px, calc(100% - 2 * var(--space-4)));
+}
+.app-frame .toast {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    padding: var(--space-3);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-2);
+    animation: toast-in var(--dur-base) var(--ease);
+}
+.app-frame .toast-success {
+    border-color: var(--success);
+}
+.app-frame .toast-error {
+    border-color: var(--danger);
+}
+.app-frame .toast-icon {
+    flex: none;
+    width: 16px;
+    text-align: center;
+    font-weight: 700;
+}
+.app-frame .toast-success .toast-icon {
+    color: var(--success);
+}
+.app-frame .toast-error .toast-icon {
+    color: var(--danger);
+}
+.app-frame .toast-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+.app-frame .toast-close {
+    flex: none;
+    padding: 0 var(--space-1);
+    border: 0;
+    background: none;
+    color: var(--on-surface-muted);
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+}
+@keyframes toast-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+.app-frame *,
+.app-frame *::before,
+.app-frame *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+.app-frame .library-search {
+    margin: 0 0 var(--space-4);
+    max-width: 420px;
+}
+.app-frame .library-notice {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+    margin: 0 0 var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+.app-frame .search {
+    position: relative;
+}
+.app-frame .search .icon {
+    position: absolute;
+    top: 50%;
+    left: var(--space-3);
+    color: var(--on-surface-muted);
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+.app-frame .search input {
+    padding-left: 36px;
+}
+.app-frame .videos {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-4);
+    padding: 0;
+    list-style: none;
+}
+.app-frame .video-row {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-1);
+}
+.app-frame .video-open {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    border-radius: inherit;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.app-frame .video-open:hover {
+    background: var(--state-hover);
+}
+.app-frame .video-open:focus-visible {
+    outline-offset: -2px;
+}
+.app-frame .video-open > .chip {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-2);
+    border-color: var(--border);
+}
+.app-frame .thumb {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    background: var(--surface-sunken);
+    object-fit: cover;
+}
+.app-frame .thumb-placeholder {
+    display: grid;
+    place-items: center;
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+}
+.app-frame .video-main {
+    min-width: 0;
+    padding: var(--space-3);
+}
+.app-frame .video-title {
+    display: block;
+    overflow: hidden;
+    font-weight: var(--weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.app-frame .video-main {
+    display: block;
+}
+.app-frame .video-meta {
+    display: flex;
+    gap: var(--space-3);
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+}
+.app-frame .pager {
+    display: flex;
+    gap: var(--space-4);
+    align-items: center;
+    justify-content: center;
+    margin-top: var(--space-5);
+}
+.app-frame .detail {
+    container: detail / inline-size;
+}
+.app-frame .detail-head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    margin-bottom: var(--space-4);
+}
+.app-frame .breadcrumb {
+    flex: 1 1 200px;
+    min-width: 0;
+    color: var(--on-surface-muted);
+}
+.app-frame .breadcrumb ol {
+    display: flex;
+    gap: var(--space-2);
+    min-width: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+.app-frame .breadcrumb li:not(:last-child)::after {
+    margin-left: var(--space-2);
+    content: '\203A';
+}
+.app-frame .breadcrumb li[aria-current='page'] {
+    overflow: hidden;
+    min-width: 0;
+    color: var(--on-surface);
+    font-weight: var(--weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.app-frame .detail-grid {
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: minmax(0, 1fr);
+    align-items: start;
+}
+.app-frame .detail-col {
+    display: grid;
+    gap: var(--space-4);
+    min-width: 0;
+}
+@container detail (min-width: 900px) {
+.app-frame .detail-grid {
+        grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    }
+}
+.app-frame .detail-card > h3 {
+    margin-bottom: var(--space-3);
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+}
+.app-frame .detail-card-head {
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+.app-frame .detail-card-head > h3 {
+    margin-bottom: 0;
+}
+.app-frame .detail-note {
+    margin-top: var(--space-3);
+}
+.app-frame .detail-note > * + * {
+    margin-top: var(--space-2);
+}
+.app-frame .preview-poster {
+    position: relative;
+}
+.app-frame .preview-load {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+}
+.app-frame .preview-frame {
+    display: block;
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    border: 0;
+    background: var(--surface-sunken);
+}
+.app-frame .storyboard {
+    margin: 0 0 var(--space-3);
+}
+.app-frame .storyboard img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    background: var(--surface-sunken);
+}
+.app-frame .storyboard figcaption {
+    margin-top: var(--space-1);
+    font-size: var(--text-caption);
+}
+.app-frame .kv {
+    display: grid;
+    gap: var(--space-2);
+}
+.app-frame .kv-row {
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: 110px minmax(0, 1fr);
+    align-items: baseline;
+}
+.app-frame .kv-row dt {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+}
+.app-frame .kv-row dd {
+    min-width: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+.app-frame .mono {
+    font-family: var(--mono);
+}
+.app-frame .detail-error {
+    border-color: var(--danger);
+    background: var(--danger-container);
+}
+.app-frame .detail-error-text {
+    max-height: 200px;
+    margin: var(--space-2) 0 0;
+    overflow: auto;
+    font-family: var(--mono);
+    font-size: var(--text-caption);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.app-frame .title-edit {
+    display: grid;
+    gap: var(--space-2);
+}
+.app-frame .title-edit .form-error {
+    margin: 0;
+}
+.app-frame .library-tools {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    align-items: center;
+    margin: 0 0 var(--space-4);
+    padding: var(--space-2) var(--space-4);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+}
+.app-frame .library-tools .library-count {
+    margin-right: auto;
+    font-weight: var(--weight-semibold);
+}
+.app-frame .video-check {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    z-index: 1;
+    width: 20px;
+    height: 20px;
+    margin: 0;
+    accent-color: var(--primary);
+    cursor: pointer;
+}
+.app-frame .video-row.is-picked {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 2px var(--primary);
+}
+.app-frame .video-open:has(.video-check:focus-visible) {
+    outline: 2px solid var(--primary);
+    outline-offset: -2px;
+}
+@media (forced-colors: active) {
+.app-frame .card,
+.app-frame .job,
+.app-frame .video-row,
+.app-frame .dialog,
+.app-frame .toast,
+.app-frame .banner,
+.app-frame .sidebar,
+.app-frame .topbar {
+        border-color: CanvasText;
+    }
+.app-frame .btn,
+.app-frame .chip {
+        border-color: ButtonText;
+    }
+.app-frame .btn-primary,
+.app-frame .tab[aria-selected='true'],
+.app-frame .tab-count {
+        border: 1px solid Highlight;
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+.app-frame .tab[aria-selected='true'] {
+        outline: 2px solid CanvasText;
+        outline-offset: -2px;
+    }
+.app-frame .btn:disabled {
+        border-color: GrayText;
+        color: GrayText;
+        opacity: 1;
+    }
+.app-frame progress {
+        border: 1px solid CanvasText;
+        forced-color-adjust: none;
+        background: Canvas;
+    }
+.app-frame progress::-webkit-progress-bar {
+        background: Canvas;
+    }
+.app-frame progress::-webkit-progress-value {
+        background: Highlight;
+    }
+.app-frame :focus-visible {
+        outline: 2px solid Highlight;
+    }
+}
+/* ===== mockup chrome ===== */
+/* mockup chrome: everything here is prefixed mk- (or targets the frame/viewport wrappers) */
+.mk-body { margin: 0; padding: 0 16px 48px; background: #d9dce1; color: #1b1c1f; font: 13px/1.4 system-ui, 'Segoe UI', sans-serif; }
+.mk-bar { position: sticky; top: 0; z-index: 50; display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; margin: 0 -16px; padding: 8px 16px; background: #20232a; color: #fff; }
+.mk-bar label, .mk-group { display: inline-flex; gap: 6px; align-items: center; }
+.mk-bar select, .mk-bar button { font: inherit; padding: 3px 6px; border-radius: 4px; border: 1px solid #6b7280; background: #2f343d; color: #fff; }
+.mk-bar button { cursor: pointer; }
+.mk-bar button:hover { background: #3b414c; }
+.mk-brand { font-weight: 700; }
+.mk-check input { margin: 0; }
+.mk-note { margin: 8px 0; color: #3b3f46; }
+.mk-stage { position: relative; margin: 8px auto 0; }
+.mk-window { position: absolute; top: 0; left: 0; width: 1100px; height: 720px; transform-origin: 0 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 8px; border: 1px solid rgb(0 0 0 / 35%); box-shadow: 0 16px 48px rgb(0 0 0 / 35%); background: #f3f3f3; }
+.mk-window[data-size="760"] { width: 760px; height: 520px; }
+.mk-title { display: flex; flex: none; align-items: center; height: 32px; padding-left: 10px; background: #f3f3f3; color: #1b1b1b; font: 12px 'Segoe UI', system-ui, sans-serif; }
+.mk-window[data-theme="dark"] .mk-title { background: #202020; color: #fff; }
+.mk-window[data-theme="hc"] .mk-title { background: #000; color: #fff; border-bottom: 1px solid #fff; }
+.mk-title-icon { margin-right: 8px; }
+.mk-title-text { flex: 1; }
+.mk-wbtn { position: relative; width: 46px; height: 32px; }
+.mk-wbtn::before, .mk-wbtn::after { position: absolute; content: ''; }
+.mk-min::before { top: 16px; left: 18px; width: 10px; height: 1px; background: currentcolor; }
+.mk-max::before { top: 11px; left: 18px; width: 9px; height: 9px; border: 1px solid currentcolor; }
+.mk-close::before, .mk-close::after { top: 15px; left: 17px; width: 12px; height: 1px; background: currentcolor; transform: rotate(45deg); }
+.mk-close::after { transform: rotate(-45deg); }
+.mk-close:hover { background: #c42b1c; color: #fff; }
+.app-frame { flex: 1 1 auto; min-height: 0; }
+.app-frame { position: relative; }
+.app-frame .app-viewport { position: absolute; inset: 0; height: auto; overflow: hidden; container: appframe / inline-size; }
+.app-frame .backdrop, .app-frame .toasts { position: absolute; }
+.app-frame .toasts:empty { display: none; }
+.app-frame .panel { scrollbar-width: thin; }
+.app-frame .mk-anno { margin-right: 8px; padding: 1px 8px; border: 1px dashed #b4690e; border-radius: 4px; background: #fff4e0; color: #7a4a00; font-size: 11px; font-weight: 400; }
+.mk-hide-anno .mk-anno { display: none; }
+.app-frame .mk-iframe { display: grid; place-items: center; border: 1px dashed var(--border-strong); }
+.app-frame .mk-iframe-label { padding: 4px 10px; border-radius: 4px; background: var(--surface); color: var(--on-surface-muted); font-family: var(--mono); font-size: var(--text-caption); }
+/* High contrast SIMULATION: maps the tokens to Windows HC-black-like system colours (focus yellow, links cyan). */
+.app-frame[data-theme="hc"] { color-scheme: dark; --canvas: #000; --surface: #000; --surface-raised: #000; --surface-sunken: #000; --on-surface: #fff; --on-surface-muted: #fff; --border: #fff; --border-strong: #fff; --primary: #1aebff; --on-primary: #000; --primary-container: #000; --on-primary-container: #1aebff; --success: #fff; --success-container: #000; --warning: #fff; --warning-container: #000; --danger: #fff; --danger-container: #000; --neutral-container: #000; --on-neutral-container: #fff; --focus-ring: #ffff00; --scrim: #000; --state-hover: transparent; --state-pressed: transparent; --state-hover-on-primary: transparent; --state-pressed-on-primary: transparent; --shadow-1: none; --shadow-2: none; --shadow-3: none; }
+.app-frame[data-theme="hc"] .card, .app-frame[data-theme="hc"] .job, .app-frame[data-theme="hc"] .video-row, .app-frame[data-theme="hc"] .dialog, .app-frame[data-theme="hc"] .toast, .app-frame[data-theme="hc"] .banner, .app-frame[data-theme="hc"] .sidebar, .app-frame[data-theme="hc"] .topbar { border-color: #fff; }
+.app-frame[data-theme="hc"] .btn, .app-frame[data-theme="hc"] .chip { border-color: #fff; }
+.app-frame[data-theme="hc"] .btn-primary, .app-frame[data-theme="hc"] .tab[aria-selected='true'], .app-frame[data-theme="hc"] .tab-count { border: 1px solid #1aebff; background: #1aebff; color: #000; }
+.app-frame[data-theme="hc"] .tab[aria-selected='true'] { outline: 2px solid #fff; outline-offset: -2px; }
+.app-frame[data-theme="hc"] .btn:disabled { border-color: #3ff23f; color: #3ff23f; opacity: 1; }
+.app-frame[data-theme="hc"] progress, .app-frame[data-theme="hc"] progress::-webkit-progress-bar { border: 1px solid #fff; background: #000; }
+.app-frame[data-theme="hc"] progress::-webkit-progress-value { background: #1aebff; }
+.app-frame[data-theme="hc"] progress::-moz-progress-bar { background: #1aebff; }
+.app-frame[data-theme="hc"] :focus-visible { outline: 2px solid #ffff00; }
+.app-frame[data-theme="hc"] .btn-danger { color: #000; background: #fff; }
+.app-frame[data-theme="hc"] .thumb { background: #000; border: 1px solid #fff; }
+.app-frame[data-theme="hc"] .mk-anno { background: #000; color: #ffff00; border-color: #ffff00; }
+/* native dialog illustrations */
+.mk-native { max-width: 1100px; margin: 32px auto 0; }
+.mk-native h2 { font-size: 15px; margin: 0; }
+.mk-native-row { display: flex; flex-wrap: wrap; gap: 16px; }
+.mk-nd { width: 300px; border: 1px solid #8a8f98; background: #f3f3f3; box-shadow: 0 8px 24px rgb(0 0 0 / 25%); font: 12px 'Segoe UI', system-ui, sans-serif; }
+.mk-nd-title { padding: 6px 10px; background: #fff; border-bottom: 1px solid #d0d3d9; }
+.mk-nd-body { padding: 14px 12px; background: #fff; min-height: 70px; }
+.mk-nd-body p { margin: 0 0 6px; }
+.mk-nd-small { color: #585c64; font-size: 11px; }
+.mk-nd-foot { display: flex; gap: 8px; justify-content: flex-end; padding: 10px; background: #f3f3f3; }
+.mk-nd-foot span { padding: 3px 14px; border: 1px solid #8a8f98; border-radius: 3px; background: #fdfdfd; }
+.mk-nd-foot span:first-child { border-color: #0f62c4; }
+.mk-nd-err .mk-nd-title { border-top: 3px solid #a4262c; }
+
+</style>
+</head>
+<body class="mk-body">
+<header class="mk-bar" role="toolbar" aria-label="Mockup controls">
+  <strong class="mk-brand">UI mockup</strong>
+  <label>Screen <select id="mk-screen"></select></label>
+  <label>State <select id="mk-state"></select></label>
+  <label>Theme <select id="mk-theme"><option value="light">Light</option><option value="dark">Dark</option><option value="hc">High contrast (simulated)</option></select></label>
+  <label>Window <select id="mk-size"><option value="1100">1100 x 720</option><option value="760">760 x 520 (minimum)</option></select></label>
+  <span class="mk-group">Toast
+    <button type="button" data-mk-toast="success">Success</button>
+    <button type="button" data-mk-toast="info">Info</button>
+    <button type="button" data-mk-toast="error">Error</button>
+  </span>
+  <label class="mk-check"><input type="checkbox" id="mk-anno" checked> Annotations</label>
+  <button type="button" id="mk-reset">Reset</button>
+</header>
+<p class="mk-note">Static mockup for design review. High contrast is a simulation (browsers cannot toggle forced-colors). All data is fake (example.com). Click inside the app like the real thing; Esc closes dialogs / goes back.</p>
+<div class="mk-stage" id="mk-stage">
+  <div class="mk-window" id="mk-window" data-theme="light">
+    <div class="mk-title" aria-hidden="true">
+      <svg class="mk-title-icon" width="16" height="16" viewBox="0 0 28 28"><rect width="28" height="28" rx="8" fill="#0f62c4"/><path d="M11 8.5v11l9-5.5z" fill="#fff"/></svg>
+      <span class="mk-title-text">HLS R2 Studio</span>
+      <span class="mk-wbtn mk-min"></span><span class="mk-wbtn mk-max"></span><span class="mk-wbtn mk-close"></span>
+    </div>
+    <div class="app-frame" id="app-frame" data-theme="light">
+      <div class="app-viewport" id="app-viewport">
+        <div class="app-root" id="app-root"></div>
+        <div id="app-dialogs"></div>
+        <div class="toasts" id="app-toasts" role="status" aria-live="polite" aria-relevant="additions"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<section class="mk-native" aria-label="Native dialogs">
+  <h2>Native dialogs (Windows, drawn by the OS, not part of the web UI)</h2>
+  <p class="mk-note">Generic illustrations of the dialogs defined on the Rust side. Titles, texts and buttons are copied from the source; the look is the OS's.</p>
+  <div class="mk-native-row">
+    <div class="mk-nd"><div class="mk-nd-title">Add videos</div><div class="mk-nd-body"><p>Open file dialog (title: "Add videos")</p><p class="mk-nd-small">File type filter: Videos (mp4, mov, mkv, avi, webm)</p></div><div class="mk-nd-foot"><span>Open</span><span>Cancel</span></div></div>
+    <div class="mk-nd"><div class="mk-nd-title">Choose a thumbnail image</div><div class="mk-nd-body"><p>Open file dialog (step 3b)</p><p class="mk-nd-small">File type filter: Images (jpg, jpeg, png, webp)</p></div><div class="mk-nd-foot"><span>Open</span><span>Cancel</span></div></div>
+    <div class="mk-nd"><div class="mk-nd-title">Choose temporary folder</div><div class="mk-nd-body"><p>Folder picker dialog</p></div><div class="mk-nd-foot"><span>Select folder</span><span>Cancel</span></div></div>
+    <div class="mk-nd"><div class="mk-nd-title">HLS R2 Studio</div><div class="mk-nd-body"><p>Jobs are still running. Quit and cancel them?</p><p class="mk-nd-small">Shown when closing the window while jobs run (quit coordinator).</p></div><div class="mk-nd-foot"><span>Quit</span><span>Keep working</span></div></div>
+    <div class="mk-nd mk-nd-err"><div class="mk-nd-title">HLS R2 Studio could not start</div><div class="mk-nd-body"><p>An unexpected error stopped the app from starting. Details were written to the log file. Please start the app again; if this keeps happening, contact support.</p></div><div class="mk-nd-foot"><span>OK</span></div></div>
+  </div>
+</section>
+<script>
+'use strict';
+/* ---------- helpers ported from lib/format.ts, lib/jobState.ts, screens/videoStatus.tsx ---------- */
+const SITE = 'https://studio.example.com';
+const CDN = 'https://cdn.example.com';
+const NS = 'http:' + '//www.w3.org/2000/svg';
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return '0 B';
+  const U = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let v = bytes, u = 0;
+  while (v >= 1024 && u < U.length - 1) { v /= 1024; u += 1; }
+  if (u === 0) return Math.round(v) + ' B';
+  return (v < 10 ? v.toFixed(1) : Math.round(v).toString()) + ' ' + U[u];
+}
+function formatRelativeTime(iso, now) {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return '';
+  const s = Math.round((now - t) / 1000);
+  if (s < 10) return 'just now';
+  if (s < 60) return s + ' seconds ago';
+  const f = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+  for (const st of [['day', 86400], ['hour', 3600], ['minute', 60]]) {
+    if (s >= st[1]) return f.format(-Math.floor(s / st[1]), st[0]);
+  }
+  return 'just now';
+}
+function formatDateTime(iso) {
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(t);
+}
+function formatDate(iso) {
+  if (iso == null) return '';
+  const t = new Date(iso);
+  if (Number.isNaN(t.getTime())) return '';
+  return new Intl.DateTimeFormat('en', { dateStyle: 'medium' }).format(t);
+}
+function formatDuration(sec) {
+  if (sec == null || !Number.isFinite(sec) || sec < 0) return '';
+  const total = Math.round(sec), h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, '0');
+  return h > 0 ? h + ':' + String(m).padStart(2, '0') + ':' + s : m + ':' + s;
+}
+const plural = (n, one, many) => n + ' ' + (n === 1 ? one : (many || one + 's'));
+const siteHost = (u) => { if (!u) return ''; try { return new URL(u).host; } catch (e) { return u; } };
+const STAGE = { waiting: 'Waiting', transcoding: 'Transcoding', thumbnail: 'Thumbnail', storyboard: 'Storyboard', uploading: 'Uploading', registering: 'Registering', done: 'Done', failed: 'Failed', cancelled: 'Cancelled', interrupted: 'Interrupted', register_failed: 'Register failed', needs_sign_in: 'Sign-in needed', upload_interrupted: 'Upload paused' };
+const KIND = { waiting: 'waiting', transcoding: 'running', thumbnail: 'running', storyboard: 'running', uploading: 'running', registering: 'running', done: 'done', failed: 'failed', interrupted: 'failed', cancelled: 'cancelled', register_failed: 'attention', needs_sign_in: 'attention', upload_interrupted: 'paused' };
+const STATUS_ICON = { waiting: '○', running: '▶', done: '✓', failed: '✕', attention: '!', paused: '‖', cancelled: '–' };
+const isRunning = (j) => KIND[j.state] === 'running';
+const isFinished = (st) => st === 'done' || st === 'failed' || st === 'cancelled' || st === 'interrupted';
+const hasDetailsView = (st) => st === 'failed' || st === 'register_failed' || st === 'interrupted' || st === 'upload_interrupted';
+const VSTATUS = { ready: ['Ready', 'chip-done'], processing: ['Processing', 'chip-running'], pending: ['Pending', ''], failed: ['Failed', 'chip-failed'] };
+function statusBadge(status) {
+  const k = Object.prototype.hasOwnProperty.call(VSTATUS, status) ? VSTATUS[status] : ['Unknown', ''];
+  return '<span class="' + ('chip ' + k[1]).trim() + '">' + k[0] + '</span>';
+}
+
+/* ---------- icons (components/icons.tsx) ---------- */
+const ico = (inner) => '<svg class="icon" width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' + inner + '</svg>';
+const ICONS = {
+  queue: ico('<path d="M4 5.5h12M4 10h12M4 14.5h7" />'),
+  library: ico('<rect x="3" y="4" width="14" height="12" rx="2" /><path d="M8.5 7.5v5l4-2.5z" />'),
+  settings: ico('<path d="M3.5 6h8M15.5 6h1M3.5 14h1M8.5 14h8" /><circle cx="13.5" cy="6" r="2" /><circle cx="6.5" cy="14" r="2" />'),
+  about: ico('<circle cx="10" cy="10" r="7" /><path d="M10 9v4.5M10 6.6v.1" />'),
+  search: ico('<circle cx="9" cy="9" r="5" /><path d="m13 13 3.5 3.5" />'),
+};
+const brandMark = (size) => '<svg class="brand-mark" width="' + size + '" height="' + size + '" viewBox="0 0 28 28" aria-hidden="true" focusable="false"><rect width="28" height="28" rx="8" fill="var(--primary)" /><path d="M11 8.5v11l9-5.5z" fill="var(--on-primary)" /></svg>';
+
+/* ---------- fake thumbnails (inline SVG data URIs, no external images) ---------- */
+function svgUri(svg) { return 'data:image/svg+xml,' + encodeURIComponent(svg); }
+function thumbUri(seed, custom) {
+  const h1 = (seed * 47) % 360, h2 = (h1 + (custom ? 150 : 50)) % 360;
+  return svgUri("<svg xmlns='" + NS + "' viewBox='0 0 320 180'><defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop offset='0' stop-color='hsl(" + h1 + " 55% 42%)'/><stop offset='1' stop-color='hsl(" + h2 + " 60% 26%)'/></linearGradient></defs><rect width='320' height='180' fill='url(#g)'/><circle cx='" + (60 + (seed * 37) % 200) + "' cy='" + (40 + (seed * 13) % 90) + "' r='34' fill='rgba(255,255,255,.16)'/><path d='M140 66v48l42-24z' fill='rgba(255,255,255,.88)'/>" + (custom ? "<rect x='8' y='8' width='64' height='18' rx='4' fill='rgba(0,0,0,.45)'/><text x='14' y='21' font-size='11' fill='#fff' font-family='sans-serif'>custom</text>" : '') + '</svg>');
+}
+function storyboardUri(seed) {
+  let cells = '';
+  for (let r = 0; r < 3; r++) for (let c = 0; c < 10; c++) cells += "<rect x='" + c * 32 + "' y='" + r * 18 + "' width='32' height='18' fill='hsl(" + ((seed * 47 + (r * 10 + c) * 9) % 360) + " 50% " + (30 + ((r * 10 + c) * 7) % 25) + "%)' stroke='rgba(0,0,0,.35)' stroke-width='.5'/>";
+  return svgUri("<svg xmlns='" + NS + "' viewBox='0 0 320 54'>" + cells + '</svg>');
+}
+
+/* ---------- fake data ---------- */
+const NOW = Date.now();
+const ago = (min) => new Date(NOW - min * 60000).toISOString();
+function mkJob(o) { return Object.assign({ sizeBytes: 524288000, progress: 0, waitingReason: null, waitingForNetwork: false, errorMessage: null, errorDetail: null, embedUrl: null, videoId: undefined, createdAt: ago(30), startedAt: null, finishedAt: null, updatedAt: ago(5), cancelRequested: false }, o); }
+function allJobs() {
+  return [
+    mkJob({ id: 'j1', fileName: 'Interview_raw_cut.mp4', sizeBytes: 1932735283, state: 'waiting', waitingReason: 'Sign in to start processing.', createdAt: ago(2) }),
+    mkJob({ id: 'j2', fileName: 'Product_demo_v3.mov', sizeBytes: 734003200, state: 'waiting', createdAt: ago(3) }),
+    mkJob({ id: 'j3', fileName: 'Holiday_clip_4k.mkv', sizeBytes: 3221225472, state: 'transcoding', progress: 34, startedAt: ago(9), createdAt: ago(12) }),
+    mkJob({ id: 'j4', fileName: 'Lecture_week_05.mp4', sizeBytes: 905969664, state: 'thumbnail', progress: 62, startedAt: ago(7) }),
+    mkJob({ id: 'j5', fileName: 'Trailer_final.webm', sizeBytes: 220200960, state: 'storyboard', progress: 70, startedAt: ago(6) }),
+    mkJob({ id: 'j6', fileName: 'Webinar_recording.mp4', sizeBytes: 2254857830, state: 'uploading', progress: 71, startedAt: ago(20) }),
+    mkJob({ id: 'j7', fileName: 'Conference_talk.mp4', sizeBytes: 1288490188, state: 'uploading', progress: 83, waitingForNetwork: true, networkWaitSince: ago(1), startedAt: ago(25) }),
+    mkJob({ id: 'j8', fileName: 'Tutorial_part2.avi', sizeBytes: 612368384, state: 'registering', progress: 98, startedAt: ago(40) }),
+    mkJob({ id: 'j9', fileName: 'Behind_the_scenes.mp4', sizeBytes: 1503238553, state: 'upload_interrupted', updatedAt: ago(90), errorMessage: 'The upload was paused. Resume to continue.', errorDetail: { step: 'uploading', exitCode: null, stderrTail: [] } }),
+    mkJob({ id: 'j10', fileName: 'Promo_spring.mp4', state: 'register_failed', errorMessage: 'Uploaded, but the site could not register the video.', errorDetail: { step: 'registering', exitCode: null, stderrTail: [] }, finishedAt: ago(15) }),
+    mkJob({ id: 'j11', fileName: 'Onboarding_intro.mp4', state: 'needs_sign_in', errorMessage: null, finishedAt: ago(18) }),
+    mkJob({ id: 'j12', fileName: 'Keynote_opening.mp4', sizeBytes: 1073741824, state: 'done', progress: 100, embedUrl: SITE + '/embed/vid_k3x9a2', videoId: 101, startedAt: ago(70), finishedAt: ago(48) }),
+    mkJob({ id: 'j13', fileName: 'Broken_capture.mov', state: 'failed', errorMessage: 'Transcoding failed.', errorDetail: { step: 'transcoding', exitCode: 1, stderrTail: ['[mov,mp4,m4a,3gp,3g2,mj2 @ 0x1f2a3b4c] moov atom not found', 'C:\\Users\\<user>\\Videos\\Broken_capture.mov: Invalid data found when processing input', 'Conversion failed!'] }, startedAt: ago(120), finishedAt: ago(115) }),
+    mkJob({ id: 'j14', fileName: 'Crash_during_upload.mp4', state: 'interrupted', errorMessage: 'The app was closed while this video was processing.', errorDetail: { step: 'transcoding', exitCode: null, stderrTail: [] }, startedAt: ago(300), finishedAt: ago(299) }),
+    mkJob({ id: 'j15', fileName: 'Draft_cut_old.mp4', state: 'cancelled', errorMessage: 'Cancelled by you.', finishedAt: ago(1500) }),
+  ];
+}
+const TITLES = ['Keynote opening', 'Holiday clip 4K', 'Product demo v3', 'Broken capture', 'Archived webinar', 'Lecture week 05', 'Trailer final cut', 'Onboarding intro', 'Behind the scenes', 'Spring promo', 'Conference talk', 'Tutorial part 2', 'Interview raw cut', 'Team offsite 2026', 'Release notes walkthrough', 'Q3 all-hands', 'Customer story: Northwind', 'Screen recording 14', 'Cooking basics ep. 1', 'Cooking basics ep. 2', 'Drone flyover', 'Quarterly review', 'Support training', 'Welcome message', 'Safety briefing', 'Product teaser', 'Studio tour', 'Podcast clip 7', 'Meetup recap', 'Annual summary'];
+const VIDEOS = TITLES.map((t, i) => {
+  const status = i === 1 ? 'processing' : i === 2 ? 'pending' : i === 3 ? 'failed' : i === 4 ? 'archived' : 'ready';
+  const unfinished = status === 'processing' || status === 'pending' || status === 'failed';
+  return { id: 101 + i, publicId: 'vid_' + (900000 + i * 7919).toString(36), title: t, status, duration: unfinished ? null : 45 + ((i * 131) % 3400), noThumb: i === 5 || i === 11 || unfinished && i !== 1, hasCustomImage: i === 0 || i === 6, createdAt: ago(60 * 24 * (i + 1) + 17), seed: i + 3 };
+});
+const PAGE_SIZE = 24;
+const GENERIC_ERROR = 'Something went wrong. Please try again.';
+const DELETE_BLOCKED = 'A video that is pending or processing cannot be deleted yet.';
+
+/* ---------- state ---------- */
+let S;
+function fresh() {
+  return {
+    screen: 'main', tab: 'queue', openVideo: null,
+    auth: { status: 'signed_in', username: 'demo.user', siteUrl: SITE, r2Configured: true, error: null },
+    ffmpeg: { checked: true, ok: true, version: '7.1.1-essentials_build', missing: [] },
+    jobs: allJobs(), pending: new Set(), dragging: false, dialog: null, detailsId: null,
+    login: { user: '', pass: '', stay: true, submitting: false, restoring: false, error: null },
+    lib: { kind: 'ready', input: '', search: '', page: 1, stale: false, select: false, picked: new Set(), busy: false, errorMsg: '' },
+    deleted: new Set(), titles: {}, customOn: new Set(VIDEOS.filter((v) => v.hasCustomImage).map((v) => v.id)),
+    detail: { kind: 'ready', loaded: false, editing: null, thumbBusy: false, unlisted: false },
+    settings: { tmp: 'C:\\Users\\demo\\AppData\\Local\\HLS R2 Studio\\hls_tmp', parallel: 1, fbTmp: null, fbPar: null },
+    about: { feedback: null }, reloading: false, signingOut: false, toasts: [],
+  };
+}
+S = fresh();
+const view = { theme: 'light', size: '1100' };
+
+const summary = () => {
+  const j = S.jobs;
+  return {
+    running: j.filter(isRunning).length, waiting: j.filter((x) => x.state === 'waiting').length,
+    attention: j.filter((x) => KIND[x.state] === 'attention').length, done: j.filter((x) => x.state === 'done').length,
+    failed: j.filter((x) => x.state === 'failed' || x.state === 'interrupted').length, total: j.length,
+  };
+};
+const jobFlags = (j) => {
+  const running = isRunning(j), k = KIND[j.state];
+  return {
+    canCancel: !j.cancelRequested && (running || j.state === 'waiting' || k === 'attention'),
+    canRetry: !running && (j.state === 'failed' || j.state === 'cancelled' || j.state === 'interrupted' || j.state === 'upload_interrupted'),
+    canResume: !running && j.state === 'upload_interrupted',
+    canRetryRegister: !running && k === 'attention',
+    canRemove: !running && (isFinished(j.state) || j.state === 'upload_interrupted'),
+  };
+};
+
+/* ---------- rendering: shell ---------- */
+const TABS = [['queue', 'Queue'], ['library', 'Library'], ['settings', 'Settings'], ['about', 'About']];
+
+function renderApp() {
+  if (S.screen === 'splash-loading') return '<main class="splash" aria-busy="true"><p class="wordmark">HLS R2 Studio</p><p class="muted">Loading…</p></main>';
+  if (S.screen === 'splash-error') return '<main class="splash"><p class="wordmark">HLS R2 Studio</p><p role="alert">Could not load the app state.</p><button type="button" class="btn btn-primary" data-act="splash-retry">Try again</button></main>';
+  if (S.screen === 'login') return renderLogin();
+  return renderMain();
+}
+
+function renderLogin() {
+  const L = S.login, auth = S.auth;
+  const busy = L.submitting || L.restoring;
+  const shownError = L.error != null ? L.error : (busy ? null : auth.error);
+  const host = siteHost(auth.siteUrl);
+  return '<main class="login"><form class="card login-card" id="login-form" novalidate>' +
+    '<div class="login-brand">' + brandMark(36) + '<p class="wordmark">HLS R2 Studio</p></div>' +
+    '<h1 class="login-title">Sign in</h1><p class="muted">Use the account you have on your HLS site.</p>' +
+    (host ? '<p class="muted small">Signing in to <strong>' + esc(host) + '</strong></p>' : '') +
+    '<div class="field"><label for="login-user">Username</label><input id="login-user" type="text" autocomplete="off" spellcheck="false" value="' + esc(L.user) + '"' + (busy ? ' disabled' : '') + '></div>' +
+    '<div class="field"><label for="login-pass">Password</label><input id="login-pass" type="password" autocomplete="off" value="' + esc(L.pass) + '"' + (busy ? ' disabled' : '') + '></div>' +
+    '<label class="check"><input type="checkbox" id="login-stay"' + (L.stay ? ' checked' : '') + (busy ? ' disabled' : '') + '><span>Stay signed in</span></label>' +
+    '<div id="login-error" class="form-error" role="alert">' + (shownError ? esc(shownError) : '') + '</div>' +
+    '<button type="submit" class="btn btn-primary btn-block"' + (busy ? ' disabled' : '') + '>' + (busy ? 'Signing in…' : 'Sign in') + '</button></form></main>';
+}
+
+function renderMain() {
+  const sm = summary(), active = sm.running + sm.waiting, a = S.auth, host = siteHost(a.siteUrl);
+  const cur = TABS.find((t) => t[0] === S.tab);
+  const tabs = TABS.map((t) => '<button id="tab-' + t[0] + '" type="button" role="tab" class="' + (t[0] === 'about' ? 'tab tab-secondary' : 'tab') + '" aria-selected="' + (S.tab === t[0]) + '" aria-controls="panel-' + t[0] + '" tabindex="' + (S.tab === t[0] ? 0 : -1) + '" data-act="tab" data-id="' + t[0] + '">' + ICONS[t[0]] + '<span class="tab-label">' + t[1] + '</span>' + (t[0] === 'queue' && active > 0 ? '<span class="tab-count num">' + active + '</span>' : '') + '</button>').join('');
+  let body = '';
+  if (S.tab === 'queue') body = renderQueue(); else if (S.tab === 'library') body = renderLibrary(); else if (S.tab === 'settings') body = renderSettings(); else body = renderAbout();
+  return '<div class="shell"><div class="sidebar"><div class="sidebar-brand">' + brandMark(28) + '<p class="wordmark">HLS R2 Studio</p></div>' +
+    '<div class="nav" role="tablist" aria-label="Sections" aria-orientation="vertical">' + tabs + '</div>' +
+    '<div class="sidebar-footer" role="group" aria-label="Account" title="' + esc(a.siteUrl || '') + '"><span class="avatar" aria-hidden="true">' + esc((a.username || '?').slice(0, 1).toUpperCase()) + '</span><p class="account">' +
+    (a.username ? '<strong class="account-name" title="' + esc(a.username) + '">' + esc(a.username) + '</strong>' : '') + (host ? '<span class="account-site" title="' + esc(host) + '">' + esc(host) + '</span>' : '') + '</p></div></div>' +
+    '<div class="workspace"><header class="topbar"><p class="topbar-brand">HLS R2 Studio</p><p class="page-title">' + cur[1] + '</p><div class="topbar-status">' +
+    (active > 0 ? '<span class="chip chip-running num" aria-hidden="true">' + active + ' active</span>' : '') + (a.status === 'offline' ? '<span class="chip chip-attention">Offline</span>' : '') + '</div></header>' +
+    '<main class="panel" id="panel-' + S.tab + '" role="tabpanel" aria-labelledby="tab-' + S.tab + '"><div class="panel-inner">' + body + '</div></main></div></div>';
+}
+
+/* ---------- rendering: queue ---------- */
+function banner(tone, title, children, action) {
+  const icon = { info: 'i', warning: '!', danger: '✕' }[tone];
+  return '<div class="banner banner-' + tone + '" role="' + (tone === 'info' ? 'status' : 'alert') + '"><span class="banner-icon" aria-hidden="true">' + icon + '</span><div class="banner-text"><strong>' + title + '</strong>' + (children != null ? '<span class="banner-detail"> ' + children + '</span>' : '') + '</div>' + (action ? '<div class="banner-action">' + action + '</div>' : '') + '</div>';
+}
+function reloadBtn() { return '<button type="button" class="btn btn-sm" data-act="reload-config"' + (S.reloading ? ' disabled' : '') + '>' + (S.reloading ? 'Reloading…' : 'Reload config') + '</button>'; }
+function queueBanners() {
+  const paused = S.jobs.filter((j) => j.state === 'upload_interrupted').length;
+  const need = S.jobs.filter((j) => j.state === 'needs_sign_in').length;
+  const f = S.ffmpeg;
+  let h = '';
+  if (f.checked && !f.ok) h += banner('danger', 'Video tools are not working.', 'Videos cannot be processed until this is fixed.' + (f.missing.length ? ' Missing features:<ul class="banner-list">' + f.missing.map((m) => '<li>' + esc(m) + '</li>').join('') + '</ul>' : '') + ' Reinstall the app or see About for details.');
+  if (S.auth.status === 'offline') h += banner('warning', 'Cannot reach the site.', 'Videos wait in the queue until the connection is back.', reloadBtn());
+  if (S.auth.status === 'signed_in' && S.auth.r2Configured === false) h += banner('warning', 'R2 storage is not set up on the site.', 'Ask an admin to set up R2 in the site dashboard (Settings -&gt; Storage).');
+  if (paused > 0) h += banner('warning', plural(paused, 'upload') + ' paused.', 'Use Resume to continue without processing the video again. Temporary files stay on disk until you resume or remove the video.');
+  if (need > 0) h += banner('warning', 'Sign in again to finish ' + plural(need, 'video') + '.', 'These videos are already uploaded and will be registered after you sign in.');
+  return '<div class="banners">' + h + '</div>';
+}
+function renderDropzone() {
+  const compact = S.jobs.length > 0;
+  return '<div class="dropzone' + (S.dragging ? ' is-dragging' : '') + (compact ? ' is-compact' : '') + '" data-testid="dropzone"><p class="dropzone-text">' + (S.dragging ? 'Release to add the videos' : 'Drop video files here, or click Add videos') + '</p><button type="button" class="btn btn-primary" data-act="add-videos">Add videos</button>' + (!compact ? '<p class="muted small">MP4, MOV, MKV, AVI and WebM files.</p>' : '') + '</div>';
+}
+function renderJob(job) {
+  const kind = KIND[job.state], running = kind === 'running', fl = jobFlags(job), paused = job.state === 'upload_interrupted';
+  const stage = job.waitingForNetwork ? 'Waiting for network…' : STAGE[job.state];
+  let time;
+  if (paused) time = ['Paused ' + formatRelativeTime(job.updatedAt, NOW), job.updatedAt];
+  else if (job.finishedAt) time = ['Finished ' + formatRelativeTime(job.finishedAt, NOW), job.finishedAt];
+  else if (job.startedAt && running) time = ['Started ' + formatRelativeTime(job.startedAt, NOW), job.startedAt];
+  else time = ['Added ' + formatRelativeTime(job.createdAt, NOW), job.createdAt];
+  let note = null;
+  switch (job.state) {
+    case 'waiting': note = job.waitingReason; break;
+    case 'needs_sign_in': note = job.errorMessage || 'Uploaded. Sign in again to finish.'; break;
+    case 'register_failed': note = job.errorMessage || 'Uploaded, but the site could not register the video.'; break;
+    case 'upload_interrupted': note = job.errorMessage || 'The upload was paused. Resume to continue.'; break;
+    case 'failed': case 'interrupted': case 'cancelled': note = job.errorMessage; break;
+  }
+  const pend = S.pending.has(job.id);
+  const b = (act, label, on, danger, primary) => on === false ? '' : '<button type="button" class="' + (danger ? 'btn btn-sm btn-danger-quiet' : primary ? 'btn btn-sm btn-primary' : 'btn btn-sm') + '"' + (pend ? ' disabled' : '') + ' aria-label="' + esc(label + ': ' + job.fileName) + '" data-act="' + act + '" data-id="' + job.id + '">' + label + '</button>';
+  return '<li class="job job-' + kind + '" data-state="' + job.state + '"' + (job.waitingForNetwork ? ' data-network-wait="true"' : '') + '>' +
+    '<div class="job-main"><p class="job-name" title="' + esc(job.fileName) + '">' + esc(job.fileName) + '</p><p class="job-meta"><span class="num">' + formatBytes(job.sizeBytes) + '</span><span aria-hidden="true"> · </span><time datetime="' + time[1] + '" title="' + esc(formatDateTime(time[1])) + '">' + time[0] + '</time></p></div>' +
+    '<div class="job-status"><span class="chip chip-' + kind + '"><span class="chip-icon" aria-hidden="true">' + STATUS_ICON[kind] + '</span>' + stage + '</span>' +
+    (running ? '<div class="job-progress"><progress max="100" value="' + job.progress + '" aria-label="' + esc('Progress of ' + job.fileName) + '"></progress><span class="num job-percent">' + job.progress + '%</span></div>' : '') +
+    (running && job.waitingForNetwork ? '<p class="job-note">Retrying automatically</p>' : '') +
+    (note != null && !running ? '<p class="job-note" title="' + esc(note) + '">' + esc(note) + '</p>' : '') +
+    (paused ? '<p class="job-note">Temporary files are kept on disk until you resume or remove this video.</p>' : '') + '</div>' +
+    '<div class="job-actions">' + b('job-resume', 'Resume', fl.canResume, false, true) + b('job-cancel', 'Cancel', fl.canCancel) + b('job-retry', paused ? 'Start over' : 'Retry', fl.canRetry) + b('job-retry-register', 'Retry register', fl.canRetryRegister) +
+    (job.state === 'done' && job.embedUrl != null ? b('job-copy-url', 'Copy embed URL') + b('job-copy-shortcode', 'Copy shortcode') + b('job-open', 'Open on site') : '') +
+    (job.state === 'done' ? b('job-view-library', 'View in Library') : '') + (hasDetailsView(job.state) ? b('job-details', 'View details') : '') + b('job-remove', 'Remove', fl.canRemove, true) + '</div></li>';
+}
+function renderQueue() {
+  const sm = summary(), fin = S.jobs.filter((j) => isFinished(j.state)).length;
+  return '<div class="queue">' + queueBanners() + renderDropzone() +
+    '<section class="queue-list" aria-labelledby="queue-heading"><div class="section-head"><h2 id="queue-heading">Queue</h2><button type="button" class="btn btn-sm"' + (fin === 0 ? ' disabled' : '') + ' data-act="clear-finished">Clear finished</button></div>' +
+    (S.jobs.length === 0 ? '<p class="empty">Drop video files here, or click Add videos</p>' : '<ul class="jobs" aria-label="Video queue">' + S.jobs.map(renderJob).join('') + '</ul>') + '</section>' +
+    '<footer class="queue-footer" role="status" aria-live="polite"><span class="num">' + sm.running + ' running</span><span class="num">' + sm.waiting + ' waiting</span><span class="num">' + sm.done + ' done</span><span class="num">' + sm.failed + ' failed</span>' + (sm.attention > 0 ? '<span class="num">' + sm.attention + ' need attention</span>' : '') + '</footer></div>';
+}
+
+/* ---------- rendering: library ---------- */
+function titleOf(v) { return S.titles[v.id] != null ? S.titles[v.id] : v.title; }
+function posterUrl(v) { if (v.noThumb && !S.customOn.has(v.id)) return null; return thumbUri(v.seed, S.customOn.has(v.id)); }
+function thumbHtml(url) { return url == null ? '<div class="thumb thumb-placeholder" aria-hidden="true">No preview</div>' : '<img class="thumb" src="' + url + '" alt="">'; }
+function filtered() {
+  const q = S.lib.search.toLowerCase();
+  return VIDEOS.filter((v) => !S.deleted.has(v.id) && (q === '' || titleOf(v).toLowerCase().includes(q)));
+}
+function renderVideoRow(v) {
+  const dur = formatDuration(v.duration), created = formatDate(v.createdAt);
+  const content = thumbHtml(posterUrl(v)) + '<span class="video-main"><span class="video-title" title="' + esc(titleOf(v)) + '">' + esc(titleOf(v)) + '</span><span class="video-meta">' + (dur ? '<span class="num">' + dur + '</span>' : '') + (created ? '<span>' + created + '</span>' : '') + '</span></span>' + statusBadge(v.status);
+  if (S.lib.select) {
+    const picked = S.lib.picked.has(v.id);
+    return '<li class="' + (picked ? 'video-row is-picked' : 'video-row') + '"><label class="video-open"><input type="checkbox" class="video-check" aria-label="' + esc('Select ' + titleOf(v)) + '"' + (picked ? ' checked' : '') + (S.lib.busy ? ' disabled' : '') + ' data-act="lib-pick" data-id="' + v.id + '">' + content + '</label></li>';
+  }
+  return '<li class="video-row"><button type="button" class="video-open" data-act="lib-open" data-id="' + v.id + '">' + content + '</button></li>';
+}
+function renderLibrary() {
+  const L = S.lib, all = filtered();
+  const lastPage = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+  const page = Math.min(L.page, lastPage);
+  const items = all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const ready = L.kind === 'ready' || L.kind === 'empty';
+  const shown = L.kind === 'empty' ? [] : items;
+  const pickedIds = shown.filter((v) => L.picked.has(v.id)).map((v) => v.id);
+  let h = '<section class="library" aria-labelledby="library-heading">';
+  if (S.openVideo != null) h += renderDetail();
+  h += '<div' + (S.openVideo != null ? ' hidden' : '') + '><div class="section-head"><h2 id="library-heading" tabindex="-1">Library</h2><div class="row"><span class="mk-anno" aria-hidden="true">planned: Grid/List toggle</span>' +
+    '<button type="button" class="btn btn-sm" aria-pressed="' + L.select + '"' + (L.busy ? ' disabled' : '') + ' data-act="lib-select-toggle">Select</button><button type="button" class="btn btn-sm" data-act="lib-refresh">Refresh</button></div></div>';
+  if (L.select) h += '<div class="library-tools" role="toolbar" aria-label="Selection"><span class="library-count" role="status">' + pickedIds.length + ' selected</span>' +
+    '<button type="button" class="btn btn-sm"' + (L.busy || shown.length === 0 ? ' disabled' : '') + ' data-act="lib-all">Select all on this page</button>' +
+    '<button type="button" class="btn btn-sm"' + (L.busy || pickedIds.length === 0 ? ' disabled' : '') + ' data-act="lib-clear">Clear</button>' +
+    '<button type="button" class="btn btn-sm btn-danger"' + (L.busy || pickedIds.length === 0 ? ' disabled' : '') + ' data-act="lib-delete-selected">Delete selected</button></div>';
+  h += '<div class="field library-search"><label for="library-search">Search videos</label><div class="search">' + ICONS.search + '<input id="library-search" type="text" maxlength="100" value="' + esc(L.input) + '" placeholder="Search by title"></div></div>';
+  if (L.stale) h += '<p class="library-notice" role="status"><span>New videos are available.</span><button type="button" class="btn btn-sm" data-act="lib-stale-refresh">Refresh</button></p>';
+  if (L.kind === 'loading') h += '<p class="empty" role="status" aria-busy="true">Loading…</p>';
+  if (L.kind === 'error') h += '<div class="empty"><p role="alert">' + esc(L.errorMsg) + '</p><button type="button" class="btn btn-sm" data-act="lib-retry">Retry</button></div>';
+  if (ready && shown.length === 0) h += '<p class="empty">' + (L.search === '' ? 'No videos yet' : 'No videos match your search') + '</p>';
+  if (ready && shown.length > 0) h += '<ul class="videos" aria-label="Videos">' + shown.map(renderVideoRow).join('') + '</ul>';
+  if (ready) {
+    const total = L.kind === 'empty' ? 0 : all.length;
+    h += '<nav class="pager" aria-label="Pagination"><button type="button" class="btn btn-sm"' + (page <= 1 ? ' disabled' : '') + ' data-act="lib-prev">Previous</button><span class="num" role="status">Page ' + page + ' of ' + Math.max(1, L.kind === 'empty' ? 1 : lastPage) + ' · ' + plural(total, 'video') + '</span><button type="button" class="btn btn-sm"' + (page >= lastPage ? ' disabled' : '') + ' data-act="lib-next">Next</button></nav>';
+  }
+  h += '</div></section>';
+  S._pickedIds = pickedIds;
+  return h;
+}
+
+/* ---------- rendering: video detail ---------- */
+function detailVideo(id) {
+  const v = VIDEOS.find((x) => x.id === id);
+  const custom = S.customOn.has(id);
+  const failed = v.status === 'failed', ready = v.status === 'ready';
+  const embedHost = S.detail.unlisted ? CDN : SITE;
+  return {
+    id: v.id, publicId: v.publicId, title: titleOf(v), status: v.status,
+    originalFilename: v.title.replace(/[^A-Za-z0-9]+/g, '_') + '.mp4', originalSizeBytes: 734003200 + v.id * 1048576,
+    stage: v.status === 'processing' ? 'transcoding' : v.status === 'pending' ? 'queued' : null, progress: v.status === 'processing' ? 42 : v.status === 'pending' ? 0 : null,
+    error: failed ? { message: 'Transcoding failed.', detail: 'ffmpeg exited with code 1\nmoov atom not found\nConversion failed!', failedAt: ago(200) } : null,
+    duration: v.duration, outputWidth: ready ? 1920 : null, outputHeight: ready ? 1080 : null, outputFps: ready ? 29.97 : null, outputBitrateKbps: ready ? 4200 : null, outputCodec: ready ? 'h264' : null,
+    embedUrl: embedHost + '/embed/' + v.publicId, playlistUrl: ready ? CDN + '/' + v.publicId + '/playlist.m3u8' : null,
+    thumbnailUrl: v.noThumb ? null : thumbUri(v.seed, false), hasCustomImage: custom, customImageUrl: custom ? thumbUri(v.seed, true) : null,
+    storyboards: ready ? { '1': { url: storyboardUri(v.seed), columns: 10, count: 30 } } : {},
+    createdAt: v.createdAt, updatedAt: ago(30),
+  };
+}
+function isSiteEmbedUrl(embed, site) {
+  if (!embed || !site) return false;
+  try { const e = new URL(embed), s = new URL(site); return e.protocol === 'https:' && s.protocol === 'https:' && e.username === '' && e.password === '' && e.host !== '' && e.host === s.host; } catch (x) { return false; }
+}
+function statusExplanation(v) {
+  switch (v.status) {
+    case 'pending': return 'This video is waiting to be processed. The preview is available once it is ready.';
+    case 'processing': return 'This video is still being processed. The preview is available once it is ready.';
+    case 'failed': return 'Processing failed, so there is nothing to preview. See the error details.';
+    default: return 'This video is not ready yet, so the preview is not available.';
+  }
+}
+function kvRow(label, inner) { return '<div class="kv-row"><dt>' + label + '</dt><dd>' + inner + '</dd></div>'; }
+function renderDetail() {
+  const D = S.detail, id = S.openVideo, base = VIDEOS.find((x) => x.id === id), fallback = base ? titleOf(base) : 'Video';
+  let h = '<section class="detail" aria-label="Video details"><div class="detail-head"><button type="button" class="btn btn-sm" data-act="d-back">← Library</button><nav aria-label="Breadcrumb" class="breadcrumb"><ol><li>Library</li><li aria-current="page" title="' + esc(fallback) + '">' + esc(fallback) + '</li></ol></nav><button type="button" class="btn btn-sm" data-act="d-refresh">Refresh</button></div>';
+  if (D.kind === 'loading') return h + '<p class="empty" role="status" aria-busy="true">Loading…</p></section>';
+  if (D.kind === 'error') return h + '<div class="empty"><p role="alert">Could not reach the site. Check your internet connection.</p><button type="button" class="btn btn-sm" data-act="d-refresh">Retry</button></div></section>';
+  const v = detailVideo(id), busy = D.busy === true, blocked = v.status === 'pending' || v.status === 'processing';
+  const poster = v.customImageUrl || v.thumbnailUrl, embeddable = isSiteEmbedUrl(v.embedUrl, SITE);
+  let preview;
+  if (v.status !== 'ready') preview = thumbHtml(poster) + '<p class="muted detail-note">' + statusExplanation(v) + '</p>';
+  else if (!embeddable || v.embedUrl == null) preview = thumbHtml(poster) + '<div class="detail-note"><p>Preview unavailable</p>' + (v.embedUrl != null ? '<button type="button" class="btn btn-sm"' + (busy ? ' disabled' : '') + ' data-act="d-open">Open in browser</button>' : '') + '</div>';
+  else if (!D.loaded) preview = '<div class="preview-poster">' + thumbHtml(poster) + '<button type="button" class="btn btn-primary preview-load" data-act="d-load-preview">Load preview</button></div>';
+  else preview = '<div class="preview-frame mk-iframe" role="img" aria-label="' + esc('Preview of ' + v.title) + '"><span class="mk-iframe-label">embed player (iframe)</span></div>';
+  const previewCard = '<section class="card detail-card" aria-label="Preview"><h3>Preview</h3>' + preview + '</section>';
+  // Thumbnail card: designed from the step 3b spec (not yet in the source).
+  const thumbCard = '<section class="card detail-card" aria-label="Thumbnail"><h3>Thumbnail</h3>' + thumbHtml(poster) + '<p class="detail-note">' + (v.hasCustomImage ? '<span class="chip">Custom</span>' : '<span class="muted">Generated thumbnail</span>') + '</p>' +
+    '<div class="row row-wrap detail-actions"><button type="button" class="btn btn-sm"' + (busy || D.thumbBusy ? ' disabled' : '') + ' data-act="d-choose-image">' + (D.thumbBusy ? 'Uploading…' : 'Choose image…') + '</button>' +
+    (v.hasCustomImage ? '<button type="button" class="btn btn-sm btn-danger-quiet"' + (busy || D.thumbBusy ? ' disabled' : '') + ' data-act="d-remove-image">Remove custom image</button>' : '') + '</div></section>';
+  const sbEntries = Object.entries(v.storyboards).filter((e) => e[1].url !== null);
+  const sbCard = sbEntries.length === 0 ? '' : '<section class="card detail-card" aria-label="Storyboards"><h3>Storyboards</h3>' + sbEntries.map((e) => '<figure class="storyboard"><img src="' + e[1].url + '" alt="' + esc('Storyboard ' + e[0]) + '"><figcaption class="muted">' + [e[1].columns != null ? e[1].columns + ' columns' : null, e[1].count != null ? e[1].count + ' frames' : null].filter((x) => x !== null).join(' · ') + '</figcaption></figure>').join('') + '</section>';
+  let titleCell = esc(v.title);
+  if (D.editing) {
+    const E = D.editing;
+    titleCell = '<form class="title-edit" id="title-form"><input type="text" id="title-input" aria-label="Title"' + (E.error != null ? ' aria-invalid="true" aria-describedby="video-title-error"' : ' aria-invalid="false"') + ' value="' + esc(E.draft) + '"' + (E.saving ? ' disabled' : '') + '><div class="row title-edit-actions"><button type="submit" class="btn btn-sm btn-primary"' + (E.saving ? ' disabled' : '') + '>Save</button><button type="button" class="btn btn-sm"' + (E.saving ? ' disabled' : '') + ' data-act="d-cancel-edit">Cancel</button></div>' + (E.error != null ? '<p id="video-title-error" role="alert" class="form-error">' + esc(E.error) + '</p>' : '') + '</form>';
+  }
+  const res = v.outputWidth != null && v.outputHeight != null ? v.outputWidth + 'x' + v.outputHeight : '';
+  const info = '<section class="card detail-card" aria-label="Information"><h3>Information</h3><dl class="kv">' + kvRow('Title', titleCell) + kvRow('Status', statusBadge(v.status)) +
+    (v.status !== 'ready' && v.stage !== null ? kvRow('Stage', esc(v.stage)) : '') +
+    (v.status !== 'ready' && v.progress !== null ? kvRow('Progress', '<progress value="' + v.progress + '" max="100" aria-label="Processing progress"></progress><span class="num">' + v.progress + '%</span>') : '') +
+    (formatDuration(v.duration) ? kvRow('Duration', '<span class="num">' + formatDuration(v.duration) + '</span>') : '') + (res ? kvRow('Resolution', res) : '') +
+    (v.outputFps != null ? kvRow('Frame rate', Math.round(v.outputFps * 100) / 100 + ' fps') : '') + (v.outputBitrateKbps != null ? kvRow('Bitrate', v.outputBitrateKbps + ' kbps') : '') + (v.outputCodec != null ? kvRow('Codec', v.outputCodec) : '') +
+    (v.originalFilename != null ? kvRow('Original file', esc(v.originalFilename)) : '') + (v.originalSizeBytes != null ? kvRow('Original size', formatBytes(v.originalSizeBytes)) : '') +
+    kvRow('Public ID', '<span class="mono">' + v.publicId + '</span>') + kvRow('Created', formatDateTime(v.createdAt)) + kvRow('Updated', formatDateTime(v.updatedAt)) + '</dl></section>';
+  const errCard = v.status === 'failed' ? '<section class="card detail-card detail-error" aria-label="Processing error"><h3>Processing failed</h3><p>' + esc(v.error.message) + '</p><p class="muted">' + formatDateTime(v.error.failedAt) + '</p><pre class="detail-error-text">' + esc(v.error.detail) + '</pre></section>' : '';
+  const actions = '<section class="card detail-card" aria-label="Actions"><h3>Actions</h3><div class="row row-wrap detail-actions">' +
+    (v.embedUrl != null ? '<button type="button" class="btn btn-sm"' + (busy ? ' disabled' : '') + ' data-act="d-copy-embed">Copy embed URL</button>' : '') +
+    (v.playlistUrl != null ? '<button type="button" class="btn btn-sm"' + (busy ? ' disabled' : '') + ' data-act="d-copy-playlist">Copy playlist URL</button>' : '') +
+    (v.embedUrl != null ? '<button type="button" class="btn btn-sm"' + (busy ? ' disabled' : '') + ' data-act="d-open">Open in browser</button>' : '') +
+    '<button type="button" class="btn btn-sm"' + (busy || D.editing ? ' disabled' : '') + ' data-act="d-rename">Rename</button>' +
+    '<button type="button" class="btn btn-sm btn-danger"' + (busy || blocked ? ' disabled' : '') + (blocked ? ' title="' + DELETE_BLOCKED + '" aria-describedby="video-delete-blocked"' : '') + ' data-act="d-delete">Delete</button></div>' +
+    (blocked ? '<p id="video-delete-blocked" class="muted detail-note">' + DELETE_BLOCKED + '</p>' : '') + '</section>';
+  return h + '<div class="detail-grid"><div class="detail-col">' + previewCard + thumbCard + sbCard + '</div><div class="detail-col">' + errCard + info + actions + '</div></div></section>';
+}
+
+/* ---------- rendering: settings / about ---------- */
+function feedback(m) {
+  if (m == null) return '<p class="feedback" role="status"></p>';
+  return '<p class="feedback feedback-' + m.kind + '" role="' + (m.kind === 'error' ? 'alert' : 'status') + '"><span aria-hidden="true">' + (m.kind === 'success' ? '✓ ' : '! ') + '</span>' + esc(m.text) + '</p>';
+}
+function renderSettings() {
+  const st = S.settings, running = summary().running > 0, a = S.auth;
+  return '<div class="settings"><section class="card" aria-labelledby="set-url-h"><h2 id="set-url-h">Site</h2><div class="field"><label for="set-url">Site URL</label><input id="set-url" type="text" readonly value="' + SITE + '" aria-describedby="set-url-help"><p id="set-url-help" class="help">This app is built for one site and cannot be pointed at another.</p></div></section>' +
+    '<section class="card" aria-labelledby="set-tmp-h"><h2 id="set-tmp-h">Processing</h2><div class="field"><label for="set-tmp">Temporary folder</label><div class="row"><input id="set-tmp" type="text" readonly value="' + esc(st.tmp) + '" aria-describedby="set-tmp-help"><button type="button" class="btn"' + (running ? ' disabled' : '') + ' data-act="choose-folder">Choose folder…</button></div>' +
+    '<p id="set-tmp-help" class="help">' + (running ? 'The folder cannot be changed while videos are being processed.' : 'Videos are converted here before upload. Pick a drive with plenty of free space.') + '</p>' + feedback(st.fbTmp) + '</div>' +
+    '<div class="field"><label for="set-par">Parallel jobs</label><select id="set-par" aria-describedby="set-par-help"><option value="1"' + (st.parallel === 1 ? ' selected' : '') + '>1 (recommended)</option><option value="2"' + (st.parallel === 2 ? ' selected' : '') + '>2</option></select>' +
+    '<p id="set-par-help" class="help">Two jobs at once can finish a batch sooner but use much more CPU and disk, so the computer may feel slower.</p>' + feedback(st.fbPar) + '</div></section>' +
+    '<section class="card" aria-labelledby="account-heading"><h2 id="account-heading">Account</h2><p class="muted">' + (a.username ? esc('Signed in as ' + a.username + ' on ' + siteHost(a.siteUrl || SITE) + '.') : 'Signed in.') + '</p><div class="row row-wrap">' + reloadBtn() + '<button type="button" class="btn btn-danger-quiet"' + (S.signingOut ? ' disabled' : '') + ' data-act="signout">Sign out</button></div></section></div>';
+}
+function renderAbout() {
+  const f = S.ffmpeg;
+  let check;
+  if (!f.checked) check = 'Checking…';
+  else if (f.ok) check = '<span class="chip chip-done"><span class="chip-icon" aria-hidden="true">✓</span>Passed</span>';
+  else check = '<span class="chip chip-failed"><span class="chip-icon" aria-hidden="true">✕</span>Failed</span>' + (f.missing.length ? '<p class="small">Missing features:</p><ul class="plain-list">' + f.missing.map((m) => '<li>' + esc(m) + '</li>').join('') + '</ul>' : '');
+  return '<div class="about"><section class="card" aria-labelledby="about-heading"><h2 id="about-heading">About HLS R2 Studio</h2><dl class="facts"><dt>App version</dt><dd class="num">0.1.0</dd><dt>Platform</dt><dd>win32</dd><dt>FFmpeg version</dt><dd class="num">' + (f.version || 'Unknown') + '</dd><dt>FFmpeg self-check</dt><dd>' + check + '</dd></dl>' +
+    '<div class="row row-wrap"><button type="button" class="btn" data-act="open-logs">Open logs folder</button><button type="button" class="btn" data-act="open-licenses">Open licenses</button></div>' + feedback(S.about.feedback) + '</section>' +
+    '<section class="card" aria-labelledby="gpl-heading"><h2 id="gpl-heading">FFmpeg license notice</h2><p>This app bundles FFmpeg, which is free software licensed under the GNU General Public License (GPL) version 3. FFmpeg is a trademark of Fabrice Bellard, originator of the FFmpeg project. The bundled build comes with no warranty.</p><p>The full license text, the build details and the location of the FFmpeg source code are listed in the licenses file. Use Open licenses to read it.</p></section></div>';
+}
+
+/* ---------- dialogs ---------- */
+function dlgShell(title, bodyHtml, footer, opts) {
+  opts = opts || {};
+  return '<div class="backdrop" role="presentation" data-backdrop="1"><div class="' + (opts.wide ? 'dialog dialog-wide' : 'dialog') + '" role="' + (opts.role || 'alertdialog') + '" aria-modal="true" aria-labelledby="dlg-title" tabindex="-1"><h2 id="dlg-title" class="dialog-title">' + esc(title) + '</h2><div class="dialog-body">' + bodyHtml + '</div><div class="dialog-footer">' + footer + '</div></div></div>';
+}
+function confirmDlg(title, msgHtml, confirmLabel, cancelLabel, danger) {
+  return dlgShell(title, '<p>' + msgHtml + '</p>', '<button type="button" class="btn" data-act="dlg-cancel" data-initial="1">' + esc(cancelLabel) + '</button><button type="button" class="' + (danger ? 'btn btn-danger' : 'btn btn-primary') + '" data-act="dlg-confirm">' + esc(confirmLabel) + '</button>');
+}
+function detailsDialog(job) {
+  const d = job.errorDetail;
+  let body = '<dl class="facts"><dt>File</dt><dd class="break">' + esc(job.fileName) + '</dd><dt>Status</dt><dd>' + STAGE[job.state] + '</dd><dt>Message</dt><dd>' + esc(job.errorMessage || 'No message was recorded.') + '</dd>' +
+    (d ? '<dt>Failing step</dt><dd>' + STAGE[d.step] + '</dd><dt>Exit code</dt><dd class="num">' + (d.exitCode != null ? d.exitCode : 'Not available') + '</dd>' : '') + '</dl>';
+  if (job.state === 'upload_interrupted') body += '<p class="muted small">The processed files are kept on disk so Resume can continue without converting the video again. They are deleted when you resume successfully, start over or remove this video.</p>';
+  if (d && job.state !== 'upload_interrupted') body += '<h3 class="subheading">ffmpeg output (last lines)</h3><pre class="log" tabindex="0" aria-label="ffmpeg output">' + esc(d.stderrTail.length ? d.stderrTail.join('\n') : 'No output was captured.') + '</pre><p class="muted small">Personal paths are removed from this output.</p>';
+  return dlgShell('Job details', body, '<button type="button" class="btn" data-act="dlg-copy-details">Copy details</button><button type="button" class="btn btn-primary" data-act="dlg-cancel" data-initial="1">Close</button>', { wide: true, role: 'dialog' });
+}
+function renderDialog() {
+  const d = S.dialog;
+  if (!d) return '';
+  const job = d.jobId ? S.jobs.find((j) => j.id === d.jobId) : null;
+  switch (d.kind) {
+    case 'cancel': return confirmDlg('Cancel this video?', esc('"' + job.fileName + '" is being processed. Cancelling stops it and discards the work done so far.'), 'Cancel video', 'Keep running', true);
+    case 'start-over': return confirmDlg('Start over?', esc('The saved progress for ' + job.fileName + ' will be discarded and the video will be processed again from the beginning.'), 'Start over', 'Keep paused', true);
+    case 'remove-paused': return confirmDlg('Remove this video?', esc('The temporary files for ' + job.fileName + ' will be deleted, so it can no longer be resumed.'), 'Remove', 'Keep', true);
+    case 'clear': { const n = S.jobs.filter((j) => isFinished(j.state)).length; return confirmDlg('Clear finished videos?', esc('This removes ' + plural(n, 'finished video') + ' from the list. Videos already on your site are not affected.'), 'Clear finished', 'Keep', true); }
+    case 'details': return detailsDialog(job);
+    case 'bulk': { const n = (S._pickedIds || []).length; return confirmDlg('Delete ' + plural(n, 'video'), esc('Delete ' + plural(n, 'video') + '? This removes ' + (n === 1 ? 'it' : 'them') + ' from the site and may remove ' + (n === 1 ? 'its' : 'their') + ' files from storage. This cannot be undone.'), 'Delete', 'Cancel', true); }
+    case 'delete': { const v = detailVideo(S.openVideo); return confirmDlg('Delete video', 'Delete this video? This removes it from the site and may remove its files from storage. This cannot be undone.<br><strong>' + esc(v.title) + '</strong>', 'Delete', 'Cancel', true); }
+    case 'remove-image': return confirmDlg('Remove custom thumbnail', 'Remove the custom thumbnail? The generated thumbnail will be used again.', 'Remove', 'Keep', true);
+    case 'signout': return confirmDlg('Sign out now?', esc(plural(summary().running, 'video is', 'videos are') + ' still being processed. They may need you to sign in again before they can finish.'), 'Sign out', 'Stay signed in', true);
+  }
+  return '';
+}
+
+/* ---------- toasts (state/Toasts.tsx) ---------- */
+const TOAST_MS = { success: 3500, info: 5000, error: 8000 };
+let toastId = 1;
+function toast(kind, message) {
+  const id = toastId++;
+  S.toasts = S.toasts.concat([{ id, kind, message }]).slice(-4);
+  setTimeout(() => dismissToast(id), TOAST_MS[kind]);
+  renderToasts();
+}
+function dismissToast(id) { S.toasts = S.toasts.filter((t) => t.id !== id); renderToasts(); }
+function renderToasts() {
+  document.getElementById('app-toasts').innerHTML = S.toasts.map((t) => '<div class="toast toast-' + t.kind + '"><span class="toast-icon" aria-hidden="true">' + (t.kind === 'success' ? '✓' : t.kind === 'error' ? '!' : 'i') + '</span><span class="toast-text">' + (t.kind === 'error' ? 'Error: ' : '') + esc(t.message) + '</span><button type="button" class="toast-close" aria-label="Dismiss notification" data-toast-close="' + t.id + '">×</button></div>').join('');
+}
+
+/* ---------- render pipeline with focus/scroll preservation ---------- */
+const $ = (id) => document.getElementById(id);
+function focusKey(el) {
+  if (!el || el === document.body) return null;
+  const a = el.closest && el.closest('[data-act]');
+  if (a && $('app-viewport').contains(a)) return { sel: '[data-act="' + a.dataset.act + '"]' + (a.dataset.id ? '[data-id="' + a.dataset.id + '"]' : '') };
+  if (el.id && $('app-viewport').contains(el)) return { sel: '#' + el.id, start: el.selectionStart, end: el.selectionEnd };
+  return null;
+}
+let dialogWasOpen = false, openerKey = null, pendingFocus = null;
+function render() {
+  const root = $('app-root');
+  const act = document.activeElement;
+  const fk = S.dialog ? null : focusKey(act);
+  const panel = root.querySelector('.panel');
+  const scroll = panel ? panel.scrollTop : 0;
+  root.innerHTML = renderApp();
+  const p2 = root.querySelector('.panel');
+  if (p2) p2.scrollTop = scroll;
+  const dlg = renderDialog();
+  $('app-dialogs').innerHTML = dlg;
+  if (S.dialog && !dialogWasOpen) {
+    openerKey = focusKey(act);
+    const init = $('app-dialogs').querySelector('[data-initial]') || $('app-dialogs').querySelector('.dialog');
+    if (init) init.focus();
+  } else if (!S.dialog && dialogWasOpen) {
+    const k = pendingFocus || openerKey;
+    const t = k && $('app-viewport').querySelector(k.sel);
+    if (t) t.focus({ preventScroll: true });
+  } else if (!S.dialog && fk) {
+    const t = $('app-viewport').querySelector(fk.sel);
+    if (t && t !== document.activeElement) { t.focus({ preventScroll: true }); if (fk.start != null && t.setSelectionRange) { try { t.setSelectionRange(fk.start, fk.end); } catch (e) { /* not text */ } } }
+  }
+  if (!S.dialog) pendingFocus = null;
+  dialogWasOpen = !!S.dialog;
+  syncChrome();
+}
+function focusAfter(sel) { pendingFocus = { sel }; if (!S.dialog) { const t = $('app-viewport').querySelector(sel); if (t) t.focus(); } }
+function openDialog(d) { S.dialog = d; render(); }
+function closeDialog() { S.dialog = null; render(); }
+
+/* ---------- actions ---------- */
+function setJob(id, patch) { const j = S.jobs.find((x) => x.id === id); if (j) Object.assign(j, patch); }
+function withPending(id, fn) { S.pending.add(id); render(); setTimeout(() => { S.pending.delete(id); fn(); render(); }, 400); }
+function startLibLoad(then) { S.lib.kind = 'loading'; render(); setTimeout(() => { S.lib.kind = then || 'ready'; render(); }, 600); }
+function titleProblem(raw) {
+  const t = raw.trim();
+  if (t === '') return 'Title is required.';
+  if ([...t].length > 255) return 'Title is too long (255 characters at most).';
+  if (/[\u0000-\u001f\u007f-\u009f]/.test(t)) return 'Title is invalid.';
+  return null;
+}
+function openLibrary(id) { S.tab = 'library'; S.openVideo = id == null ? null : id; S.detail = { kind: 'ready', loaded: false, editing: null, thumbBusy: false, unlisted: false }; render(); if (id == null) focusAfter('#tab-library'); else focusAfter('[data-act="d-back"]'); }
+function setTab(t) { S.tab = t; S.openVideo = null; render(); }
+
+function act(name, id, el) {
+  switch (name) {
+    case 'tab': setTab(id); focusAfter('#tab-' + id); break;
+    case 'splash-retry': S.screen = 'splash-loading'; render(); setTimeout(() => { S.screen = 'main'; render(); }, 800); break;
+    case 'reload-config': S.reloading = true; render(); setTimeout(() => { S.reloading = false; if (S.auth.status === 'offline') toast('error', 'Cannot reach the site.'); else toast('success', 'Configuration reloaded.'); render(); }, 700); break;
+    /* queue */
+    case 'add-videos': S.jobs.push(mkJob({ id: 'n' + Date.now(), fileName: 'New_upload_' + (S.jobs.length + 1) + '.mp4', state: 'waiting', createdAt: new Date().toISOString() })); toast('success', 'Added 1 video to the queue.'); render(); break;
+    case 'clear-finished': openDialog({ kind: 'clear' }); break;
+    case 'job-cancel': { const j = S.jobs.find((x) => x.id === id); if (isRunning(j)) openDialog({ kind: 'cancel', jobId: id }); else withPending(id, () => setJob(id, { state: 'cancelled', errorMessage: 'Cancelled by you.', finishedAt: new Date().toISOString() })); break; }
+    case 'job-retry': { const j = S.jobs.find((x) => x.id === id); if (j.state === 'upload_interrupted') openDialog({ kind: 'start-over', jobId: id }); else withPending(id, () => setJob(id, { state: 'waiting', errorMessage: null, errorDetail: null, finishedAt: null })); break; }
+    case 'job-resume': withPending(id, () => setJob(id, { state: 'uploading', progress: 40, errorMessage: null })); break;
+    case 'job-retry-register': withPending(id, () => setJob(id, { state: 'registering', progress: 98, errorMessage: null })); break;
+    case 'job-remove': { const j = S.jobs.find((x) => x.id === id); if (j.state === 'upload_interrupted') openDialog({ kind: 'remove-paused', jobId: id }); else withPending(id, () => { S.jobs = S.jobs.filter((x) => x.id !== id); }); break; }
+    case 'job-copy-url': toast('success', 'Embed URL copied.'); break;
+    case 'job-copy-shortcode': toast('success', 'Shortcode copied.'); break;
+    case 'job-open': break;
+    case 'job-view-library': openLibrary(S.jobs.find((x) => x.id === id).videoId); break;
+    case 'job-details': openDialog({ kind: 'details', jobId: id }); break;
+    case 'dlg-cancel': closeDialog(); break;
+    case 'dlg-copy-details': toast('success', 'Details copied.'); break;
+    case 'dlg-confirm': dialogConfirm(); break;
+    /* library */
+    case 'lib-select-toggle': S.lib.select = !S.lib.select; S.lib.picked = new Set(); render(); break;
+    case 'lib-refresh': startLibLoad(); break;
+    case 'lib-retry': S.lib.errorMsg = ''; startLibLoad(); break;
+    case 'lib-stale-refresh': S.lib.stale = false; S.lib.page = 1; startLibLoad(); break;
+    case 'lib-open': S.openVideo = Number(id); S.detail = { kind: 'ready', loaded: false, editing: null, thumbBusy: false, unlisted: false }; render(); focusAfter('[data-act="d-back"]'); S.lastOpener = id; break;
+    case 'lib-pick': { const n = Number(id); if (S.lib.picked.has(n)) S.lib.picked.delete(n); else S.lib.picked.add(n); render(); break; }
+    case 'lib-all': S.lib.picked = new Set(currentItems().map((v) => v.id)); render(); break;
+    case 'lib-clear': S.lib.picked = new Set(); render(); break;
+    case 'lib-delete-selected': openDialog({ kind: 'bulk' }); break;
+    case 'lib-prev': S.lib.page = Math.max(1, S.lib.page - 1); S.lib.picked = new Set(); render(); break;
+    case 'lib-next': S.lib.page += 1; S.lib.picked = new Set(); render(); break;
+    /* detail */
+    case 'd-back': closeVideo(); break;
+    case 'd-refresh': S.detail.kind = 'loading'; render(); setTimeout(() => { S.detail.kind = 'ready'; render(); }, 600); break;
+    case 'd-load-preview': S.detail.loaded = true; render(); break;
+    case 'd-open': toast('success', 'Opened in your browser.'); break;
+    case 'd-copy-embed': toast('success', 'Embed URL copied.'); break;
+    case 'd-copy-playlist': toast('success', 'Playlist URL copied.'); break;
+    case 'd-rename': { const v = detailVideo(S.openVideo); S.detail.editing = { draft: v.title, error: null, saving: false }; render(); const i = $('title-input'); if (i) { i.focus(); i.select(); } break; }
+    case 'd-cancel-edit': S.detail.editing = null; render(); focusAfter('[data-act="d-rename"]'); break;
+    case 'd-delete': openDialog({ kind: 'delete' }); break;
+    case 'd-choose-image': S.detail.thumbBusy = true; render(); setTimeout(() => { S.customOn.add(S.openVideo); S.detail.thumbBusy = false; toast('success', 'Thumbnail updated.'); render(); }, 1200); break;
+    case 'd-remove-image': openDialog({ kind: 'remove-image' }); break;
+    /* settings / about */
+    case 'choose-folder': S.settings.fbTmp = null; S.settings.tmp = 'D:\\HLS_temp'; S.settings.fbTmp = { kind: 'success', text: 'Temporary folder saved.' }; render(); break;
+    case 'signout': if (summary().running > 0) openDialog({ kind: 'signout' }); else doSignOut(); break;
+    case 'open-logs': case 'open-licenses': break;
+  }
+}
+function currentItems() {
+  const all = filtered(), last = Math.max(1, Math.ceil(all.length / PAGE_SIZE)), page = Math.min(S.lib.page, last);
+  return all.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+}
+function closeVideo() { const id = S.lastOpener; S.openVideo = null; render(); if (id != null) focusAfter('[data-act="lib-open"][data-id="' + id + '"]'); }
+function doSignOut() { S.screen = 'login'; S.auth = { status: 'signed_out', siteUrl: SITE }; S.login = { user: '', pass: '', stay: true, submitting: false, restoring: false, error: null }; render(); syncSelectors(); }
+function dialogConfirm() {
+  const d = S.dialog; S.dialog = null;
+  switch (d.kind) {
+    case 'cancel': S.dialog = null; render(); withPending(d.jobId, () => setJob(d.jobId, { state: 'cancelled', errorMessage: 'Cancelled by you.', finishedAt: new Date().toISOString() })); break;
+    case 'start-over': render(); withPending(d.jobId, () => setJob(d.jobId, { state: 'waiting', errorMessage: null, errorDetail: null })); break;
+    case 'remove-paused': render(); withPending(d.jobId, () => { S.jobs = S.jobs.filter((x) => x.id !== d.jobId); }); break;
+    case 'clear': S.jobs = S.jobs.filter((j) => !isFinished(j.state)); render(); break;
+    case 'bulk': { const ids = S._pickedIds || []; ids.forEach((i) => S.deleted.add(i)); S.lib.select = false; S.lib.picked = new Set(); toast('success', plural(ids.length, 'video') + ' deleted.'); render(); focusAfter('[data-act="lib-select-toggle"]'); break; }
+    case 'delete': S.deleted.add(S.openVideo); S.openVideo = null; toast('success', 'Video deleted.'); render(); focusAfter('#library-heading'); break;
+    case 'remove-image': S.customOn.delete(S.openVideo); toast('success', 'Custom thumbnail removed.'); render(); focusAfter('[data-act="d-choose-image"]'); break;
+    case 'signout': render(); doSignOut(); break;
+    default: render();
+  }
+}
+
+/* ---------- events ---------- */
+const viewport = $('app-viewport');
+viewport.addEventListener('click', (e) => {
+  const tc = e.target.closest('[data-toast-close]');
+  if (tc) { dismissToast(Number(tc.dataset.toastClose)); return; }
+  if (e.target.closest('[data-backdrop]') && e.target.dataset.backdrop === '1') return;
+  const a = e.target.closest('[data-act]');
+  if (!a || a.disabled) return;
+  if (a.dataset.act === 'lib-pick') return; // handled by change
+  act(a.dataset.act, a.dataset.id, a);
+});
+viewport.addEventListener('change', (e) => {
+  const a = e.target.closest('[data-act="lib-pick"]');
+  if (a) { act('lib-pick', a.dataset.id, a); return; }
+  if (e.target.id === 'login-stay') S.login.stay = e.target.checked;
+  if (e.target.id === 'set-par') {
+    S.settings.parallel = Number(e.target.value);
+    S.settings.fbPar = { kind: 'success', text: 'Parallel jobs saved.' };
+    render();
+  }
+});
+viewport.addEventListener('mousedown', (e) => { if (e.target.dataset && e.target.dataset.backdrop === '1') closeDialog(); });
+viewport.addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.id === 'login-user') S.login.user = t.value;
+  else if (t.id === 'login-pass') S.login.pass = t.value;
+  else if (t.id === 'title-input' && S.detail.editing) { S.detail.editing.draft = t.value; if (S.detail.editing.error) { S.detail.editing.error = null; render(); } }
+  else if (t.id === 'library-search') {
+    S.lib.input = t.value;
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => { const n = S.lib.input.trim(); if (n !== S.lib.search) { S.lib.search = n; S.lib.page = 1; S.lib.picked = new Set(); render(); } }, 400);
+  }
+});
+let searchTimer;
+viewport.addEventListener('submit', (e) => {
+  e.preventDefault();
+  if (e.target.id === 'login-form') {
+    const L = S.login;
+    if (L.submitting || L.restoring) return;
+    if (L.user.trim() === '' || L.pass === '') { L.error = 'Enter your username and password.'; render(); return; }
+    L.error = null; L.submitting = true; render();
+    setTimeout(() => { S.auth = { status: 'signed_in', username: L.user.trim(), siteUrl: SITE, r2Configured: true }; S.screen = 'main'; S.tab = 'queue'; render(); syncSelectors(); }, 900);
+  } else if (e.target.id === 'title-form') saveTitle();
+});
+function saveTitle() {
+  const E = S.detail.editing; if (!E || E.saving) return;
+  const v = detailVideo(S.openVideo), next = E.draft.trim();
+  if (next === v.title) { S.detail.editing = null; render(); focusAfter('[data-act="d-rename"]'); return; }
+  const problem = titleProblem(next);
+  if (problem) { E.error = problem; render(); return; }
+  E.error = null; E.saving = true; render();
+  setTimeout(() => { S.titles[S.openVideo] = next; S.detail.editing = null; toast('success', 'Title updated.'); render(); focusAfter('[data-act="d-rename"]'); }, 600);
+}
+// roving tabindex / arrow keys for the sidebar tablist (MainScreen.tsx)
+viewport.addEventListener('keydown', (e) => {
+  const nav = e.target.closest && e.target.closest('.nav');
+  if (nav && !S.dialog) {
+    const ids = TABS.map((t) => t[0]); const i = ids.indexOf(S.tab); let n;
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') n = (i + 1) % ids.length;
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') n = (i - 1 + ids.length) % ids.length;
+    else if (e.key === 'Home') n = 0; else if (e.key === 'End') n = ids.length - 1; else return;
+    e.preventDefault(); setTab(ids[n]); focusAfter('#tab-' + ids[n]);
+    return;
+  }
+  if (e.key === 'Escape' && e.target.id === 'title-input' && S.detail.editing && !S.detail.editing.saving) { e.preventDefault(); S.detail.editing = null; render(); focusAfter('[data-act="d-rename"]'); }
+});
+document.addEventListener('keydown', (e) => {
+  if (S.dialog) {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeDialog(); return; }
+    if (e.key === 'Tab') {
+      const node = $('app-dialogs').querySelector('.dialog'); if (!node) return;
+      const items = Array.from(node.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])'));
+      const first = items[0], last = items[items.length - 1], active = document.activeElement;
+      if (!first) { e.preventDefault(); node.focus(); return; }
+      if (e.shiftKey && (active === first || active === node)) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+      else if (!node.contains(active)) { e.preventDefault(); first.focus(); }
+    }
+    return;
+  }
+  if (e.key === 'Escape' && !e.defaultPrevented && !(e.target && e.target.id === 'title-input') && S.screen === 'main' && S.tab === 'library') {
+    if (S.openVideo != null) { e.preventDefault(); closeVideo(); }
+    else if (S.lib.select) { e.preventDefault(); S.lib.select = false; S.lib.picked = new Set(); render(); focusAfter('[data-act="lib-select-toggle"]'); }
+  }
+}, true);
+// drag and drop hint on the drop zone (DropZone.tsx)
+viewport.addEventListener('dragenter', (e) => { const z = e.target.closest('.dropzone'); if (z) { e.preventDefault(); S.dragging = true; z.classList.add('is-dragging'); z.querySelector('.dropzone-text').textContent = 'Release to add the videos'; } });
+viewport.addEventListener('dragover', (e) => { if (e.target.closest('.dropzone')) e.preventDefault(); });
+viewport.addEventListener('dragleave', (e) => { const z = e.target.closest('.dropzone'); if (z && !z.contains(e.relatedTarget)) { S.dragging = false; z.classList.remove('is-dragging'); z.querySelector('.dropzone-text').textContent = 'Drop video files here, or click Add videos'; } });
+viewport.addEventListener('drop', (e) => { const z = e.target.closest('.dropzone'); if (z) { e.preventDefault(); S.dragging = false; act('add-videos'); } });
+
+/* ---------- mockup chrome: presets, selectors, theme, size ---------- */
+const SCREENS = [['login', 'Login'], ['queue', 'Queue'], ['library', 'Library'], ['library-select', 'Library select mode'], ['detail', 'Video detail'], ['settings', 'Settings'], ['about', 'About']];
+const DET = (id, extra) => (s) => { s.tab = 'library'; s.openVideo = id; s.lastOpener = id; if (extra) extra(s); };
+const PRESETS = {
+  login: [
+    ['Default', () => {}],
+    ['Signing in (disabled)', (s) => { s.login.submitting = true; s.login.user = 'demo.user'; }],
+    ['Restoring saved session (signing_in)', (s) => { s.auth.status = 'signing_in'; s.login.restoring = true; }],
+    ['Error: empty fields', (s) => { s.login.error = 'Enter your username and password.'; }],
+    ['Error: sign-in failed', (s) => { s.login.error = 'Sign-in failed. Please try again.'; s.login.user = 'demo.user'; }],
+    ['Error: site unreachable', (s) => { s.auth.error = 'Could not reach the site. Check your internet connection.'; }],
+    ['App splash: loading', (s) => { s.screen = 'splash-loading'; }],
+    ['App splash: load error', (s) => { s.screen = 'splash-error'; }],
+  ],
+  queue: [
+    ['All job states', () => {}],
+    ['Empty queue', (s) => { s.jobs = []; }],
+    ['Drag over drop zone', (s) => { s.dragging = true; }],
+    ['Banner: offline (+ Offline chip)', (s) => { s.auth.status = 'offline'; }],
+    ['Banner: video tools not working', (s) => { s.ffmpeg = { checked: true, ok: false, version: null, missing: ['ffmpeg:version', 'encoder:libx264'] }; }],
+    ['Banner: R2 not set up', (s) => { s.auth.r2Configured = false; }],
+    ['Only waiting (not signed in reason)', (s) => { s.jobs = s.jobs.filter((j) => j.state === 'waiting'); }],
+    ['Dialog: cancel running video', (s) => { s.dialog = { kind: 'cancel', jobId: 'j3' }; }],
+    ['Dialog: start over (paused)', (s) => { s.dialog = { kind: 'start-over', jobId: 'j9' }; }],
+    ['Dialog: remove paused video', (s) => { s.dialog = { kind: 'remove-paused', jobId: 'j9' }; }],
+    ['Dialog: clear finished', (s) => { s.dialog = { kind: 'clear' }; }],
+    ['Dialog: job details (failed, ffmpeg output)', (s) => { s.dialog = { kind: 'details', jobId: 'j13' }; }],
+    ['Dialog: job details (register failed)', (s) => { s.dialog = { kind: 'details', jobId: 'j10' }; }],
+    ['Dialog: job details (upload paused)', (s) => { s.dialog = { kind: 'details', jobId: 'j9' }; }],
+  ],
+  library: [
+    ['Grid with cards (page 1)', () => {}],
+    ['Page 2', (s) => { s.lib.page = 2; }],
+    ['Loading', (s) => { s.lib.kind = 'loading'; }],
+    ['Empty: No videos yet', (s) => { s.lib.kind = 'empty'; }],
+    ['Empty: search without match', (s) => { s.lib.kind = 'empty'; s.lib.input = s.lib.search = 'zzz'; }],
+    ['Search: "cooking"', (s) => { s.lib.input = s.lib.search = 'cooking'; }],
+    ['Error + Retry', (s) => { s.lib.kind = 'error'; s.lib.errorMsg = 'Could not reach the site. Check your internet connection.'; }],
+    ['Notice: New videos are available.', (s) => { s.lib.stale = true; }],
+  ],
+  'library-select': [
+    ['Select mode, nothing picked', (s) => { s.lib.select = true; }],
+    ['Select mode, 3 picked', (s) => { s.lib.select = true; s.lib.picked = new Set([101, 102, 107]); }],
+    ['Bulk delete dialog (3 picked)', (s) => { s.lib.select = true; s.lib.picked = new Set([101, 102, 107]); s.dialog = { kind: 'bulk' }; }],
+    ['Bulk delete dialog (1 picked)', (s) => { s.lib.select = true; s.lib.picked = new Set([101]); s.dialog = { kind: 'bulk' }; }],
+  ],
+  detail: [
+    ['Ready: Load preview (poster)', DET(101)],
+    ['Ready: preview loaded (iframe placeholder)', DET(101, (s) => { s.detail.loaded = true; })],
+    ['Ready: Preview unavailable (embed host differs)', DET(109, (s) => { s.detail.unlisted = true; })],
+    ['Ready: no thumbnail (placeholder)', DET(106)],
+    ['Ready: unknown status', DET(105)],
+    ['Rename: editing', DET(101, (s) => { s.detail.editing = { draft: 'Keynote opening', error: null, saving: false }; })],
+    ['Rename: validation error', DET(101, (s) => { s.detail.editing = { draft: '', error: 'Title is required.', saving: false }; })],
+    ['Rename: saving (disabled)', DET(101, (s) => { s.detail.editing = { draft: 'Keynote opening (final)', error: null, saving: true }; })],
+    ['Dialog: Delete video', DET(101, (s) => { s.dialog = { kind: 'delete' }; })],
+    ['Processing (Delete disabled + tooltip)', DET(102)],
+    ['Pending (Delete disabled + tooltip)', DET(103)],
+    ['Failed (error card)', DET(104)],
+    ['Thumbnail: custom image + Custom chip', DET(101)],
+    ['Thumbnail: generated (no custom)', DET(108)],
+    ['Thumbnail: Uploading…', DET(101, (s) => { s.detail.thumbBusy = true; })],
+    ['Dialog: Remove custom thumbnail', DET(101, (s) => { s.dialog = { kind: 'remove-image' }; })],
+    ['Loading', DET(101, (s) => { s.detail.kind = 'loading'; })],
+    ['Error + Retry', DET(101, (s) => { s.detail.kind = 'error'; })],
+  ],
+  settings: [
+    ['Jobs running (folder locked)', (s) => { s.tab = 'settings'; }],
+    ['Idle (no jobs)', (s) => { s.tab = 'settings'; s.jobs = []; }],
+    ['Saved: temporary folder', (s) => { s.tab = 'settings'; s.jobs = []; s.settings.fbTmp = { kind: 'success', text: 'Temporary folder saved.' }; }],
+    ['Error: could not save', (s) => { s.tab = 'settings'; s.jobs = []; s.settings.fbPar = { kind: 'error', text: 'Could not save the setting.' }; s.settings.fbTmp = { kind: 'error', text: 'Could not open the folder dialog.' }; }],
+    ['Dialog: Sign out now? (jobs running)', (s) => { s.tab = 'settings'; s.dialog = { kind: 'signout' }; }],
+  ],
+  about: [
+    ['FFmpeg self-check passed', (s) => { s.tab = 'about'; }],
+    ['FFmpeg self-check failed (missing features)', (s) => { s.tab = 'about'; s.ffmpeg = { checked: true, ok: false, version: null, missing: ['ffmpeg:version', 'encoder:libx264'] }; }],
+    ['FFmpeg checking…', (s) => { s.tab = 'about'; s.ffmpeg = { checked: false, ok: false, version: null, missing: [] }; }],
+    ['Error: could not open logs folder', (s) => { s.tab = 'about'; s.about.feedback = { kind: 'error', text: 'Something went wrong. Please try again.' }; }],
+  ],
+};
+function applyPreset(screenKey, idx) {
+  clearTimeout(searchTimer);
+  S = fresh();
+  if (screenKey === 'login') { S.screen = 'login'; S.auth = { status: 'signed_out', siteUrl: SITE }; }
+  else if (screenKey === 'queue') S.tab = 'queue';
+  else if (screenKey === 'library' || screenKey === 'library-select') S.tab = 'library';
+  else if (screenKey === 'settings') S.tab = 'settings';
+  else if (screenKey === 'about') S.tab = 'about';
+  if (screenKey === 'detail') { S.tab = 'library'; }
+  PRESETS[screenKey][idx][1](S);
+  dialogWasOpen = false; S.toasts = [];
+  render(); renderToasts();
+}
+const selScreen = $('mk-screen'), selState = $('mk-state');
+selScreen.innerHTML = SCREENS.map((s) => '<option value="' + s[0] + '">' + s[1] + '</option>').join('');
+function fillStates(key) { selState.innerHTML = PRESETS[key].map((p, i) => '<option value="' + i + '">' + esc(p[0]) + '</option>').join(''); }
+function currentScreenKey() {
+  if (S.screen === 'login' || S.screen.startsWith('splash')) return 'login';
+  if (S.tab === 'library') return S.openVideo != null ? 'detail' : S.lib.select ? 'library-select' : 'library';
+  return S.tab;
+}
+let lastKey = null;
+function syncSelectors() { const k = currentScreenKey(); if (k !== lastKey) { lastKey = k; selScreen.value = k; fillStates(k); } }
+function syncChrome() { syncSelectors(); }
+selScreen.addEventListener('change', () => { lastKey = selScreen.value; fillStates(lastKey); selState.value = '0'; applyPreset(lastKey, 0); });
+selState.addEventListener('change', () => applyPreset(selScreen.value, Number(selState.value)));
+$('mk-reset').addEventListener('click', () => { lastKey = null; view.theme = 'light'; view.size = '1100'; $('mk-theme').value = 'light'; $('mk-size').value = '1100'; applyView(); applyPreset('queue', 0); syncSelectors(); });
+document.querySelectorAll('[data-mk-toast]').forEach((b) => b.addEventListener('click', () => {
+  const k = b.dataset.mkToast;
+  toast(k, { success: 'Embed URL copied.', info: 'The video is still processing; try again later.', error: 'Skipped 2 files: notes.txt (Unsupported file type. Supported: mp4, mov, mkv, avi, webm.); clip.mp4 (Already in the queue.)' }[k]);
+}));
+$('mk-anno').addEventListener('change', (e) => document.body.classList.toggle('mk-hide-anno', !e.target.checked));
+$('mk-theme').addEventListener('change', (e) => { view.theme = e.target.value; applyView(); });
+$('mk-size').addEventListener('change', (e) => { view.size = e.target.value; applyView(); });
+function applyView() {
+  $('app-frame').dataset.theme = view.theme; $('mk-window').dataset.theme = view.theme; $('mk-window').dataset.size = view.size;
+  fit();
+}
+function fit() {
+  const w = view.size === '760' ? 760 : 1100, h = view.size === '760' ? 520 : 720;
+  const avail = document.documentElement.clientWidth - 32, sc = Math.min(1, avail / w);
+  const win = $('mk-window'), stage = $('mk-stage');
+  win.style.transform = sc < 1 ? 'scale(' + sc + ')' : 'none';
+  stage.style.width = w * sc + 'px'; stage.style.height = h * sc + 'px';
+}
+window.addEventListener('resize', fit);
+applyView();
+render();
+// optional deep link: ui-mockup.html#screen=detail&state=1&theme=dark&size=760
+(function () {
+  const q = new URLSearchParams(location.hash.slice(1));
+  if (q.get('theme')) { view.theme = q.get('theme'); $('mk-theme').value = view.theme; }
+  if (q.get('size')) { view.size = q.get('size'); $('mk-size').value = view.size; }
+  applyView();
+  const sc = q.get('screen');
+  if (sc && PRESETS[sc]) { lastKey = sc; selScreen.value = sc; fillStates(sc); const i = Number(q.get('state') || 0); selState.value = String(i); applyPreset(sc, i); }
+})();
+
+</script>
+</body>
+</html>

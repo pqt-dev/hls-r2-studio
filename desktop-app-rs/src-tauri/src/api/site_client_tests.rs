@@ -10,7 +10,7 @@ use super::*;
 use crate::api::app_config::Resolution;
 use crate::api::logs::{LogType, LogsReply};
 use crate::api::test_server::{closed_port_url, Recorded, Reply, TestServer};
-use crate::api::videos::{BulkDeleteOutcome, DeleteStatus, VideoStatus};
+use crate::api::videos::{BulkDeleteOutcome, DeleteStatus, VideoSort, VideoStatus};
 use crate::logger::testing::RecordingLogger;
 
 fn config_body() -> Value {
@@ -884,7 +884,7 @@ async fn list_videos_sends_encoded_query_and_parses_the_page() {
     .await;
     let page = t
         .client
-        .list_videos(2, 10, Some("  a b&c#é=1  "))
+        .list_videos(2, 10, Some("  a b&c#é=1  "), VideoSort::Newest, None)
         .await
         .unwrap();
 
@@ -919,12 +919,43 @@ async fn list_videos_sends_encoded_query_and_parses_the_page() {
     .await;
     no_query
         .client
-        .list_videos(1, 24, Some("  "))
+        .list_videos(1, 24, Some("  "), VideoSort::Newest, None)
         .await
         .unwrap();
     assert_eq!(
         no_query.server.requests()[0].path,
         "/api/app/videos?page=1&per_page=24"
+    );
+}
+
+#[tokio::test]
+async fn list_videos_sends_the_sort_only_when_it_is_not_the_default() {
+    let t = setup(|_| {
+        Reply::json(
+            200,
+            json!({ "data": [], "meta": { "page": 1, "per_page": 24, "total": 0, "last_page": 1 } }),
+        )
+    })
+    .await;
+
+    t.client
+        .list_videos(1, 24, Some("a b"), VideoSort::TitleAsc, None)
+        .await
+        .unwrap();
+    t.client
+        .list_videos(1, 24, None, VideoSort::SizeDesc, None)
+        .await
+        .unwrap();
+
+    let calls = t.server.requests();
+
+    assert_eq!(
+        calls[0].path,
+        "/api/app/videos?page=1&per_page=24&q=a+b&sort=title_asc"
+    );
+    assert_eq!(
+        calls[1].path,
+        "/api/app/videos?page=1&per_page=24&sort=size_desc"
     );
 }
 
@@ -938,11 +969,19 @@ async fn list_videos_rejects_oversized_and_malformed_answers() {
         )
     })
     .await;
-    let error = too_many.client.list_videos(1, 50, None).await.unwrap_err();
+    let error = too_many
+        .client
+        .list_videos(1, 50, None, VideoSort::Newest, None)
+        .await
+        .unwrap_err();
     assert_eq!(error.code.as_deref(), Some("invalid_response"));
 
     let malformed = setup(|_| Reply::json(200, json!({ "data": "x" }))).await;
-    let error = malformed.client.list_videos(1, 24, None).await.unwrap_err();
+    let error = malformed
+        .client
+        .list_videos(1, 24, None, VideoSort::Newest, None)
+        .await
+        .unwrap_err();
     assert_eq!(error.code.as_deref(), Some("invalid_response"));
 }
 
@@ -994,12 +1033,20 @@ async fn video_reads_map_failures_to_safe_errors() {
         )
     })
     .await;
-    let error = busy.client.list_videos(1, 24, None).await.unwrap_err();
+    let error = busy
+        .client
+        .list_videos(1, 24, None, VideoSort::Newest, None)
+        .await
+        .unwrap_err();
     assert_eq!(error.retry_after_seconds, Some(7));
     assert!(!error.message.contains("secret"));
 
     let broken = setup(|_| Reply::text(500, "<html>stack trace /var/www</html>")).await;
-    let error = broken.client.list_videos(1, 24, None).await.unwrap_err();
+    let error = broken
+        .client
+        .list_videos(1, 24, None, VideoSort::Newest, None)
+        .await
+        .unwrap_err();
     assert_eq!(error.message, "Could not load the videos (HTTP 500).");
 }
 
@@ -1009,7 +1056,10 @@ async fn video_reads_report_401_through_on_unauthorized_and_need_a_token() {
     let error = t.client.get_video(1).await.unwrap_err();
     assert_eq!(error.status, Some(401));
     assert_eq!(t.unauthorized.load(Ordering::SeqCst), 1);
-    t.client.list_videos(1, 24, None).await.unwrap_err();
+    t.client
+        .list_videos(1, 24, None, VideoSort::Newest, None)
+        .await
+        .unwrap_err();
     assert_eq!(t.unauthorized.load(Ordering::SeqCst), 2);
 
     let signed_out = setup_with(

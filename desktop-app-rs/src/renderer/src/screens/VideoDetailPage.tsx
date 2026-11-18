@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { VideoDetail, VideoLinkKind } from '../../../shared/ipc';
-import { ActionMenu } from '../components/ActionMenu';
 import { ConfirmDialog } from '../components/Dialog';
 import {
     ArrowLeftIcon,
-    LinkIcon,
     OpenExternalIcon,
     PencilIcon,
-    PlaylistIcon,
-    ShortcodeIcon,
+    RefreshIcon,
     TrashIcon,
 } from '../components/icons';
 import { Thumbnail } from '../components/Thumbnail';
@@ -110,12 +107,15 @@ const LINK_LABELS: Record<VideoLinkKind, string> = {
     'playlist-url': 'Playlist URL',
     shortcode: 'Shortcode',
     'iframe-code': 'Iframe code',
+    'thumbnail-url': 'Thumbnail URL',
+    'custom-image-url': 'Image URL',
 };
 
 interface Actions {
     busy: boolean;
     copy: (kind: VideoLinkKind) => void;
     open: () => void;
+    refresh: () => void;
     renaming: boolean;
     rename: () => void;
     askDelete: () => void;
@@ -128,44 +128,91 @@ interface Actions {
     removeImageRef: React.RefObject<HTMLButtonElement | null>;
 }
 
-/** Current thumbnail (the custom one wins) in its real aspect ratio, with upload / reset buttons. */
-function ThumbnailCard({ video, actions }: { video: VideoDetail; actions: Actions }) {
-    const poster = video.customImageUrl ?? video.thumbnailUrl;
-
+/** One image of the Images card: label bar, square image and its action bar. */
+function ImageCard({
+    label,
+    url,
+    children,
+}: {
+    label: string;
+    url: string | null;
+    children: React.ReactNode;
+}) {
     return (
-        <section className="card detail-card" aria-label="Thumbnail">
-            <div className="row detail-card-head">
-                <h3>Custom thumbnail</h3>
-                {video.hasCustomImage && <span className="chip">Custom</span>}
+        <figure className="image-card">
+            <figcaption className="image-card-label">{label}</figcaption>
+            <div className="image-card-frame">
+                <Thumbnail key={url ?? ''} url={url} />
             </div>
-            <div className="detail-thumb">
-                <Poster url={poster} video={video} />
-            </div>
-            <p className="muted detail-note">
-                {video.hasCustomImage
-                    ? 'A custom thumbnail is in use. Choose another image to replace it, or reset to the generated one.'
-                    : 'The generated thumbnail is in use. Choose an image to replace it.'}
-            </p>
-            <div className="row row-wrap detail-actions detail-note">
-                <button
-                    ref={actions.chooseRef}
-                    type="button"
-                    className="btn btn-sm btn-accent-create"
-                    disabled={actions.busy}
-                    onClick={actions.chooseImage}
-                >
-                    {actions.uploading ? 'Uploading…' : 'Choose image…'}
-                </button>
-                {video.hasCustomImage && (
+            <div className="image-card-actions">{children}</div>
+        </figure>
+    );
+}
+
+/**
+ * Images, as on the web: the generated thumbnail and the (single) custom image side by side.
+ * The custom image never replaces the generated thumbnail; the list uses the thumbnail only.
+ */
+function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }) {
+    return (
+        <section className="card detail-card" aria-label="Images">
+            <h3>Images</h3>
+            <div className="image-grid">
+                <ImageCard label="Thumbnail" url={video.thumbnailUrl}>
                     <button
-                        ref={actions.removeImageRef}
                         type="button"
-                        className="btn btn-sm btn-accent-danger"
-                        disabled={actions.busy}
-                        onClick={actions.askRemoveImage}
+                        className="btn btn-sm"
+                        aria-label="Copy thumbnail URL"
+                        disabled={actions.busy || video.thumbnailUrl === null}
+                        onClick={() => actions.copy('thumbnail-url')}
                     >
-                        Remove custom image
+                        Copy
                     </button>
+                </ImageCard>
+                {video.hasCustomImage ? (
+                    <ImageCard label="Custom image" url={video.customImageUrl}>
+                        <button
+                            type="button"
+                            className="btn btn-sm"
+                            aria-label="Copy custom image URL"
+                            disabled={actions.busy}
+                            onClick={() => actions.copy('custom-image-url')}
+                        >
+                            Copy
+                        </button>
+                        <button
+                            ref={actions.chooseRef}
+                            type="button"
+                            className="btn btn-sm"
+                            disabled={actions.busy}
+                            onClick={actions.chooseImage}
+                        >
+                            {actions.uploading ? 'Uploading…' : 'Replace'}
+                        </button>
+                        <button
+                            ref={actions.removeImageRef}
+                            type="button"
+                            className="btn btn-sm btn-accent-danger"
+                            disabled={actions.busy}
+                            onClick={actions.askRemoveImage}
+                        >
+                            <TrashIcon />
+                            {'Delete'}
+                        </button>
+                    </ImageCard>
+                ) : (
+                    <figure className="image-card">
+                        <figcaption className="image-card-label">Custom image</figcaption>
+                        <button
+                            ref={actions.chooseRef}
+                            type="button"
+                            className="image-upload-tile"
+                            disabled={actions.busy}
+                            onClick={actions.chooseImage}
+                        >
+                            {actions.uploading ? 'Uploading…' : '+ Upload image'}
+                        </button>
+                    </figure>
                 )}
             </div>
             <p className="muted detail-note">JPG, PNG or WebP, up to 5 MB.</p>
@@ -182,9 +229,11 @@ function PreviewCard({
     siteUrl: string | undefined;
     actions: Actions;
 }) {
-    // The iframe is never created until the user asks for it.
-    const [loaded, setLoaded] = useState(false);
-    const poster = video.customImageUrl ?? video.thumbnailUrl;
+    // The skeleton covers the frame until the embed page has loaded. Nothing autoplays: the
+    // embed URL is used as-is and the sandbox/CSP rules below still apply.
+    const [frameLoaded, setFrameLoaded] = useState(false);
+    // The generated thumbnail only: a custom image never replaces it.
+    const poster = video.thumbnailUrl;
     const embeddable = isSiteEmbedUrl(video.embedUrl, siteUrl);
 
     let body: React.ReactNode;
@@ -202,39 +251,25 @@ function PreviewCard({
                 <Poster url={poster} video={video} />
                 <div className="detail-note">
                     <p>Preview unavailable</p>
-                    {video.embedUrl !== null && (
-                        <button
-                            type="button"
-                            className="btn btn-sm btn-accent-share"
-                            disabled={actions.busy}
-                            onClick={actions.open}
-                        >
-                            Open in browser
-                        </button>
-                    )}
+                    {video.embedUrl !== null && <p className="muted">Use Open in browser above.</p>}
                 </div>
             </>
         );
-    } else if (!loaded) {
-        body = (
-            <div className="preview-poster">
-                <Poster url={poster} video={video} />
-                <button type="button" className="btn preview-load" onClick={() => setLoaded(true)}>
-                    Load preview
-                </button>
-            </div>
-        );
     } else {
         body = (
-            <iframe
-                className="preview-frame"
-                title={`Preview of ${video.title}`}
-                src={video.embedUrl}
-                sandbox="allow-scripts allow-same-origin allow-presentation"
-                allow="fullscreen"
-                referrerPolicy="no-referrer"
-                loading="lazy"
-            />
+            <div className="preview-poster">
+                <iframe
+                    className="preview-frame"
+                    title={`Preview of ${video.title}`}
+                    src={video.embedUrl}
+                    sandbox="allow-scripts allow-same-origin allow-presentation"
+                    allow="fullscreen"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                    onLoad={() => setFrameLoaded(true)}
+                />
+                {!frameLoaded && <div className="preview-loading">Loading preview…</div>}
+            </div>
         );
     }
 
@@ -324,6 +359,9 @@ function EmbedCard({ video, actions }: { video: VideoDetail; actions: Actions })
                 )}
                 {video.shortcode !== null && (
                     <EmbedField kind="shortcode" value={video.shortcode} actions={actions} />
+                )}
+                {video.playlistUrl !== null && (
+                    <EmbedField kind="playlist-url" value={video.playlistUrl} actions={actions} />
                 )}
             </div>
         </section>
@@ -478,9 +516,9 @@ function deleteBlocked(video: VideoDetail): boolean {
 }
 
 /**
- * Sticky action toolbar at the top of the page: primary actions (open, copy embed URL, rename)
- * and an overflow menu with the playlist URL and the destructive Delete (danger-styled; it still
- * asks for confirmation). Below the narrow breakpoint the labels collapse to icons.
+ * Action toolbar inside the sticky header: Open in browser, Rename, Refresh and the destructive
+ * Delete (danger-styled, set apart at the end; it still asks for confirmation). Copying links
+ * lives in the Embed card. Below the narrow breakpoint the labels collapse to icons.
  */
 function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions }) {
     const blocked = deleteBlocked(video);
@@ -499,18 +537,6 @@ function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions })
                     <span className="btn-label">Open in browser</span>
                 </button>
             )}
-            {video.embedUrl !== null && (
-                <button
-                    type="button"
-                    className="btn btn-sm btn-accent-share"
-                    title="Copy embed URL"
-                    disabled={actions.busy}
-                    onClick={() => actions.copy('embed-url')}
-                >
-                    <LinkIcon />
-                    <span className="btn-label">Copy embed URL</span>
-                </button>
-            )}
             <button
                 ref={actions.renameRef}
                 type="button"
@@ -522,44 +548,23 @@ function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions })
                 <PencilIcon />
                 <span className="btn-label">Rename</span>
             </button>
+            <button type="button" className="btn btn-sm" title="Refresh" onClick={actions.refresh}>
+                <RefreshIcon />
+                <span className="btn-label">Refresh</span>
+            </button>
             <span className="action-spacer" aria-hidden="true" />
-            <ActionMenu
-                label="More actions"
-                disabled={actions.busy}
-                triggerRef={actions.deleteRef}
-                items={[
-                    ...(video.playlistUrl !== null
-                        ? [
-                              {
-                                  key: 'playlist',
-                                  label: 'Copy playlist URL',
-                                  icon: <PlaylistIcon />,
-                                  onSelect: () => actions.copy('playlist-url'),
-                              },
-                          ]
-                        : []),
-                    ...(video.shortcode !== null
-                        ? [
-                              {
-                                  key: 'shortcode',
-                                  label: 'Copy shortcode',
-                                  icon: <ShortcodeIcon />,
-                                  onSelect: () => actions.copy('shortcode'),
-                              },
-                          ]
-                        : []),
-                    {
-                        key: 'delete',
-                        label: 'Delete',
-                        icon: <TrashIcon />,
-                        danger: true,
-                        disabled: blocked,
-                        describedBy: blocked ? 'video-delete-blocked' : undefined,
-                        title: blocked ? DELETE_BLOCKED : 'Delete',
-                        onSelect: actions.askDelete,
-                    },
-                ]}
-            />
+            <button
+                ref={actions.deleteRef}
+                type="button"
+                className="btn btn-sm btn-accent-danger"
+                title={blocked ? DELETE_BLOCKED : 'Delete'}
+                disabled={actions.busy || blocked}
+                aria-describedby={blocked ? 'video-delete-blocked' : undefined}
+                onClick={actions.askDelete}
+            >
+                <TrashIcon />
+                <span className="btn-label">Delete</span>
+            </button>
         </div>
     );
 }
@@ -753,7 +758,7 @@ export function VideoDetailPage({
                 if (!result.ok) {
                     toast.show('error', result.error);
                 } else if (!result.canceled) {
-                    toast.show('success', 'Thumbnail updated.');
+                    toast.show('success', 'Custom image updated.');
                     await reloadDetail();
                 }
             })
@@ -775,7 +780,7 @@ export function VideoDetailPage({
             .removeImage(id)
             .then(async (result) => {
                 if (result.ok) {
-                    toast.show('success', 'Custom thumbnail removed.');
+                    toast.show('success', 'Custom image deleted.');
                 } else {
                     // The video may have changed elsewhere (e.g. "No custom thumbnail to remove."):
                     // show the message and re-read the state.
@@ -846,6 +851,7 @@ export function VideoDetailPage({
             }
         },
         askDelete: () => setConfirmDelete(true),
+        refresh,
         copy: (kind) => run(() => api.videos.copyLink(id, kind), `${LINK_LABELS[kind]} copied.`),
         open: () => run(() => api.videos.openEmbed(id), 'Opened in your browser.'),
     };
@@ -854,22 +860,31 @@ export function VideoDetailPage({
 
     return (
         <section className="detail" aria-label="Video details">
-            <div className="detail-head">
-                <button ref={backRef} type="button" className="btn btn-sm" onClick={onBack}>
+            <header className="detail-header">
+                <button
+                    ref={backRef}
+                    type="button"
+                    className="btn btn-sm detail-back"
+                    aria-label="Back to Library"
+                    title="Back to Library"
+                    onClick={onBack}
+                >
                     <ArrowLeftIcon />
-                    Library
                 </button>
-                <nav aria-label="Breadcrumb" className="breadcrumb">
-                    <ol>
-                        <li aria-current="page" title={title}>
-                            {title}
-                        </li>
-                    </ol>
-                </nav>
-                <button type="button" className="btn btn-sm" onClick={refresh}>
-                    Refresh
-                </button>
-            </div>
+                {/* The shell's top bar is hidden while this page is open, so this is the page heading. */}
+                <h2 className="detail-title" title={title}>
+                    {title}
+                </h2>
+                {load.kind === 'ready' ? (
+                    <ActionBar video={load.video} actions={actions} />
+                ) : (
+                    <div className="detail-header-actions">
+                        <button type="button" className="btn btn-sm" onClick={refresh}>
+                            Refresh
+                        </button>
+                    </div>
+                )}
+            </header>
 
             {load.kind === 'loading' && (
                 <p className="empty" role="status" aria-busy="true">
@@ -885,8 +900,6 @@ export function VideoDetailPage({
                     </button>
                 </div>
             )}
-
-            {load.kind === 'ready' && <ActionBar video={load.video} actions={actions} />}
 
             {load.kind === 'ready' && deleteBlocked(load.video) && (
                 <p id="video-delete-blocked" className="muted detail-note detail-blocked">
@@ -923,17 +936,18 @@ export function VideoDetailPage({
                                 )
                             }
                         />
-                        <ThumbnailCard video={load.video} actions={actions} />
+                        <ImagesCard video={load.video} actions={actions} />
                     </div>
                 </div>
             )}
 
             {confirmRemoveImage && load.kind === 'ready' && (
                 <ConfirmDialog
-                    title="Remove custom thumbnail"
-                    message="Remove the custom thumbnail? The generated thumbnail will be used again."
-                    confirmLabel="Remove"
+                    title="Delete image"
+                    message="Delete this custom image?"
+                    confirmLabel="Delete"
                     cancelLabel="Cancel"
+                    danger
                     onConfirm={removeImage}
                     onCancel={() => setConfirmRemoveImage(false)}
                 />

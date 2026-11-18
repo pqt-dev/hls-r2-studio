@@ -7,6 +7,56 @@
 
 use std::collections::BTreeMap;
 
+/// Server-side order of the video list (`sort` query parameter of `GET /api/app/videos`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VideoSort {
+    #[default]
+    Newest,
+    Oldest,
+    TitleAsc,
+    TitleDesc,
+    DurationDesc,
+    SizeDesc,
+}
+
+/// Accepted values of the `status` filter of the video list (same whitelist as the site).
+pub const STATUS_FILTERS: &[&str] = &["pending", "processing", "ready", "failed"];
+
+impl VideoSort {
+    /// The whitelist shared with the renderer (`VIDEO_SORTS` in ipc.ts) and the site.
+    pub const ALLOWED: &'static [&'static str] = &[
+        "newest",
+        "oldest",
+        "title_asc",
+        "title_desc",
+        "duration_desc",
+        "size_desc",
+    ];
+
+    pub fn as_param(self) -> &'static str {
+        match self {
+            Self::Newest => "newest",
+            Self::Oldest => "oldest",
+            Self::TitleAsc => "title_asc",
+            Self::TitleDesc => "title_desc",
+            Self::DurationDesc => "duration_desc",
+            Self::SizeDesc => "size_desc",
+        }
+    }
+
+    pub fn from_param(text: &str) -> Option<Self> {
+        Some(match text {
+            "newest" => Self::Newest,
+            "oldest" => Self::Oldest,
+            "title_asc" => Self::TitleAsc,
+            "title_desc" => Self::TitleDesc,
+            "duration_desc" => Self::DurationDesc,
+            "size_desc" => Self::SizeDesc,
+            _ => return None,
+        })
+    }
+}
+
 use serde::de::IgnoredAny;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use url::Url;
@@ -199,6 +249,12 @@ pub struct VideoListItem {
     pub output_width: Option<u32>,
     #[serde(default)]
     pub output_height: Option<u32>,
+    /// Frames per second of the output (the site stores a decimal).
+    #[serde(default)]
+    pub output_fps: Option<f64>,
+    /// Video bitrate of the output in kilobits per second (`videos.output_bitrate_kbps`).
+    #[serde(default)]
+    pub output_bitrate_kbps: Option<u64>,
     #[serde(default)]
     pub output_codec: Option<String>,
     #[serde(default)]
@@ -354,6 +410,13 @@ pub struct VideoDetail {
     pub created_at: Option<String>,
     #[serde(default)]
     pub updated_at: Option<String>,
+    /// Ready-made `[hls_embed_vl id="..."]` and iframe snippet shown on the detail page. Not part
+    /// of the site's answer: Rust fills them (same builders and checks as the Copy buttons) before
+    /// the detail goes to the renderer, which only displays them.
+    #[serde(default, skip_deserializing)]
+    pub shortcode: Option<String>,
+    #[serde(default, skip_deserializing)]
+    pub iframe_code: Option<String>,
 }
 
 impl VideoDetail {

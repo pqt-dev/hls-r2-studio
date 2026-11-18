@@ -30,7 +30,7 @@ use super::logs::{LogType, LogsPage, LogsReply, LogsSummary};
 use super::overview::Overview;
 use super::videos::{
     clean_url, normalize_video_title, BulkDeleteOutcome, VideoDeleteOutcome, VideoDetail,
-    VideoPage, MAX_BULK_DELETE, MAX_LIST_ITEMS, TITLE_INVALID,
+    VideoPage, VideoSort, MAX_BULK_DELETE, MAX_LIST_ITEMS, TITLE_INVALID,
 };
 use crate::logger::Log;
 use crate::pipeline::register::{
@@ -509,15 +509,17 @@ impl SiteClient {
         Ok(config)
     }
 
-    /// `GET /api/app/videos?page=&per_page=&q=` (one page of the cloud library). The search
+    /// `GET /api/app/videos?page=&per_page=&q=&sort=` (one page of the cloud library). The search
     /// text is URL-encoded and never logged; the answer is parsed, size-capped and sanitized.
     pub async fn list_videos(
         &self,
         page: u32,
         per_page: u32,
         query: Option<&str>,
+        sort: VideoSort,
+        status: Option<&str>,
     ) -> Result<VideoPage, SiteApiError> {
-        let path = videos_list_path(page, per_page, query);
+        let path = videos_list_path(page, per_page, query, sort, status);
         let raw = self.send(Method::GET, &path, true, None).await?;
 
         Self::video_status_check(
@@ -886,7 +888,13 @@ fn logs_path(log_type: Option<LogType>, page: Option<u32>, per_page: Option<u32>
 }
 
 /// `/api/app/videos?page=&per_page=[&q=]`; the search text is trimmed and form-encoded.
-fn videos_list_path(page: u32, per_page: u32, query: Option<&str>) -> String {
+fn videos_list_path(
+    page: u32,
+    per_page: u32,
+    query: Option<&str>,
+    sort: VideoSort,
+    status: Option<&str>,
+) -> String {
     let mut params = url::form_urlencoded::Serializer::new(String::new());
 
     params.append_pair("page", &page.to_string());
@@ -894,6 +902,16 @@ fn videos_list_path(page: u32, per_page: u32, query: Option<&str>) -> String {
 
     if let Some(text) = query.map(str::trim).filter(|text| !text.is_empty()) {
         params.append_pair("q", text);
+    }
+
+    // The default order is not sent, so an older site that has no `sort` keeps working.
+    if sort != VideoSort::Newest {
+        params.append_pair("sort", sort.as_param());
+    }
+
+    // Only sent when a filter is chosen: a site that does not know `status` is never asked.
+    if let Some(status) = status {
+        params.append_pair("status", status);
     }
 
     format!("/api/app/videos?{}", params.finish())

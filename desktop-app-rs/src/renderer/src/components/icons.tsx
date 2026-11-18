@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef } from 'react';
+import type { VideoOrientation } from '../lib/format';
 import { STATUS_ICON, type StatusKind } from '../lib/jobState';
 import { FLUENT, type FluentName } from './fluentIcons';
 
@@ -7,7 +8,15 @@ import { FLUENT, type FluentName } from './fluentIcons';
  * follow the theme and forced-colors. `duo` also renders the filled style: CSS shows it instead
  * of the regular one while a `.tab` parent is selected (active sidebar item).
  */
-function Glyph({ name, duo = false }: { name: FluentName; duo?: boolean }) {
+function Glyph({
+    name,
+    duo = false,
+    orientation,
+}: {
+    name: FluentName;
+    duo?: boolean;
+    orientation?: VideoOrientation;
+}) {
     const glyph = FLUENT[name];
     const svg = (style: 'regular' | 'filled') => (
         <svg
@@ -16,6 +25,7 @@ function Glyph({ name, duo = false }: { name: FluentName; duo?: boolean }) {
             fill="currentColor"
             aria-hidden="true"
             focusable="false"
+            data-orientation={orientation}
         >
             {glyph[style].map((d) => (
                 <path key={d} d={d} />
@@ -69,7 +79,14 @@ export const StatusIcon = ({ kind }: { kind: StatusKind }) => <Glyph name={STATU
 export const ClockIcon = () => <Glyph name="clock" />;
 export const StorageIcon = () => <Glyph name="drive" />;
 export const RulerIcon = () => <Glyph name="ruler" />;
-export const QualityIcon = () => <Glyph name="hd" />;
+/** One neutral video icon for every resolution chip: the label and tier colour carry the level. */
+export const QualityIcon = () => <Glyph name="quality" />;
+/** Dimensions chip: an outline TV (landscape) or phone (portrait); square counts as landscape. */
+export const DimensionsIcon = ({ orientation }: { orientation: VideoOrientation }) => (
+    <Glyph name={orientation} orientation={orientation} />
+);
+export const BitrateIcon = () => <Glyph name="bitrate" />;
+export const UploadedIcon = () => <Glyph name="uploaded" />;
 export const CheckIcon = () => <Glyph name="check" />;
 export const CloseIcon = () => <Glyph name="close" />;
 export const ChevronLeftIcon = () => <Glyph name="chevronLeft" />;

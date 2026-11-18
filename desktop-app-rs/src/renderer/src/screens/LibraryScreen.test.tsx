@@ -51,7 +51,7 @@ describe('Library screen', () => {
         expect(within(rows[0]!).getByText('Holiday')).toBeInTheDocument();
         expect(within(rows[0]!).getByText('Ready')).toBeInTheDocument();
         expect(within(rows[0]!).getByText('1:15')).toBeInTheDocument();
-        expect(within(rows[0]!).getByText(/^Added Jan 1, 2026/)).toBeInTheDocument();
+        expect(within(rows[0]!).getByText(/^Jan 1, (2026, )?\d/)).toBeInTheDocument();
         expect(rows[0]!.querySelector('img')).toHaveAttribute(
             'src',
             'https://cdn.example.com/a.jpg',

@@ -8,6 +8,7 @@ pub mod overview;
 pub mod site_client;
 #[cfg(test)]
 pub mod test_server;
+pub mod video_links;
 pub mod videos;
 
 pub use app_config::{

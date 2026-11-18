@@ -9,7 +9,9 @@ use std::fmt;
 use serde_json::{Map, Value};
 
 use crate::api::logs::LogType;
-use crate::api::videos::{normalize_video_title, MAX_BULK_DELETE, MAX_TITLE_CHARS};
+use crate::api::videos::{
+    normalize_video_title, VideoSort, MAX_BULK_DELETE, MAX_TITLE_CHARS, STATUS_FILTERS,
+};
 use crate::dto::{CopyKind, VideoLinkKind};
 use crate::secure::Secret;
 use crate::settings::SettingsPatch;
@@ -247,7 +249,14 @@ pub const DEFAULT_VIDEOS_PER_PAGE: u32 = 24;
 pub const MAX_VIDEOS_PER_PAGE: u32 = 50;
 pub const MAX_VIDEOS_QUERY_LENGTH: usize = 100;
 /// Largest integer a JS number holds exactly (the server id is a PHP integer).
-const VIDEO_LINK_KINDS: &[&str] = &["embed-url", "playlist-url", "shortcode"];
+const VIDEO_LINK_KINDS: &[&str] = &[
+    "embed-url",
+    "playlist-url",
+    "shortcode",
+    "iframe-code",
+    "thumbnail-url",
+    "custom-image-url",
+];
 const MAX_VIDEO_ID: i64 = 9_007_199_254_740_991;
 
 /// Validated `videos:list` input.
@@ -257,18 +266,27 @@ pub struct VideosListInput {
     pub per_page: u32,
     /// Trimmed search text; `None` when absent or blank.
     pub query: Option<String>,
+    pub sort: VideoSort,
+    /// One of `STATUS_FILTERS`; `None` means every status.
+    pub status: Option<String>,
 }
 
-/// `videos:list`: `{ page?, perPage?, q? }` (no argument = all defaults).
+/// `videos:list`: `{ page?, perPage?, q?, sort? }` (no argument = all defaults).
 pub fn parse_videos_list(payload: Option<Value>) -> Result<VideosListInput> {
     let Some(payload) = payload else {
         return Ok(VideosListInput {
             page: DEFAULT_VIDEOS_PAGE,
             per_page: DEFAULT_VIDEOS_PER_PAGE,
             query: None,
+            sort: VideoSort::Newest,
+            status: None,
         });
     };
-    let object = expect_single_object(Some(payload), "videos", &["page", "perPage", "q"])?;
+    let object = expect_single_object(
+        Some(payload),
+        "videos",
+        &["page", "perPage", "q", "sort", "status"],
+    )?;
     let page = match object.get("page") {
         None => DEFAULT_VIDEOS_PAGE,
         value => expect_int(value, "page", 1, i64::from(u32::MAX))? as u32,
@@ -291,10 +309,26 @@ pub fn parse_videos_list(payload: Option<Value>) -> Result<VideosListInput> {
         Some(_) => return invalid("q must be a string"),
     };
 
+    let sort = match object.get("sort") {
+        None => VideoSort::Newest,
+        value => {
+            let text = expect_one_of(value, "sort", VideoSort::ALLOWED)?;
+
+            VideoSort::from_param(text).unwrap_or_default()
+        }
+    };
+
+    let status = match object.get("status") {
+        None => None,
+        value => Some(expect_one_of(value, "status", STATUS_FILTERS)?.to_string()),
+    };
+
     Ok(VideosListInput {
         page,
         per_page,
         query,
+        sort,
+        status,
     })
 }
 
@@ -339,13 +373,16 @@ pub fn parse_logs_get(payload: Option<Value>) -> Result<LogsGetInput> {
     })
 }
 
-/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url` / `shortcode`.
+/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url` / `shortcode` / `iframe-code` / `thumbnail-url` / `custom-image-url`.
 pub fn parse_video_link(payload: Option<Value>) -> Result<(i64, VideoLinkKind)> {
     let object = expect_single_object(payload, "video link", &["id", "kind"])?;
     let id = expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)?;
     let kind = match expect_one_of(object.get("kind"), "kind", VIDEO_LINK_KINDS)? {
         "embed-url" => VideoLinkKind::EmbedUrl,
         "shortcode" => VideoLinkKind::Shortcode,
+        "iframe-code" => VideoLinkKind::IframeCode,
+        "thumbnail-url" => VideoLinkKind::ThumbnailUrl,
+        "custom-image-url" => VideoLinkKind::CustomImageUrl,
         _ => VideoLinkKind::PlaylistUrl,
     };
 
@@ -655,6 +692,8 @@ mod tests {
             page: 1,
             per_page: 24,
             query: None,
+            sort: VideoSort::Newest,
+            status: None,
         };
 
         assert_eq!(parse_videos_list(None).unwrap(), defaults);
@@ -665,8 +704,22 @@ mod tests {
                 page: 3,
                 per_page: 50,
                 query: Some("a b".into()),
+                sort: VideoSort::Newest,
+                status: None,
             }
         );
+
+        for name in STATUS_FILTERS {
+            let input = parse_videos_list(Some(json!({ "status": name }))).unwrap();
+
+            assert_eq!(input.status.as_deref(), Some(*name));
+        }
+
+        for name in VideoSort::ALLOWED {
+            let input = parse_videos_list(Some(json!({ "sort": name }))).unwrap();
+
+            assert_eq!(input.sort.as_param(), *name);
+        }
         assert_eq!(
             parse_videos_list(Some(json!({ "q": "   " })))
                 .unwrap()
@@ -684,6 +737,12 @@ mod tests {
             json!({ "perPage": 51 }),
             json!({ "q": long }),
             json!({ "q": 5 }),
+            json!({ "sort": "random" }),
+            json!({ "status": "done" }),
+            json!({ "status": 1 }),
+            json!({ "status": "" }),
+            json!({ "sort": 1 }),
+            json!({ "sort": "" }),
             json!({ "other": 1 }),
             json!("page"),
         ] {
@@ -760,6 +819,10 @@ mod tests {
         assert_eq!(
             parse_video_link(Some(json!({ "id": 5, "kind": "playlist-url" }))).unwrap(),
             (5, VideoLinkKind::PlaylistUrl)
+        );
+        assert_eq!(
+            parse_video_link(Some(json!({ "id": 5, "kind": "iframe-code" }))).unwrap(),
+            (5, VideoLinkKind::IframeCode)
         );
         assert_eq!(
             parse_video_link(Some(json!({ "id": 5, "kind": "shortcode" }))).unwrap(),

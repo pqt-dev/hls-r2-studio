@@ -6,6 +6,7 @@ import {
     useState,
     type ChangeEvent,
     type FormEvent,
+    type ReactElement,
 } from 'react';
 import {
     VIDEO_SORTS,
@@ -17,16 +18,22 @@ import {
 import { ConfirmDialog } from '../components/Dialog';
 import { Pagination } from '../components/Pagination';
 import {
-    CheckboxIcon,
-    CheckIcon,
+    BitrateIcon,
+    ClockIcon,
+    DimensionsIcon,
+    QualityIcon,
     GridViewIcon,
     ListViewIcon,
     RefreshIcon,
     SearchIcon,
     CloseIcon,
+    StorageIcon,
+    UploadedIcon,
+    UploadIcon,
 } from '../components/icons';
 import { SelectBox } from '../components/SelectBox';
 import { Thumbnail } from '../components/Thumbnail';
+import { useUploadVideos } from '../components/useUploadVideos';
 import { VideoMenu } from '../components/VideoMenu';
 import {
     QuickShortcodeButton,
@@ -36,13 +43,18 @@ import {
 import {
     formatBitrate,
     formatBytes,
-    formatDate,
+    formatDateCompact,
     formatDateTime,
     formatDuration,
     formatFps,
+    bitrateTier,
     formatQuality,
     formatResolution,
     plural,
+    qualityTier,
+    resolutionTier,
+    videoOrientation,
+    type Tier,
 } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
@@ -103,7 +115,11 @@ function SkeletonGrid({ count }: { count: number }) {
                     <div className="thumb-frame skeleton-block" />
                     <div className="video-main">
                         <span className="skeleton-bar skeleton-bar-title" />
-                        <span className="skeleton-bar" />
+                        <span className="skeleton-chips">
+                            <span className="skeleton-bar skeleton-chip" />
+                            <span className="skeleton-bar skeleton-chip" />
+                            <span className="skeleton-bar skeleton-chip" />
+                        </span>
                         <span className="skeleton-bar skeleton-bar-short" />
                     </div>
                 </li>
@@ -146,15 +162,43 @@ function VideoRow({
     onToggle: (id: number) => void;
 }) {
     const duration = formatDuration(video.duration);
-    const added = video.createdAt === null ? '' : formatDateTime(video.createdAt);
-    const created = formatDate(video.createdAt);
+    const fullDate = video.createdAt === null ? '' : formatDateTime(video.createdAt);
+    const added = formatDateCompact(video.createdAt);
     const quality = formatQuality(video.width, video.height);
     const size = video.sizeBytes === null ? '' : formatBytes(video.sizeBytes);
     const resolution = formatResolution(video.width, video.height);
-    const encoding = [formatFps(video.fps), formatBitrate(video.bitrateKbps)].filter(
-        (part) => part !== '',
-    );
-    const facts = [size, resolution].filter((part) => part !== '');
+    const bitrate = formatBitrate(video.bitrateKbps);
+    const fps = formatFps(video.fps);
+    // Row 1: the three tiered media chips. Row 2: duration, size and upload time (neutral group).
+    // A missing value has no chip.
+    interface TierChip {
+        label: string;
+        tier: Tier;
+        title: string;
+        icon: ReactElement;
+    }
+    const tierChips: ReadonlyArray<TierChip> = [
+        {
+            label: quality,
+            tier: qualityTier(video.width, video.height),
+            title: 'Quality',
+            icon: <QualityIcon />,
+        },
+        {
+            label: resolution,
+            tier: resolutionTier(video.width, video.height),
+            title: 'Dimensions',
+            icon: <DimensionsIcon orientation={videoOrientation(video.width, video.height)} />,
+        },
+        {
+            label: bitrate,
+            tier: bitrateTier(video.bitrateKbps),
+            title: 'Bitrate',
+            icon: <BitrateIcon />,
+        },
+    ].filter((chip): chip is TierChip => chip.label !== '');
+    const hasChips = tierChips.length > 0 || duration !== '' || size !== '' || added !== '';
+    const hasSummary = tierChips.length > 0 || duration !== '' || size !== '';
     const thumb = <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />;
     // A ready video needs no chip; its state stays available to assistive technology.
     const status =
@@ -163,19 +207,16 @@ function VideoRow({
         ) : (
             <StatusBadge status={video.status} />
         );
-    // Select mode: a round check control (native checkbox on top, invisible) in the corner.
+    // Select mode: a native checkbox, visually hidden but focusable; the picked state is drawn on the card.
     const check = selecting ? (
-        <span className="video-check-box">
-            <input
-                type="checkbox"
-                className="video-check"
-                aria-label={`Select ${video.title}`}
-                checked={picked}
-                disabled={disabled}
-                onChange={() => onToggle(video.id)}
-            />
-            <CheckIcon />
-        </span>
+        <input
+            type="checkbox"
+            className="video-check"
+            aria-label={`Select ${video.title}`}
+            checked={picked}
+            disabled={disabled}
+            onChange={() => onToggle(video.id)}
+        />
     ) : null;
     const content =
         view === 'list' ? (
@@ -185,53 +226,92 @@ function VideoRow({
                 <span className="video-title" title={video.title}>
                     {video.title}
                 </span>
-                <StatusBadge status={video.status} />
-                <span className="video-cell video-duration num">{duration}</span>
-                <span className="video-cell video-created">{added}</span>
-            </>
-        ) : (
-            <>
-                <span className="video-media">
-                    {thumb}
-                    {quality !== '' && (
-                        <span
-                            className="video-badge video-badge-quality num"
-                            title="Quality"
-                            aria-hidden="true"
-                        >
-                            {quality}
-                        </span>
-                    )}
+                <span className="video-cell video-status">
+                    <StatusBadge status={video.status} />
+                </span>
+                <span className="video-cell video-duration">
                     {duration !== '' && (
-                        <span
-                            className="video-badge video-badge-duration num"
-                            title="Duration"
-                            aria-hidden="true"
-                        >
+                        <span className="spec spec-duration num" title="Duration">
+                            <ClockIcon />
                             {duration}
                         </span>
                     )}
                 </span>
+                <span className="video-cell video-created" title={fullDate || undefined}>
+                    {added}
+                </span>
+            </>
+        ) : (
+            <>
+                <span className="video-media">{thumb}</span>
                 <span className="video-main">
                     <span className="video-title" title={video.title}>
                         {video.title}
                     </span>
-                    {facts.length > 0 && (
-                        <span className="video-meta num">{facts.join(' \u00b7 ')}</span>
-                    )}
-                    {encoding.length > 0 && (
-                        <span className="video-meta num">{encoding.join(' \u00b7 ')}</span>
-                    )}
-                    {created !== '' && (
-                        <span className="video-meta video-added" title="When the video was added">
-                            Added {added}
+                    {hasChips && (
+                        <span className="video-chips">
+                            {tierChips.length > 0 && (
+                                <span className="video-chip-row" data-row="media">
+                                    {tierChips.map((chip) => (
+                                        <span
+                                            key={chip.title}
+                                            className={`spec media-chip num chip-tier-${chip.tier}`}
+                                            title={chip.title}
+                                            aria-hidden="true"
+                                        >
+                                            {chip.icon}
+                                            {chip.label}
+                                        </span>
+                                    ))}
+                                </span>
+                            )}
+                            {(duration !== '' || size !== '' || added !== '') && (
+                                <span className="video-chip-row" data-row="meta">
+                                    {duration !== '' && (
+                                        <span
+                                            className="spec spec-duration num"
+                                            title="Duration"
+                                            aria-hidden="true"
+                                        >
+                                            <ClockIcon />
+                                            {duration}
+                                        </span>
+                                    )}
+                                    {size !== '' && (
+                                        <span
+                                            className="spec spec-size num"
+                                            title="File size"
+                                            aria-hidden="true"
+                                        >
+                                            <StorageIcon />
+                                            {size}
+                                        </span>
+                                    )}
+                                    {added !== '' && (
+                                        <span
+                                            className="spec spec-date video-added"
+                                            title={fullDate}
+                                        >
+                                            <UploadedIcon />
+                                            {added}
+                                        </span>
+                                    )}
+                                </span>
+                            )}
                         </span>
                     )}
                 </span>
-                {/* After the title in the DOM (the accessible name starts with it); drawn over the media. */}
-                {(duration !== '' || quality !== '') && (
+                {/* After the title in the DOM (the accessible name starts with it); the chips above are aria-hidden duplicates. */}
+                {hasSummary && (
                     <span className="visually-hidden">
-                        {[duration !== '' ? `Duration ${duration}` : '', quality]
+                        {[
+                            quality,
+                            duration !== '' ? `Duration ${duration}` : '',
+                            bitrate,
+                            fps,
+                            resolution,
+                            size,
+                        ]
                             .filter((part) => part !== '')
                             .join(', ')}
                     </span>
@@ -259,21 +339,19 @@ function VideoRow({
                 {content}
             </button>
             <div className="video-tools">
-                {video.status === 'ready' ? (
+                {video.status === 'ready' && (
                     <QuickShortcodeButton
                         title={video.title}
                         busy={quickBusy}
                         onQuick={(action) => onQuick(video, action)}
                     />
-                ) : (
-                    <span />
                 )}
                 <VideoMenu
                     title={video.title}
                     busy={quickBusy}
                     ready={video.status === 'ready'}
                     onQuick={(action) => onQuick(video, action)}
-                    onEdit={(opener) => onOpen(video, opener)}
+                    onOpen={(opener) => onOpen(video, opener)}
                     onDelete={() => onDelete(video)}
                     onSelect={() => onSelect(video)}
                 />
@@ -286,6 +364,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const { api } = useApp();
     const toast = useToast();
     const quick = useQuickActions();
+    const { busy: uploading, upload } = useUploadVideos();
     const [input, setInput] = useState('');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
@@ -509,19 +588,17 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     }
 
     /**
-     * The thumbnail changed. List URLs carry no cache-buster, so the row takes the detail's
-     * URLs (cache-busted by the site) instead of reloading the list.
+     * The custom image changed. The list thumbnail is always the generated one, so only the
+     * custom-image flag of the row needs updating (no reload).
      */
     function onImageChanged(video: VideoDetail): void {
-        const thumbnailUrl = video.customImageUrl ?? video.thumbnailUrl;
-
         setLoad((current) =>
             current.kind === 'ready'
                 ? {
                       ...current,
                       items: current.items.map((item) =>
                           item.id === video.id
-                              ? { ...item, thumbnailUrl, hasCustomImage: video.hasCustomImage }
+                              ? { ...item, hasCustomImage: video.hasCustomImage }
                               : item,
                       ),
                   }
@@ -835,7 +912,20 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                     </p>
                 )}
 
-                {pagerTop}
+                {/* Upload sits at the start of the top pager row, so it stays available while
+                    the list is loading, empty or failed (no pager then). */}
+                <div className="library-pager-row">
+                    <button
+                        type="button"
+                        className="btn btn-accent-create library-upload"
+                        disabled={uploading}
+                        onClick={() => void upload()}
+                    >
+                        <UploadIcon />
+                        Upload videos
+                    </button>
+                    {pagerTop}
+                </div>
 
                 {selectMode && (
                     <div className="library-tools" role="toolbar" aria-label="Selection">
@@ -844,7 +934,13 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                         </span>
                         <button
                             type="button"
-                            className={allPicked ? 'btn btn-sm btn-tonal' : 'btn btn-sm'}
+                            className={
+                                allPicked
+                                    ? 'btn btn-sm btn-select-toggle is-all'
+                                    : pickedIds.length > 0
+                                      ? 'btn btn-sm btn-select-toggle is-some'
+                                      : 'btn btn-sm btn-select-toggle'
+                            }
                             aria-label={
                                 allPicked ? 'Unselect all on this page' : 'Select all on this page'
                             }
@@ -855,10 +951,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                                 )
                             }
                         >
-                            <CheckboxIcon
-                                state={allPicked ? 'all' : pickedIds.length > 0 ? 'some' : 'none'}
-                            />
-                            Select all
+                            {allPicked ? 'Unselect all' : 'Select all'}
                         </button>
                         <button
                             ref={bulkRef}
@@ -920,7 +1013,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                             <div className="videos-head" aria-hidden="true">
                                 <span>Preview</span>
                                 <span>Title</span>
-                                <span>Status</span>
+                                <span className="video-status">Status</span>
                                 <span className="video-duration">Duration</span>
                                 <span className="video-created">Created</span>
                             </div>

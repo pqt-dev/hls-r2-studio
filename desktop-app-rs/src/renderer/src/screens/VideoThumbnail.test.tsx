@@ -12,7 +12,7 @@ import { renderApp } from '../testing/renderApp';
 
 const CUSTOM_URL = 'https://cdn.example.com/videos/abcdefghijkl/custom.png?v=2';
 const GENERATED_URL = 'https://cdn.example.com/videos/abcdefghijkl/thumb.jpg';
-const CONFIRM_TEXT = 'Remove the custom thumbnail? The generated thumbnail will be used again.';
+const CONFIRM_TEXT = 'Delete this custom image?';
 
 const withCustom: Partial<VideoDetail> = {
     hasCustomImage: true,
@@ -73,29 +73,67 @@ async function openDetail(options: Options = {}) {
 }
 
 function card() {
-    return within(screen.getByRole('region', { name: 'Thumbnail' }));
+    return within(screen.getByRole('region', { name: 'Images' }));
 }
 
-describe('Custom thumbnail (video detail)', () => {
-    it('without a custom image: no chip, no Remove button, the generated thumbnail is shown', async () => {
+describe('Images card (video detail)', () => {
+    it('without a custom image: Thumbnail card, dashed upload tile, no Replace/Delete', async () => {
         await openDetail();
 
-        expect(card().getByRole('button', { name: 'Choose image…' })).toBeEnabled();
-        expect(card().queryByText('Custom')).toBeNull();
-        expect(card().queryByRole('button', { name: 'Remove custom image' })).toBeNull();
-        expect(
-            screen.getByRole('region', { name: 'Thumbnail' }).querySelector('img'),
-        ).toHaveAttribute('src', GENERATED_URL);
+        const labels = Array.from(document.querySelectorAll('.image-card-label')).map(
+            (node) => node.textContent,
+        );
+
+        expect(labels).toEqual(['Thumbnail', 'Custom image']);
+        expect(card().getByRole('button', { name: '+ Upload image' })).toBeEnabled();
+        expect(card().queryByRole('button', { name: 'Replace' })).toBeNull();
+        expect(card().queryByRole('button', { name: 'Delete' })).toBeNull();
+        expect(card().getByRole('button', { name: 'Copy thumbnail URL' })).toBeEnabled();
+        expect(screen.getByRole('region', { name: 'Images' }).querySelector('img')).toHaveAttribute(
+            'src',
+            GENERATED_URL,
+        );
     });
 
-    it('with a custom image: chip and Remove button, the custom image wins', async () => {
+    it('with a custom image: both images side by side, the thumbnail is not replaced', async () => {
         await openDetail({ details: [withCustom] });
 
-        expect(card().getByText('Custom')).toBeInTheDocument();
-        expect(card().getByRole('button', { name: 'Remove custom image' })).toBeEnabled();
-        expect(
-            screen.getByRole('region', { name: 'Thumbnail' }).querySelector('img'),
-        ).toHaveAttribute('src', CUSTOM_URL);
+        const sources = Array.from(
+            screen.getByRole('region', { name: 'Images' }).querySelectorAll('img'),
+        ).map((img) => img.getAttribute('src'));
+
+        expect(sources).toEqual([GENERATED_URL, CUSTOM_URL]);
+        expect(document.querySelectorAll('.image-grid > .image-card')).toHaveLength(2);
+        expect(card().getByRole('button', { name: 'Replace' })).toBeEnabled();
+        expect(card().getByRole('button', { name: 'Delete' })).toBeEnabled();
+        expect(card().getByRole('button', { name: 'Copy custom image URL' })).toBeEnabled();
+        expect(card().queryByRole('button', { name: '+ Upload image' })).toBeNull();
+    });
+
+    it('the Preview poster of a video that is not ready uses the generated thumbnail', async () => {
+        await openDetail({ details: [{ ...withCustom, status: 'processing' }] });
+
+        const preview = screen.getByRole('region', { name: 'Preview' });
+
+        expect(preview.querySelector('img')).toHaveAttribute('src', GENERATED_URL);
+    });
+
+    it('Copy asks the main process to copy the thumbnail or the custom image URL', async () => {
+        const { user, fake } = await openDetail({ details: [withCustom] });
+        const copyLink = vi.spyOn(fake.api.videos, 'copyLink');
+
+        await user.click(card().getByRole('button', { name: 'Copy thumbnail URL' }));
+        await user.click(card().getByRole('button', { name: 'Copy custom image URL' }));
+
+        expect(copyLink).toHaveBeenNthCalledWith(1, 7, 'thumbnail-url');
+        expect(copyLink).toHaveBeenNthCalledWith(2, 7, 'custom-image-url');
+    });
+
+    it('shows a No thumbnail placeholder when there is no generated thumbnail', async () => {
+        await openDetail({ details: [{ thumbnailUrl: null }] });
+
+        expect(card().getAllByText('No thumbnail').length).toBeGreaterThan(0);
+        expect(card().getByRole('button', { name: 'Copy thumbnail URL' })).toBeDisabled();
     });
 
     it('choose: calls setImage with the id only, toasts, refetches and updates the list row', async () => {
@@ -103,22 +141,28 @@ describe('Custom thumbnail (video detail)', () => {
         const loads = get.mock.calls.length;
         const lists = list.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: 'Choose image…' }));
+        await user.click(card().getByRole('button', { name: '+ Upload image' }));
 
         expect(setImage).toHaveBeenCalledTimes(1);
         expect(setImage).toHaveBeenCalledWith(7);
-        expect(await screen.findByText('Thumbnail updated.')).toBeInTheDocument();
-        await waitFor(() => expect(card().getByText('Custom')).toBeInTheDocument());
+        expect(await screen.findByText('Custom image updated.')).toBeInTheDocument();
+        await waitFor(() =>
+            expect(card().getByRole('button', { name: 'Replace' })).toBeInTheDocument(),
+        );
         expect(get.mock.calls.length).toBe(loads + 1);
-        expect(card().getByRole('button', { name: 'Choose image…' })).toHaveFocus();
+        expect(card().getByRole('button', { name: 'Replace' })).toHaveFocus();
 
-        await user.click(screen.getByRole('button', { name: 'Library' }));
+        await user.click(screen.getByRole('button', { name: 'Back to Library' }));
 
-        // The row got the fresh (cache-busted) URL without reloading the list.
+        // The list was not reloaded and its thumbnail stays the generated one.
         expect(list.mock.calls.length).toBe(lists);
-        expect(
-            screen.getByRole('button', { name: /^Holiday/ }).closest('li, article, div')?.innerHTML,
-        ).toContain(CUSTOM_URL);
+
+        const rowHtml = screen
+            .getByRole('button', { name: /^Holiday/ })
+            .closest('li, article, div')?.innerHTML;
+
+        expect(rowHtml).toContain(GENERATED_URL);
+        expect(rowHtml).not.toContain(CUSTOM_URL);
     });
 
     it('canceling the picker is a no-op: no toast, no refetch', async () => {
@@ -127,12 +171,12 @@ describe('Custom thumbnail (video detail)', () => {
         });
         const loads = get.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: 'Choose image…' }));
+        await user.click(card().getByRole('button', { name: '+ Upload image' }));
         await waitFor(() =>
-            expect(card().getByRole('button', { name: 'Choose image…' })).toBeEnabled(),
+            expect(card().getByRole('button', { name: '+ Upload image' })).toBeEnabled(),
         );
 
-        expect(screen.queryByText('Thumbnail updated.')).toBeNull();
+        expect(screen.queryByText('Custom image updated.')).toBeNull();
         expect(screen.getByRole('status')).toBeEmptyDOMElement();
         expect(get.mock.calls.length).toBe(loads);
     });
@@ -144,18 +188,18 @@ describe('Custom thumbnail (video detail)', () => {
         });
         const loads = get.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: 'Choose image…' }));
+        await user.click(card().getByRole('button', { name: '+ Upload image' }));
 
         expect(await screen.findByText(/Choose a JPG, PNG or WebP image\./)).toBeInTheDocument();
         expect(get.mock.calls.length).toBe(loads);
-        expect(card().getByRole('button', { name: 'Choose image…' })).toBeEnabled();
-        expect(card().getByRole('button', { name: 'Choose image…' })).toHaveFocus();
+        expect(card().getByRole('button', { name: '+ Upload image' })).toBeEnabled();
+        expect(card().getByRole('button', { name: '+ Upload image' })).toHaveFocus();
     });
 
     it('a rejected call shows the generic error', async () => {
         const { user } = await openDetail({ setImage: () => Promise.reject(new Error('boom')) });
 
-        await user.click(card().getByRole('button', { name: 'Choose image…' }));
+        await user.click(card().getByRole('button', { name: '+ Upload image' }));
 
         expect(
             await screen.findByText(/Something went wrong\. Please try again\./),
@@ -172,52 +216,51 @@ describe('Custom thumbnail (video detail)', () => {
                 }),
         });
 
-        await user.click(card().getByRole('button', { name: 'Choose image…' }));
+        await user.click(card().getByRole('button', { name: 'Replace' }));
 
         expect(card().getByRole('button', { name: 'Uploading…' })).toBeDisabled();
-        expect(card().getByRole('button', { name: 'Remove custom image' })).toBeDisabled();
+        expect(card().getByRole('button', { name: 'Delete' })).toBeDisabled();
         // The other page actions are blocked too.
         expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
 
         finish({ ok: true, canceled: true });
 
-        await waitFor(() =>
-            expect(card().getByRole('button', { name: 'Choose image…' })).toBeEnabled(),
-        );
-        expect(card().getByRole('button', { name: 'Remove custom image' })).toBeEnabled();
+        await waitFor(() => expect(card().getByRole('button', { name: 'Replace' })).toBeEnabled());
+        expect(card().getByRole('button', { name: 'Delete' })).toBeEnabled();
     });
 
     it('remove: asks first, Cancel does nothing', async () => {
         const { user, removeImage } = await openDetail({ details: [withCustom] });
 
-        await user.click(card().getByRole('button', { name: 'Remove custom image' }));
+        await user.click(card().getByRole('button', { name: 'Delete' }));
 
         const dialog = screen.getByRole('alertdialog');
 
+        expect(within(dialog).getByText('Delete image')).toBeInTheDocument();
         expect(within(dialog).getByText(CONFIRM_TEXT)).toBeInTheDocument();
 
         await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
 
         expect(removeImage).not.toHaveBeenCalled();
         expect(screen.queryByRole('alertdialog')).toBeNull();
-        expect(card().getByRole('button', { name: 'Remove custom image' })).toHaveFocus();
+        expect(card().getByRole('button', { name: 'Delete' })).toHaveFocus();
     });
 
     it('remove: confirming calls the API, toasts, refetches and drops the chip', async () => {
         const { user, removeImage, get } = await openDetail({ details: [withCustom, {}] });
         const loads = get.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: 'Remove custom image' }));
+        await user.click(card().getByRole('button', { name: 'Delete' }));
         await user.click(
-            within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }),
+            within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
 
         expect(removeImage).toHaveBeenCalledWith(7);
-        expect(await screen.findByText('Custom thumbnail removed.')).toBeInTheDocument();
-        await waitFor(() => expect(card().queryByText('Custom')).toBeNull());
-        expect(card().queryByRole('button', { name: 'Remove custom image' })).toBeNull();
+        expect(await screen.findByText('Custom image deleted.')).toBeInTheDocument();
+        await waitFor(() => expect(card().queryByRole('button', { name: 'Replace' })).toBeNull());
+        expect(card().queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(get.mock.calls.length).toBe(loads + 1);
-        expect(card().getByRole('button', { name: 'Choose image…' })).toHaveFocus();
+        expect(card().getByRole('button', { name: '+ Upload image' })).toHaveFocus();
     });
 
     it('remove: "No custom thumbnail to remove." is shown and the state is re-read', async () => {
@@ -228,13 +271,13 @@ describe('Custom thumbnail (video detail)', () => {
         });
         const loads = get.mock.calls.length;
 
-        await user.click(card().getByRole('button', { name: 'Remove custom image' }));
+        await user.click(card().getByRole('button', { name: 'Delete' }));
         await user.click(
-            within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Remove' }),
+            within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }),
         );
 
         expect(await screen.findByText(/No custom thumbnail to remove\./)).toBeInTheDocument();
-        await waitFor(() => expect(card().queryByText('Custom')).toBeNull());
+        await waitFor(() => expect(card().queryByRole('button', { name: 'Replace' })).toBeNull());
         expect(get.mock.calls.length).toBe(loads + 1);
     });
 });

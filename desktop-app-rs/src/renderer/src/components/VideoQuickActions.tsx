@@ -63,7 +63,7 @@ export function QuickShortcodeButton({
     return (
         <button
             type="button"
-            className="btn btn-sm btn-text video-quick video-quick-ghost"
+            className="btn btn-sm btn-tonal video-quick video-quick-primary"
             aria-label={`Copy shortcode for ${title}`}
             title="Copy shortcode"
             aria-busy={busy}

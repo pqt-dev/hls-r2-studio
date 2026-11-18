@@ -68,13 +68,16 @@ describe('Video detail page', () => {
 
         await user.click(row);
 
-        const crumbs = within(await screen.findByRole('navigation', { name: 'Breadcrumb' }));
+        const heading = await screen.findByRole('heading', { level: 2, name: 'Holiday' });
 
-        // The back button is the only "Library" label; the breadcrumb shows just the title.
-        expect(crumbs.getAllByRole('listitem').map((item) => item.textContent)).toEqual([
-            'Holiday',
-        ]);
-        expect(screen.getByRole('button', { name: 'Library' })).toBeInTheDocument();
+        // The title is the page heading; the back control is icon-only with no visible text.
+        expect(heading).toHaveAttribute('title', 'Holiday');
+
+        const back = screen.getByRole('button', { name: 'Back to Library' });
+
+        expect(back).toHaveAttribute('title', 'Back to Library');
+        expect(back.textContent).toBe('');
+        expect(within(screen.getByLabelText('Video details')).queryByText('Library')).toBeNull();
         await screen.findByText('Information');
         expect(get).toHaveBeenCalledTimes(1);
         expect(get).toHaveBeenCalledWith(7);
@@ -88,7 +91,7 @@ describe('Video detail page', () => {
         await screen.findByText('Information');
         expect(get).toHaveBeenCalledTimes(1);
 
-        await user.click(screen.getByRole('button', { name: 'Library' }));
+        await user.click(screen.getByRole('button', { name: 'Back to Library' }));
         screen.getByRole('button', { name: /^Holiday/ }).focus();
         await user.keyboard(' ');
         await screen.findByText('Information');
@@ -121,7 +124,7 @@ describe('Video detail page', () => {
         await screen.findByText('Information');
         expect(screen.queryByLabelText('Search videos')).not.toBeVisible();
 
-        await user.click(screen.getByRole('button', { name: 'Library' }));
+        await user.click(screen.getByRole('button', { name: 'Back to Library' }));
         expect(screen.getByLabelText('Search videos')).toBeVisible();
         expect(screen.getByLabelText('Search videos')).toHaveValue('ho');
         expect(screen.getAllByRole('textbox', { name: 'Current page' })[0]!).toHaveValue('2');
@@ -213,17 +216,17 @@ describe('Video detail page', () => {
         expect(within(screen.getByLabelText('Information')).getByText('Ready')).toBeInTheDocument();
     });
 
-    it('does not load the preview until asked, and then only for a same-host https embed URL', async () => {
+    it('loads the preview right away, without a click, only for a same-host https embed URL', async () => {
         const { user } = await openLibrary(detail({ embedUrl: SITE_EMBED }));
 
         await openFirst(user);
         await screen.findByText('Information');
 
-        expect(document.querySelector('iframe')).toBeNull();
-
-        await user.click(screen.getByRole('button', { name: 'Load preview' }));
-
         const frame = document.querySelector('iframe')!;
+
+        expect(screen.getByText('Loading preview…')).toBeInTheDocument();
+        fireEvent.load(frame);
+        expect(screen.queryByText('Loading preview…')).toBeNull();
 
         expect(frame).toHaveAttribute('src', SITE_EMBED);
         expect(frame).toHaveAttribute(
@@ -235,6 +238,29 @@ describe('Video detail page', () => {
         expect(frame).toHaveAttribute('loading', 'lazy');
         expect(frame).toHaveAttribute('title');
         expect(screen.queryByRole('button', { name: 'Load preview' })).toBeNull();
+        expect(frame.getAttribute('src')).not.toMatch(/autoplay/i);
+    });
+
+    it('hides the shell top bar only while the detail is open', async () => {
+        const { user } = await openLibrary();
+
+        expect(document.querySelector('.topbar')).not.toBeNull();
+        expect(document.querySelector('.workspace .detail')).toBeNull();
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        // styles.css hides ".workspace:has(.detail) > .topbar"; jsdom does not apply CSS.
+        expect(document.querySelector('.workspace .detail')).not.toBeNull();
+        expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute(
+            'aria-selected',
+            'true',
+        );
+
+        await user.click(screen.getByRole('button', { name: 'Back to Library' }));
+
+        expect(document.querySelector('.workspace .detail')).toBeNull();
+        expect(document.querySelector('.topbar .page-title')).toHaveTextContent('Library');
     });
 
     it.each([
@@ -253,10 +279,11 @@ describe('Video detail page', () => {
         expect(screen.queryByRole('button', { name: 'Load preview' })).toBeNull();
         expect(document.querySelector('iframe')).toBeNull();
         expect(
-            within(screen.getByLabelText('Preview')).getByRole('button', {
+            within(screen.getByLabelText('Preview')).queryByRole('button', {
                 name: 'Open in browser',
             }),
-        ).toBeInTheDocument();
+        ).toBeNull();
+        expect(screen.getByText('Use Open in browser above.')).toBeInTheDocument();
     });
 
     it('does not offer a preview for a video that is not ready', async () => {
@@ -283,12 +310,11 @@ describe('Video detail page', () => {
         await openFirst(user);
         await screen.findByText('Information');
 
-        await user.click(screen.getByRole('button', { name: 'Copy embed URL' }));
+        await user.click(screen.getByRole('button', { name: 'Copy Embed URL' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'embed-url');
         expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'More actions' }));
-        await user.click(screen.getByRole('menuitem', { name: 'Copy playlist URL' }));
+        await user.click(screen.getByRole('button', { name: 'Copy Playlist URL' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'playlist-url');
         expect(await screen.findByText('Playlist URL copied.')).toBeInTheDocument();
 
@@ -344,6 +370,31 @@ describe('Video detail page', () => {
         expect(card.queryByRole('heading', { name: 'Shortcode' })).toBeNull();
     });
 
+    it('shows the playlist URL field with a working Copy only when playlistUrl is set', async () => {
+        const playlistUrl = 'https://cdn.example.com/p/abcdefghijkl/master.m3u8';
+        const { user, copyLink } = await openLibrary(detail({ embedUrl: SITE_EMBED, playlistUrl }));
+
+        await openFirst(user);
+
+        const card = within(await screen.findByLabelText('Embed'));
+
+        expect(card.getByRole('heading', { name: 'Playlist URL' })).toBeInTheDocument();
+        expect(card.getByText(playlistUrl)).toBeInTheDocument();
+        await user.click(card.getByRole('button', { name: 'Copy Playlist URL' }));
+        expect(copyLink).toHaveBeenLastCalledWith(7, 'playlist-url');
+        expect(await screen.findByText('Playlist URL copied.')).toBeInTheDocument();
+    });
+
+    it('omits the playlist URL field without a playlistUrl', async () => {
+        const { user } = await openLibrary(detail({ embedUrl: SITE_EMBED, playlistUrl: null }));
+
+        await openFirst(user);
+
+        const card = within(await screen.findByLabelText('Embed'));
+
+        expect(card.queryByRole('heading', { name: 'Playlist URL' })).toBeNull();
+    });
+
     it('shows a failure toast when an action fails', async () => {
         const { user, copyLink, openEmbed } = await openLibrary();
 
@@ -356,7 +407,7 @@ describe('Video detail page', () => {
         await openFirst(user);
         await screen.findByText('Information');
 
-        await user.click(screen.getByRole('button', { name: 'Copy embed URL' }));
+        await user.click(screen.getByRole('button', { name: 'Copy Embed URL' }));
         expect(await screen.findByText(/Could not copy to the clipboard\./)).toBeInTheDocument();
 
         await user.click(screen.getByRole('button', { name: 'Open in browser' }));
@@ -371,8 +422,8 @@ describe('Video detail page', () => {
         await openFirst(user);
         await screen.findByText('Information');
 
-        expect(screen.queryByRole('button', { name: 'Copy playlist URL' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Copy embed URL' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Copy Playlist URL' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Copy Embed URL' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull();
     });
 
@@ -450,7 +501,7 @@ describe('Video detail page', () => {
         await screen.findByText('Information');
         expect(panel.scrollTop).toBe(0);
 
-        fireEvent.click(screen.getByRole('button', { name: 'Library' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Back to Library' }));
         await waitFor(() => expect(panel.scrollTop).toBe(240));
     });
 });

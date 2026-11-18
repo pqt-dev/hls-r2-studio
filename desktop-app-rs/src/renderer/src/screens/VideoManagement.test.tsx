@@ -102,14 +102,12 @@ describe('Rename (video detail)', () => {
         expect(updateTitle).toHaveBeenCalledWith(7, 'New name');
         await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull());
         expect(screen.getByRole('button', { name: 'Rename' })).toHaveFocus();
-        expect(
-            within(screen.getByRole('navigation', { name: 'Breadcrumb' })).getByText('New name'),
-        ).toBeInTheDocument();
+        expect(screen.getByRole('heading', { level: 2, name: 'New name' })).toBeInTheDocument();
         expect(await screen.findByText('Title updated.')).toBeInTheDocument();
 
         const lists = list.mock.calls.length;
 
-        await user.click(screen.getByRole('button', { name: 'Library' }));
+        await user.click(screen.getByRole('button', { name: 'Back to Library' }));
         // The row shows the new title without reloading the list.
         expect(screen.getByRole('button', { name: /^New name/ })).toBeInTheDocument();
         expect(list.mock.calls.length).toBe(lists);
@@ -211,10 +209,14 @@ describe('Rename (video detail)', () => {
     });
 });
 
-/** Delete lives in the overflow menu of the detail toolbar. */
+const deleteButton = () =>
+    within(screen.getByRole('toolbar', { name: 'Video actions' })).getByRole('button', {
+        name: 'Delete',
+    });
+
+/** Delete is the danger button at the end of the detail toolbar. */
 async function openMenuAndDelete(user: Opened['user']) {
-    await user.click(screen.getByRole('button', { name: 'More actions' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    await user.click(deleteButton());
 }
 
 describe('Delete (video detail)', () => {
@@ -234,7 +236,7 @@ describe('Delete (video detail)', () => {
 
         expect(remove).not.toHaveBeenCalled();
         expect(screen.queryByRole('alertdialog')).toBeNull();
-        expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus();
+        expect(deleteButton()).toHaveFocus();
     });
 
     it('deleted: toasts the server message, returns to the list and reloads it', async () => {
@@ -278,9 +280,7 @@ describe('Delete (video detail)', () => {
             await screen.findByText('The video is still processing; try again later.'),
         ).toBeInTheDocument();
         expect(screen.getByText('Information')).toBeInTheDocument();
-        await waitFor(() =>
-            expect(screen.getByRole('button', { name: 'More actions' })).toHaveFocus(),
-        );
+        await waitFor(() => expect(deleteButton()).toHaveFocus());
     });
 
     it('failed: shows the server message as an error toast and stays on the page', async () => {
@@ -321,11 +321,9 @@ describe('Delete (video detail)', () => {
 
             await openDetail(user);
 
-            await user.click(screen.getByRole('button', { name: 'More actions' }));
+            const button = deleteButton();
 
-            const button = screen.getByRole('menuitem', { name: 'Delete' });
-
-            expect(button).toHaveAttribute('aria-disabled', 'true');
+            expect(button).toBeDisabled();
             expect(button).toHaveAttribute('title', expect.stringMatching(/cannot be deleted/));
             expect(button).toHaveAccessibleDescription(/cannot be deleted/);
             await user.click(button);

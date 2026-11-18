@@ -18,6 +18,7 @@ use super::validate::{
 };
 use super::IpcError;
 use crate::api::image_upload::{read_image_file, IMAGE_UNREADABLE};
+use crate::api::video_links::{VideoLinkCache, VideoLinks};
 use crate::api::videos::{
     build_public_url, DeleteStatus, VideoDetail, VideoListItem, VideoListMeta, VideoStatus,
 };
@@ -28,6 +29,8 @@ use crate::logger::Log;
 use crate::state::AppState;
 
 pub const NO_PLAYLIST_URL: &str = "This video has no playlist URL yet.";
+pub const NO_THUMBNAIL_URL: &str = "This video has no thumbnail yet.";
+pub const NO_CUSTOM_IMAGE_URL: &str = "This video has no custom image.";
 
 /// One list row for the renderer: URLs built here from the R2 public base URL. The storage
 /// paths (`diskPrefix`, `playlistPath`, `*Path`) and the R2 base never leave Rust.
@@ -40,8 +43,16 @@ pub struct VideoListItemDto {
     pub original_filename: Option<String>,
     pub status: VideoStatus,
     pub duration: Option<f64>,
-    /// The custom image when the video has one, else the generated thumbnail; `None` when
-    /// neither exists or R2 is not configured.
+    /// Output resolution in pixels (`None` until the video is processed).
+    pub width: Option<u32>,
+    pub height: Option<u32>,
+    /// Size of the original upload in bytes, when the site reports it.
+    pub size_bytes: Option<u64>,
+    /// Frames per second and video bitrate (kbps) of the output, when the site reports them.
+    pub fps: Option<f64>,
+    pub bitrate_kbps: Option<u64>,
+    /// The generated thumbnail only (the custom image never replaces it, as on the web list);
+    /// `None` when it does not exist or R2 is not configured.
     pub thumbnail_url: Option<String>,
     pub has_custom_image: bool,
     pub embed_url: Option<String>,
@@ -56,9 +67,8 @@ impl VideoListItemDto {
                 .zip(path.as_deref())
                 .and_then(|(base, path)| build_public_url(base, path))
         };
-        let custom = url_of(&item.custom_image_path);
-        let has_custom_image = custom.is_some();
-        let thumbnail_url = custom.or_else(|| url_of(&item.thumbnail_path));
+        let has_custom_image = url_of(&item.custom_image_path).is_some();
+        let thumbnail_url = url_of(&item.thumbnail_path);
 
         Self {
             id: item.id,
@@ -67,6 +77,11 @@ impl VideoListItemDto {
             original_filename: item.original_filename,
             status: item.status,
             duration: item.duration,
+            width: item.output_width,
+            height: item.output_height,
+            size_bytes: item.original_size_bytes,
+            fps: item.output_fps,
+            bitrate_kbps: item.output_bitrate_kbps,
             thumbnail_url,
             has_custom_image,
             embed_url: item.embed_url,
@@ -120,20 +135,34 @@ pub(crate) async fn list_videos(
     client: &SiteClient,
     input: VideosListInput,
     r2_base: Option<&str>,
+    cache: &VideoLinkCache,
 ) -> VideosListResult {
     match client
-        .list_videos(input.page, input.per_page, input.query.as_deref())
+        .list_videos(
+            input.page,
+            input.per_page,
+            input.query.as_deref(),
+            input.sort,
+            input.status.as_deref(),
+        )
         .await
     {
-        Ok(page) => VideosListResult::Ok {
-            ok: true,
-            data: page
-                .data
-                .into_iter()
-                .map(|item| VideoListItemDto::from_item(item, r2_base))
-                .collect(),
-            meta: page.meta,
-        },
+        Ok(page) => {
+            // Remembered for instant Copy / Open (no new request later).
+            for item in &page.data {
+                cache.put(item.id, VideoLinks::from_list_item(item, r2_base));
+            }
+
+            VideosListResult::Ok {
+                ok: true,
+                data: page
+                    .data
+                    .into_iter()
+                    .map(|item| VideoListItemDto::from_item(item, r2_base))
+                    .collect(),
+                meta: page.meta,
+            }
+        }
         Err(error) => VideosListResult::failed(error),
     }
 }
@@ -158,7 +187,13 @@ pub async fn videos_list(
     // The R2 public base URL of the config loaded after login (never sent to the renderer).
     let r2_base = state.config.r2_public_url();
 
-    Ok(list_videos(&state.site_client, input, r2_base.as_deref()).await)
+    Ok(list_videos(
+        &state.site_client,
+        input,
+        r2_base.as_deref(),
+        &state.video_links,
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -167,8 +202,13 @@ pub async fn videos_get(
     payload: Option<Value>,
 ) -> Result<VideosGetResult, IpcError> {
     let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:get", e))?;
+    let result = get_video(&state.site_client, id).await;
 
-    Ok(get_video(&state.site_client, id).await)
+    Ok(remember_and_fill(
+        result,
+        &state.video_links,
+        site_url(&state).as_deref(),
+    ))
 }
 
 /// `{ ok: true; status: 'deleted' | 'skipped' | 'failed'; message } | { ok: false; error }`
@@ -343,7 +383,13 @@ pub async fn videos_update_title(
     let (id, title) = parse_video_title_update(payload)
         .map_err(|e| rejected(&state, "videos:update-title", e))?;
 
-    Ok(update_video_title(&state.site_client, id, &title).await)
+    let result = update_video_title(&state.site_client, id, &title).await;
+
+    Ok(remember_and_fill(
+        result,
+        &state.video_links,
+        site_url(&state).as_deref(),
+    ))
 }
 
 #[tauri::command]
@@ -367,43 +413,106 @@ pub async fn videos_bulk_delete(
     Ok(bulk_delete_videos(&state.site_client, &ids).await)
 }
 
-/// Copies the embed URL, playlist URL or shortcode of a video detail that Rust fetched itself;
-/// the renderer never supplies clipboard text. Only a plain https URL is copied; the shortcode
-/// (same builder as the Queue) needs an https embed URL on the signed-in site.
+/// Iframe snippet of the website's Embed dialog (`buildEmbedIframeCode` in
+/// `resources/views/videos/index.blade.php`, without autoplay/muted). The aspect ratio uses the real
+/// output size only for landscape videos, else `16 / 9` (as `$embedAspectRatio` in `_row.blade.php`).
+/// The renderer builds the same string for display (`iframeCode` in VideoDetailPage.tsx).
+fn iframe_code(embed_url: &str, width: Option<u32>, height: Option<u32>) -> String {
+    let ratio = match (width, height) {
+        (Some(w), Some(h)) if w > 0 && h > 0 && w > h => format!("{w} / {h}"),
+        _ => "16 / 9".to_string(),
+    };
+
+    format!(
+        "<iframe src=\"{embed_url}\" style=\"width:100%; aspect-ratio:{ratio}; max-height:75vh; border:0;\" allowfullscreen allow=\"autoplay; fullscreen\"></iframe>"
+    )
+}
+
+/// The text one Copy action puts on the clipboard, or the safe message when it cannot be built.
+/// Only a plain https URL is copied; the shortcode and the iframe code need an https embed URL on
+/// the signed-in site, and the shortcode a plain public id.
+fn link_text(
+    links: &VideoLinks,
+    kind: VideoLinkKind,
+    site_url: Option<&str>,
+) -> Result<String, &'static str> {
+    match kind {
+        VideoLinkKind::EmbedUrl | VideoLinkKind::PlaylistUrl => {
+            let (url, missing) = if kind == VideoLinkKind::EmbedUrl {
+                (links.embed_url.as_deref(), NO_EMBED_URL)
+            } else {
+                (links.playlist_url.as_deref(), NO_PLAYLIST_URL)
+            };
+
+            url.filter(|url| safe_https_url(url).is_some())
+                .map(str::to_string)
+                .ok_or(missing)
+        }
+        VideoLinkKind::ThumbnailUrl | VideoLinkKind::CustomImageUrl => {
+            let (url, missing) = if kind == VideoLinkKind::ThumbnailUrl {
+                (links.thumbnail_url.as_deref(), NO_THUMBNAIL_URL)
+            } else {
+                (links.custom_image_url.as_deref(), NO_CUSTOM_IMAGE_URL)
+            };
+
+            url.filter(|url| safe_https_url(url).is_some())
+                .map(str::to_string)
+                .ok_or(missing)
+        }
+        VideoLinkKind::IframeCode => {
+            let embed_url = links.embed_url.as_deref().ok_or(NO_EMBED_URL)?;
+
+            if !is_embed_url_of_site(embed_url, site_url) {
+                return Err(FOREIGN_EMBED_URL);
+            }
+
+            Ok(iframe_code(embed_url, links.width, links.height))
+        }
+        VideoLinkKind::Shortcode => {
+            let embed_url = links.embed_url.as_deref().ok_or(NO_EMBED_URL)?;
+
+            if !is_embed_url_of_site(embed_url, site_url) {
+                return Err(FOREIGN_EMBED_URL);
+            }
+
+            embed_shortcode(&links.public_id).ok_or(INVALID_VIDEO_ID)
+        }
+    }
+}
+
+/// Remembers a loaded detail for instant Copy / Open and fills its ready-made shortcode and
+/// iframe snippet (shown by the detail page; `None` when the same checks as the Copy buttons fail).
+fn remember_and_fill(
+    result: VideosGetResult,
+    cache: &VideoLinkCache,
+    site_url: Option<&str>,
+) -> VideosGetResult {
+    match result {
+        VideosGetResult::Ok { ok, mut video } => {
+            let links = VideoLinks::from(&*video);
+
+            cache.put(video.id, links.clone());
+            video.shortcode = link_text(&links, VideoLinkKind::Shortcode, site_url).ok();
+            video.iframe_code = link_text(&links, VideoLinkKind::IframeCode, site_url).ok();
+
+            VideosGetResult::Ok { ok, video }
+        }
+        other => other,
+    }
+}
+
+/// Copies the embed URL, playlist URL, shortcode or iframe code of a video. The text is built here
+/// from data Rust loaded itself (the renderer never supplies clipboard text).
 pub(crate) fn copy_video_link(
-    video: &VideoDetail,
+    links: &VideoLinks,
     kind: VideoLinkKind,
     desktop: &dyn JobsDesktop,
     site_url: Option<&str>,
     logger: &dyn Log,
 ) -> ActionResult {
-    let text = match kind {
-        VideoLinkKind::EmbedUrl | VideoLinkKind::PlaylistUrl => {
-            let (url, missing) = if kind == VideoLinkKind::EmbedUrl {
-                (video.embed_url.as_deref(), NO_EMBED_URL)
-            } else {
-                (video.playlist_url.as_deref(), NO_PLAYLIST_URL)
-            };
-
-            match url.filter(|url| safe_https_url(url).is_some()) {
-                Some(url) => url.to_string(),
-                None => return ActionResult::err(missing),
-            }
-        }
-        VideoLinkKind::Shortcode => {
-            let Some(embed_url) = video.embed_url.as_deref() else {
-                return ActionResult::err(NO_EMBED_URL);
-            };
-
-            if !is_embed_url_of_site(embed_url, site_url) {
-                return ActionResult::err(FOREIGN_EMBED_URL);
-            }
-
-            match embed_shortcode(&video.public_id) {
-                Some(shortcode) => shortcode,
-                None => return ActionResult::err(INVALID_VIDEO_ID),
-            }
-        }
+    let text = match link_text(links, kind, site_url) {
+        Ok(text) => text,
+        Err(message) => return ActionResult::err(message),
     };
 
     match desktop.write_clipboard(&text) {
@@ -420,12 +529,12 @@ pub(crate) fn copy_video_link(
 
 /// Opens the embed page of a video detail, only when it is https on the signed-in site.
 pub(crate) fn open_video_embed(
-    video: &VideoDetail,
+    links: &VideoLinks,
     desktop: &dyn JobsDesktop,
     site_url: Option<&str>,
     logger: &dyn Log,
 ) -> ActionResult {
-    let Some(embed_url) = video.embed_url.as_deref() else {
+    let Some(embed_url) = links.embed_url.as_deref() else {
         return ActionResult::err(NO_EMBED_URL);
     };
 
@@ -446,7 +555,44 @@ pub(crate) fn open_video_embed(
     }
 }
 
-/// The OS calls (clipboard, browser) run off the async workers, after the network call.
+/// The links of a video from what the list or detail call already returned (no request). A rare
+/// miss (or a cached entry without the playlist URL when that is wanted) fetches the detail once
+/// and remembers it.
+pub(crate) async fn stored_links(
+    client: &SiteClient,
+    cache: &VideoLinkCache,
+    id: i64,
+    needs_playlist: bool,
+) -> Result<VideoLinks, SiteApiError> {
+    if let Some(links) = cache.get(id) {
+        if !needs_playlist || links.playlist_url.is_some() {
+            return Ok(links);
+        }
+    }
+
+    let video = client.get_video(id).await?;
+    let links = VideoLinks::from(&video);
+
+    cache.put(id, links.clone());
+
+    Ok(links)
+}
+
+/// The links of a video from a new detail request, remembered for later Copy / Open.
+async fn fresh_links(
+    client: &SiteClient,
+    cache: &VideoLinkCache,
+    id: i64,
+) -> Result<VideoLinks, SiteApiError> {
+    let video = client.get_video(id).await?;
+    let links = VideoLinks::from(&video);
+
+    cache.put(id, links.clone());
+
+    Ok(links)
+}
+
+/// The OS calls (clipboard, browser) run off the async workers; the links come from memory.
 #[tauri::command]
 pub async fn videos_copy_link<R: Runtime>(
     window: WebviewWindow<R>,
@@ -455,8 +601,23 @@ pub async fn videos_copy_link<R: Runtime>(
 ) -> Result<ActionResult, IpcError> {
     let (id, kind) =
         parse_video_link(payload).map_err(|e| rejected(&state, "videos:copy-link", e))?;
-    let video = match state.site_client.get_video(id).await {
-        Ok(video) => video,
+    // Image URLs change when an image is replaced or removed (and carry a cache-buster), so they
+    // always come from a fresh detail instead of the remembered entry.
+    let links = match if matches!(
+        kind,
+        VideoLinkKind::ThumbnailUrl | VideoLinkKind::CustomImageUrl
+    ) {
+        fresh_links(&state.site_client, &state.video_links, id).await
+    } else {
+        stored_links(
+            &state.site_client,
+            &state.video_links,
+            id,
+            kind == VideoLinkKind::PlaylistUrl,
+        )
+        .await
+    } {
+        Ok(links) => links,
         Err(error) => return Ok(ActionResult::err(error.message)),
     };
     let logger = state.logger.clone();
@@ -464,7 +625,7 @@ pub async fn videos_copy_link<R: Runtime>(
 
     Ok(tauri::async_runtime::spawn_blocking(move || {
         copy_video_link(
-            &video,
+            &links,
             kind,
             &TauriJobsDesktop { window },
             site.as_deref(),
@@ -482,8 +643,8 @@ pub async fn videos_open_embed<R: Runtime>(
     payload: Option<Value>,
 ) -> Result<ActionResult, IpcError> {
     let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:open-embed", e))?;
-    let video = match state.site_client.get_video(id).await {
-        Ok(video) => video,
+    let links = match stored_links(&state.site_client, &state.video_links, id, false).await {
+        Ok(links) => links,
         Err(error) => return Ok(ActionResult::err(error.message)),
     };
     let logger = state.logger.clone();
@@ -491,7 +652,7 @@ pub async fn videos_open_embed<R: Runtime>(
 
     Ok(tauri::async_runtime::spawn_blocking(move || {
         open_video_embed(
-            &video,
+            &links,
             &TauriJobsDesktop { window },
             site.as_deref(),
             &*logger,
@@ -527,6 +688,71 @@ mod tests {
     }
 
     #[test]
+    fn copy_from_stored_links_builds_all_four_kinds_with_the_same_checks() {
+        let links = VideoLinks {
+            public_id: "abcdefghijkl".into(),
+            embed_url: Some("https://site.example.com/embed/abcdefghijkl".into()),
+            playlist_url: Some("https://cdn.example.com/v/master.m3u8".into()),
+            thumbnail_url: None,
+            custom_image_url: None,
+            width: Some(1920),
+            height: Some(1080),
+        };
+        let desktop = FakeDesktop::default();
+        let log = RecordingLogger::default();
+
+        for kind in [
+            VideoLinkKind::EmbedUrl,
+            VideoLinkKind::PlaylistUrl,
+            VideoLinkKind::Shortcode,
+            VideoLinkKind::IframeCode,
+        ] {
+            assert_eq!(
+                copy_video_link(&links, kind, &desktop, SITE, &log),
+                ActionResult::Ok
+            );
+        }
+
+        let copied = desktop.clipboard.lock().unwrap().clone();
+
+        assert_eq!(copied[0], "https://site.example.com/embed/abcdefghijkl");
+        assert_eq!(copied[1], "https://cdn.example.com/v/master.m3u8");
+        assert_eq!(copied[2], "[hls_embed_vl id=\"abcdefghijkl\"]");
+        assert!(
+            copied[3].starts_with("<iframe src=\"https://site.example.com/embed/abcdefghijkl\"")
+        );
+
+        // The same checks as before: http, a foreign site and an invalid id are refused.
+        let insecure = VideoLinks {
+            embed_url: Some("http://site.example.com/embed/abcdefghijkl".into()),
+            ..links.clone()
+        };
+        let bad_id = VideoLinks {
+            public_id: "Bad Id".into(),
+            ..links.clone()
+        };
+
+        assert_eq!(
+            copy_video_link(&insecure, VideoLinkKind::EmbedUrl, &desktop, SITE, &log),
+            ActionResult::err(NO_EMBED_URL)
+        );
+        assert_eq!(
+            copy_video_link(
+                &links,
+                VideoLinkKind::Shortcode,
+                &desktop,
+                Some("https://other.example.com"),
+                &log
+            ),
+            ActionResult::err(FOREIGN_EMBED_URL)
+        );
+        assert_eq!(
+            copy_video_link(&bad_id, VideoLinkKind::Shortcode, &desktop, SITE, &log),
+            ActionResult::err(INVALID_VIDEO_ID)
+        );
+    }
+
+    #[test]
     fn copy_link_writes_the_url_of_the_detail() {
         let video = detail(
             Some("https://site.example.com/embed/abcdefghijkl"),
@@ -536,11 +762,23 @@ mod tests {
         let log = RecordingLogger::default();
 
         assert_eq!(
-            copy_video_link(&video, VideoLinkKind::EmbedUrl, &desktop, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::EmbedUrl,
+                &desktop,
+                SITE,
+                &log
+            ),
             ActionResult::Ok
         );
         assert_eq!(
-            copy_video_link(&video, VideoLinkKind::PlaylistUrl, &desktop, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::PlaylistUrl,
+                &desktop,
+                SITE,
+                &log
+            ),
             ActionResult::Ok
         );
         assert_eq!(
@@ -559,11 +797,23 @@ mod tests {
         let none = detail(None, None);
 
         assert_eq!(
-            copy_video_link(&none, VideoLinkKind::EmbedUrl, &desktop, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&none),
+                VideoLinkKind::EmbedUrl,
+                &desktop,
+                SITE,
+                &log
+            ),
             ActionResult::err(NO_EMBED_URL)
         );
         assert_eq!(
-            copy_video_link(&none, VideoLinkKind::PlaylistUrl, &desktop, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&none),
+                VideoLinkKind::PlaylistUrl,
+                &desktop,
+                SITE,
+                &log
+            ),
             ActionResult::err(NO_PLAYLIST_URL)
         );
 
@@ -573,11 +823,23 @@ mod tests {
         insecure.playlist_url = Some("https://user:pw@cdn.example.com/p.m3u8".into());
 
         assert_eq!(
-            copy_video_link(&insecure, VideoLinkKind::EmbedUrl, &desktop, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&insecure),
+                VideoLinkKind::EmbedUrl,
+                &desktop,
+                SITE,
+                &log
+            ),
             ActionResult::err(NO_EMBED_URL)
         );
         assert_eq!(
-            copy_video_link(&insecure, VideoLinkKind::PlaylistUrl, &desktop, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&insecure),
+                VideoLinkKind::PlaylistUrl,
+                &desktop,
+                SITE,
+                &log
+            ),
             ActionResult::err(NO_PLAYLIST_URL)
         );
         assert!(desktop.clipboard.lock().unwrap().is_empty());
@@ -589,9 +851,94 @@ mod tests {
         let ok = detail(Some("https://site.example.com/embed/a"), None);
 
         assert_eq!(
-            copy_video_link(&ok, VideoLinkKind::EmbedUrl, &failing, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&ok),
+                VideoLinkKind::EmbedUrl,
+                &failing,
+                SITE,
+                &log
+            ),
             ActionResult::err(CLIPBOARD_FAILED)
         );
+    }
+
+    #[test]
+    fn copy_iframe_code_mirrors_the_website_and_checks_the_embed_url() {
+        let log = RecordingLogger::default();
+        let desktop = FakeDesktop::default();
+        let mut video = detail(Some("https://site.example.com/embed/abcdefghijkl"), None);
+
+        // No output size: the 16 / 9 fallback.
+        assert_eq!(
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::IframeCode,
+                &desktop,
+                SITE,
+                &log
+            ),
+            ActionResult::Ok
+        );
+        video.output_width = Some(1920);
+        video.output_height = Some(800);
+        assert_eq!(
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::IframeCode,
+                &desktop,
+                SITE,
+                &log
+            ),
+            ActionResult::Ok
+        );
+        // Portrait: back to the fallback.
+        video.output_width = Some(720);
+        video.output_height = Some(1280);
+        assert_eq!(
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::IframeCode,
+                &desktop,
+                SITE,
+                &log
+            ),
+            ActionResult::Ok
+        );
+        let tail = "; max-height:75vh; border:0;\" allowfullscreen allow=\"autoplay; fullscreen\"></iframe>";
+        let head = "<iframe src=\"https://site.example.com/embed/abcdefghijkl\" style=\"width:100%; aspect-ratio:";
+
+        assert_eq!(
+            *desktop.clipboard.lock().unwrap(),
+            [
+                format!("{head}16 / 9{tail}"),
+                format!("{head}1920 / 800{tail}"),
+                format!("{head}16 / 9{tail}"),
+            ]
+        );
+
+        let other = FakeDesktop::default();
+
+        assert_eq!(
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::IframeCode,
+                &other,
+                None,
+                &log
+            ),
+            ActionResult::err(FOREIGN_EMBED_URL)
+        );
+        assert_eq!(
+            copy_video_link(
+                &VideoLinks::from(&detail(None, None)),
+                VideoLinkKind::IframeCode,
+                &other,
+                SITE,
+                &log
+            ),
+            ActionResult::err(NO_EMBED_URL)
+        );
+        assert!(other.clipboard.lock().unwrap().is_empty());
     }
 
     #[test]
@@ -601,7 +948,13 @@ mod tests {
         let video = detail(Some("https://site.example.com/embed/abcdefghijkl"), None);
 
         assert_eq!(
-            copy_video_link(&video, VideoLinkKind::Shortcode, &desktop, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::Shortcode,
+                &desktop,
+                SITE,
+                &log
+            ),
             ActionResult::Ok
         );
         assert_eq!(
@@ -625,7 +978,13 @@ mod tests {
 
         for (video, expected) in cases {
             assert_eq!(
-                copy_video_link(&video, VideoLinkKind::Shortcode, &other, SITE, &log),
+                copy_video_link(
+                    &VideoLinks::from(&video),
+                    VideoLinkKind::Shortcode,
+                    &other,
+                    SITE,
+                    &log
+                ),
                 ActionResult::err(expected)
             );
         }
@@ -633,18 +992,36 @@ mod tests {
         let mut insecure = detail(None, None);
         insecure.embed_url = Some("http://site.example.com/embed/a".into());
         assert_eq!(
-            copy_video_link(&insecure, VideoLinkKind::Shortcode, &other, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&insecure),
+                VideoLinkKind::Shortcode,
+                &other,
+                SITE,
+                &log
+            ),
             ActionResult::err(FOREIGN_EMBED_URL)
         );
         assert_eq!(
-            copy_video_link(&video, VideoLinkKind::Shortcode, &other, None, &log),
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::Shortcode,
+                &other,
+                None,
+                &log
+            ),
             ActionResult::err(FOREIGN_EMBED_URL)
         );
 
         let mut bad_id = detail(Some("https://site.example.com/embed/a"), None);
         bad_id.public_id = "A\"b".into();
         assert_eq!(
-            copy_video_link(&bad_id, VideoLinkKind::Shortcode, &other, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&bad_id),
+                VideoLinkKind::Shortcode,
+                &other,
+                SITE,
+                &log
+            ),
             ActionResult::err(INVALID_VIDEO_ID)
         );
         assert!(other.clipboard.lock().unwrap().is_empty());
@@ -654,7 +1031,13 @@ mod tests {
             ..FakeDesktop::default()
         };
         assert_eq!(
-            copy_video_link(&video, VideoLinkKind::Shortcode, &failing, SITE, &log),
+            copy_video_link(
+                &VideoLinks::from(&video),
+                VideoLinkKind::Shortcode,
+                &failing,
+                SITE,
+                &log
+            ),
             ActionResult::err(CLIPBOARD_FAILED)
         );
     }
@@ -666,7 +1049,7 @@ mod tests {
         let log = RecordingLogger::default();
 
         assert_eq!(
-            open_video_embed(&video, &desktop, SITE, &log),
+            open_video_embed(&VideoLinks::from(&video), &desktop, SITE, &log),
             ActionResult::Ok
         );
         assert_eq!(
@@ -703,7 +1086,7 @@ mod tests {
 
         for (video, site, error) in cases {
             assert_eq!(
-                open_video_embed(&video, &desktop, site, &log),
+                open_video_embed(&VideoLinks::from(&video), &desktop, site, &log),
                 ActionResult::err(error)
             );
         }
@@ -793,14 +1176,40 @@ mod tests {
     }
 
     #[test]
-    fn custom_image_wins_and_missing_config_gives_no_thumbnail() {
+    fn list_dto_carries_resolution_and_size() {
+        let item = item_json(json!({
+            "output_width": 1920,
+            "output_height": 1080,
+            "original_size_bytes": 1048576,
+            "output_fps": 29.97,
+            "output_bitrate_kbps": 2400
+        }));
+        let dto = VideoListItemDto::from_item(item, None);
+
+        assert_eq!(dto.width, Some(1920));
+        assert_eq!(dto.height, Some(1080));
+        assert_eq!(dto.size_bytes, Some(1_048_576));
+        assert_eq!(dto.fps, Some(29.97));
+        assert_eq!(dto.bitrate_kbps, Some(2400));
+
+        let bare = VideoListItemDto::from_item(item_json(json!({})), None);
+
+        assert_eq!(
+            (bare.width, bare.height, bare.size_bytes),
+            (None, None, None)
+        );
+        assert_eq!((bare.fps, bare.bitrate_kbps), (None, None));
+    }
+
+    #[test]
+    fn list_thumbnail_stays_the_generated_one_when_a_custom_image_exists() {
         let item = item_json(json!({ "custom_image_path": "videos/abcdefghijkl/custom.png" }));
         let dto = VideoListItemDto::from_item(item.clone(), Some("https://cdn.example.com/"));
 
         assert!(dto.has_custom_image);
         assert_eq!(
             dto.thumbnail_url.as_deref(),
-            Some("https://cdn.example.com/videos/abcdefghijkl/custom.png")
+            Some("https://cdn.example.com/videos/abcdefghijkl/thumb%201.jpg")
         );
 
         for base in [None, Some("http://cdn.example.com")] {
@@ -809,6 +1218,56 @@ mod tests {
             assert_eq!(dto.thumbnail_url, None);
             assert!(!dto.has_custom_image);
         }
+    }
+
+    #[test]
+    fn a_custom_image_without_a_generated_thumbnail_leaves_the_list_thumbnail_empty() {
+        let item = item_json(json!({
+            "thumbnail_path": null,
+            "custom_image_path": "videos/abcdefghijkl/custom.png"
+        }));
+        let dto = VideoListItemDto::from_item(item, Some("https://cdn.example.com"));
+
+        assert!(dto.has_custom_image);
+        assert_eq!(dto.thumbnail_url, None);
+    }
+
+    #[test]
+    fn copy_image_urls_need_a_safe_https_url() {
+        let links = VideoLinks {
+            public_id: "abcdefghijkl".into(),
+            embed_url: None,
+            playlist_url: None,
+            thumbnail_url: Some("https://cdn.example.com/t.jpg?v=1".into()),
+            custom_image_url: None,
+            width: None,
+            height: None,
+        };
+        let desktop = FakeDesktop::default();
+        let log = RecordingLogger::default();
+
+        assert_eq!(
+            copy_video_link(&links, VideoLinkKind::ThumbnailUrl, &desktop, SITE, &log),
+            ActionResult::Ok
+        );
+        assert_eq!(
+            copy_video_link(&links, VideoLinkKind::CustomImageUrl, &desktop, SITE, &log),
+            ActionResult::err(NO_CUSTOM_IMAGE_URL)
+        );
+
+        let insecure = VideoLinks {
+            thumbnail_url: Some("http://cdn.example.com/t.jpg".into()),
+            ..links
+        };
+
+        assert_eq!(
+            copy_video_link(&insecure, VideoLinkKind::ThumbnailUrl, &desktop, SITE, &log),
+            ActionResult::err(NO_THUMBNAIL_URL)
+        );
+        assert_eq!(
+            desktop.clipboard.lock().unwrap().clone(),
+            vec!["https://cdn.example.com/t.jpg?v=1".to_string()]
+        );
     }
 
     #[test]
@@ -863,6 +1322,175 @@ mod tests {
                 },
                 false,
             )
+        }
+
+        fn list_reply() -> Reply {
+            Reply::json(
+                200,
+                json!({
+                    "data": [{
+                        "id": 7,
+                        "public_id": "abcdefghijkl",
+                        "title": "T",
+                        "status": "ready",
+                        "output_width": 1280,
+                        "output_height": 720,
+                        "playlist_path": "videos/abcdefghijkl/master.m3u8",
+                        "embed_url": "https://site.example.com/embed/abcdefghijkl"
+                    }],
+                    "meta": { "page": 1, "per_page": 24, "total": 1, "last_page": 1 }
+                }),
+            )
+        }
+
+        fn detail_reply() -> Reply {
+            Reply::json(
+                200,
+                json!({
+                    "id": 7,
+                    "public_id": "abcdefghijkl",
+                    "title": "T",
+                    "status": "ready",
+                    "output_width": 1920,
+                    "output_height": 800,
+                    "embed_url": "https://site.example.com/embed/abcdefghijkl",
+                    "playlist_url": "https://cdn.example.com/videos/abcdefghijkl/master.m3u8"
+                }),
+            )
+        }
+
+        fn list_input() -> VideosListInput {
+            parse_videos_list(None).unwrap()
+        }
+
+        #[tokio::test]
+        async fn links_loaded_by_the_list_are_used_without_any_request() {
+            let server = TestServer::start(|_| list_reply()).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            list_videos(
+                &client,
+                list_input(),
+                Some("https://cdn.example.com"),
+                &cache,
+            )
+            .await;
+            assert_eq!(server.requests().len(), 1);
+
+            let links = stored_links(&client, &cache, 7, false).await.unwrap();
+
+            assert_eq!(links.public_id, "abcdefghijkl");
+            assert_eq!(links.width, Some(1280));
+            assert_eq!(
+                links.playlist_url.as_deref(),
+                Some("https://cdn.example.com/videos/abcdefghijkl/master.m3u8")
+            );
+            // Asking again for any kind (also the playlist the list could build): still no request.
+            stored_links(&client, &cache, 7, true).await.unwrap();
+            assert_eq!(server.requests().len(), 1);
+        }
+
+        #[tokio::test]
+        async fn a_miss_fetches_the_detail_once_and_remembers_it() {
+            let server = TestServer::start(|_| detail_reply()).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            let first = stored_links(&client, &cache, 7, false).await.unwrap();
+
+            assert_eq!(first.height, Some(800));
+            assert_eq!(server.requests().len(), 1);
+            assert_eq!(server.requests()[0].path, "/api/app/videos/7");
+
+            stored_links(&client, &cache, 7, false).await.unwrap();
+            stored_links(&client, &cache, 7, true).await.unwrap();
+            assert_eq!(server.requests().len(), 1);
+        }
+
+        #[tokio::test]
+        async fn a_remembered_entry_without_a_playlist_url_is_completed_by_one_fetch() {
+            let server = TestServer::start(|_| detail_reply()).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            // The list could not build a playlist URL (no R2 base URL loaded).
+            cache.put(
+                7,
+                VideoLinks {
+                    public_id: "abcdefghijkl".into(),
+                    embed_url: Some("https://site.example.com/embed/abcdefghijkl".into()),
+                    playlist_url: None,
+                    thumbnail_url: None,
+                    custom_image_url: None,
+                    width: None,
+                    height: None,
+                },
+            );
+            stored_links(&client, &cache, 7, false).await.unwrap();
+            assert!(server.requests().is_empty());
+
+            let links = stored_links(&client, &cache, 7, true).await.unwrap();
+
+            assert!(links.playlist_url.is_some());
+            assert_eq!(server.requests().len(), 1);
+        }
+
+        #[tokio::test]
+        async fn a_failed_fetch_is_reported_and_nothing_is_remembered() {
+            let server =
+                TestServer::start(|_| Reply::json(404, json!({ "message": "gone" }))).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            assert!(stored_links(&client, &cache, 9, false).await.is_err());
+            assert!(cache.is_empty());
+        }
+
+        #[tokio::test]
+        async fn the_detail_carries_a_ready_made_shortcode_and_iframe_code() {
+            let server = TestServer::start(|_| detail_reply()).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+            let result = remember_and_fill(get_video(&client, 7).await, &cache, SITE);
+            let value = serde_json::to_value(&result).unwrap();
+
+            assert_eq!(
+                value["video"]["shortcode"],
+                json!("[hls_embed_vl id=\"abcdefghijkl\"]")
+            );
+            assert_eq!(
+                value["video"]["iframeCode"],
+                json!(iframe_code(
+                    "https://site.example.com/embed/abcdefghijkl",
+                    Some(1920),
+                    Some(800)
+                ))
+            );
+            // The detail is remembered for the next Copy / Open.
+            assert!(cache.get(7).is_some());
+
+            // An embed URL of another site gets neither snippet (same check as the Copy buttons).
+            let foreign = remember_and_fill(
+                get_video(&client, 7).await,
+                &cache,
+                Some("https://other.example.com"),
+            );
+            let foreign = serde_json::to_value(&foreign).unwrap();
+
+            assert!(foreign["video"]["shortcode"].is_null());
+            assert!(foreign["video"]["iframeCode"].is_null());
+        }
+
+        #[tokio::test]
+        async fn a_failed_detail_is_passed_on_untouched() {
+            let server = TestServer::start(|_| Reply::json(404, json!({}))).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+            let result = remember_and_fill(get_video(&client, 7).await, &cache, SITE);
+
+            assert!(matches!(result, VideosGetResult::Err { .. }));
+            assert!(cache.is_empty());
         }
 
         #[tokio::test]

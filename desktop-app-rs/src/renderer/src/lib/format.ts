@@ -187,3 +187,102 @@ export function formatResolution(
 
     return ok(width) && ok(height) ? `${Math.round(width)}\u00d7${Math.round(height)}` : '';
 }
+
+/** Colour tier of a chip: 1 (highest, purple) to 5 (lowest, gray). */
+export type Tier = 1 | 2 | 3 | 4 | 5;
+
+const validSide = (value: number | null | undefined): value is number =>
+    value !== null && value !== undefined && Number.isFinite(value) && value > 0;
+
+export type VideoOrientation = 'landscape' | 'portrait';
+
+/**
+ * Frame orientation: height > width is portrait; everything else (including square and unknown
+ * or invalid sides) is landscape.
+ */
+export function videoOrientation(
+    width: number | null | undefined,
+    height: number | null | undefined,
+): VideoOrientation {
+    return validSide(width) && validSide(height) && height > width ? 'portrait' : 'landscape';
+}
+
+/** Lower bounds (short side) of tiers 1..4; shares the QUALITY_BUCKETS values 4K, 1440p, 1080p, 720p. */
+const QUALITY_TIER_MINS = [2000, 1300, 1000, 700] as const;
+
+/**
+ * Tier of the quality label (same short-side rule as formatQuality, so the tier always matches
+ * the label): 4K and above 1, 1440p 2, 1080p 3, 720p 4, anything lower 5. null when unknown.
+ */
+export function qualityTier(
+    width: number | null | undefined,
+    height: number | null | undefined,
+): Tier | null {
+    const sides = [width, height].filter(validSide);
+
+    if (sides.length === 0) return null;
+
+    const short = Math.min(...sides);
+    const index = QUALITY_TIER_MINS.findIndex((min) => short >= min);
+
+    return (index === -1 ? 5 : index + 1) as Tier;
+}
+
+/** Tier of a bitrate in kbps: >= 8000 1, >= 4000 2, >= 2000 3, >= 1000 4, else 5; null when unknown. */
+export function bitrateTier(kbps: number | null | undefined): Tier | null {
+    if (!validSide(kbps)) return null;
+
+    if (kbps >= 8000) return 1;
+    if (kbps >= 4000) return 2;
+    if (kbps >= 2000) return 3;
+    if (kbps >= 1000) return 4;
+
+    return 5;
+}
+
+/** A frame may be this much smaller than a reference size and still land in its tier. */
+const PIXEL_TOLERANCE = 0.9;
+
+const PIXEL_TIER_MINS = [3840 * 2160, 2560 * 1440, 1920 * 1080, 1280 * 720] as const;
+
+/**
+ * Tier of the frame size by total pixels (orientation independent): 4K (3840x2160) 1, 1440p 2,
+ * 1080p 3, 720p 4, else 5. Each bound has 10% tolerance for slightly cropped encodes.
+ */
+export function resolutionTier(
+    width: number | null | undefined,
+    height: number | null | undefined,
+): Tier | null {
+    if (!validSide(width) || !validSide(height)) return null;
+
+    const pixels = width * height;
+    const index = PIXEL_TIER_MINS.findIndex((min) => pixels >= min * PIXEL_TOLERANCE);
+
+    return (index === -1 ? 5 : index + 1) as Tier;
+}
+
+/**
+ * Compact upload time: "Nov 18, 11:59 AM"; the year is added only when it differs from the year
+ * of `now` ("Nov 18, 2025, 11:59 AM"). `now` is injected for testing. "" when missing or invalid.
+ */
+export function formatDateCompact(
+    iso: string | null | undefined,
+    now: number = Date.now(),
+): string {
+    if (iso === null || iso === undefined) return '';
+
+    const time = new Date(iso);
+
+    if (Number.isNaN(time.getTime())) return '';
+
+    const sameYear = time.getFullYear() === new Date(now).getFullYear();
+
+    return new Intl.DateTimeFormat('en', {
+        month: 'short',
+        day: 'numeric',
+        ...(sameYear ? {} : { year: 'numeric' }),
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+    }).format(time);
+}

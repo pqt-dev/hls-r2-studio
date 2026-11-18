@@ -8,6 +8,7 @@ use tokio::runtime::Handle;
 
 use serde_json::json;
 
+use crate::api::video_links::VideoLinkCache;
 use crate::api::{user_agent, SiteClient, SiteClientOptions, DEFAULT_TIMEOUT};
 use crate::auth::{AuthService, AuthServiceOptions};
 use crate::config::ConfigService;
@@ -75,6 +76,8 @@ pub struct AppState {
     pub ffmpeg: Arc<FfmpegStatus>,
     /// The job queue. It is wired to the auth state / the ffmpeg check / the settings in lib.rs.
     pub queue: Arc<JobQueue>,
+    /// What the video list and detail returned, for instant Copy / Open (cleared on sign-out).
+    pub video_links: Arc<VideoLinkCache>,
 }
 
 impl AppState {
@@ -179,6 +182,11 @@ impl AppState {
         }));
         let _ = auth_slot.set(Arc::downgrade(&auth));
 
+        // Remembered links are dropped whenever the session ends (logout, 401, expired session).
+        let video_links = Arc::new(VideoLinkCache::default());
+        let cache_to_clear = Arc::clone(&video_links);
+        auth.on_signed_out(Arc::new(move || cache_to_clear.clear()));
+
         // ---- queue (index.ts wiring) ----
         let ffmpeg = Arc::new(FfmpegStatus::new());
         let queue = JobQueue::new(JobQueueOptions {
@@ -218,6 +226,7 @@ impl AppState {
             auth,
             ffmpeg,
             queue,
+            video_links,
         }
     }
 }
@@ -289,6 +298,35 @@ mod tests {
                 Some(crate::auth::SITE_URL_NOT_CONFIGURED)
             );
         }
+    }
+
+    #[tokio::test]
+    async fn signing_out_clears_the_remembered_video_links() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::init_with_backend(
+            user_data_dir(dir.path()),
+            Arc::new(crate::secure::UnavailableBackend),
+            no_binaries(),
+            Handle::current(),
+        );
+
+        state.video_links.put(
+            7,
+            crate::api::video_links::VideoLinks {
+                public_id: "abc".into(),
+                embed_url: Some("https://site.example.com/embed/abc".into()),
+                playlist_url: None,
+                thumbnail_url: None,
+                custom_image_url: None,
+                width: None,
+                height: None,
+            },
+        );
+        assert!(state.video_links.get(7).is_some());
+
+        state.auth.logout().await;
+
+        assert!(state.video_links.is_empty());
     }
 
     #[test]

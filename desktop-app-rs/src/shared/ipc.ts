@@ -227,7 +227,7 @@ export interface VideoListItem {
     /** Frames per second and video bitrate in kilobits per second of the output; null if unknown. */
     fps: number | null;
     bitrateKbps: number | null;
-    /** Custom image when present, else the generated thumbnail; null when unavailable. */
+    /** The generated thumbnail only (a custom image never replaces it); null when unavailable. */
     thumbnailUrl: string | null;
     hasCustomImage: boolean;
     embedUrl: string | null;
@@ -316,7 +316,13 @@ export type VideosSetImageResult =
     | { ok: false; error: string };
 
 /** Which URL of a video the main process copies (it fetches the video itself). */
-export type VideoLinkKind = 'embed-url' | 'playlist-url' | 'shortcode' | 'iframe-code';
+export type VideoLinkKind =
+    | 'embed-url'
+    | 'playlist-url'
+    | 'shortcode'
+    | 'iframe-code'
+    | 'thumbnail-url'
+    | 'custom-image-url';
 
 // ---- overview + logs (site dashboard numbers) ----------------------------------------------
 

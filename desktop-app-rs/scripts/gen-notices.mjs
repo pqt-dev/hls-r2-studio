@@ -221,6 +221,21 @@ async function main() {
     printEntries(out, rule, '3. Rust crates', rust.entries);
     printEntries(out, rule, '4. npm packages bundled in the user interface', npm.entries);
 
+    // Icon artwork copied into the UI source (not an npm dependency): see LICENSES/fluent-system-icons.
+    const fluentDir = path.join(APP_DIR, 'LICENSES', 'fluent-system-icons');
+    const fluentLicense = (await readFile(path.join(fluentDir, 'LICENSE-MIT.txt'), 'utf8')).trim();
+    out.push(
+        rule,
+        '5. Fluent System Icons (MIT)',
+        rule,
+        '',
+        'The icons in the user interface are taken from Microsoft Fluent System Icons',
+        '(https://github.com/microsoft/fluentui-system-icons, npm package @fluentui/svg-icons@1.1.345).',
+        '',
+        fluentLicense,
+        '',
+    );
+
     await mkdir(path.dirname(OUT_FILE), { recursive: true });
     await writeFile(OUT_FILE, out.join('\n'));
     console.log(

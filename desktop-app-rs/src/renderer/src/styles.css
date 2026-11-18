@@ -1502,6 +1502,29 @@ progress::-moz-progress-bar {
     padding: 0;
 }
 
+.library-pager-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+    justify-content: space-between;
+    margin: var(--space-3) 0;
+}
+
+/* The pager keeps its right alignment next to the button and wraps below it when narrow. */
+.library-pager-row .pager {
+    flex: 1 1 auto;
+    margin: 0;
+}
+
+.library-upload {
+    flex: none;
+    min-height: var(--control-h);
+    padding: 0 var(--space-4);
+    font-size: var(--text-body);
+    line-height: 1.25rem;
+}
+
 .library-notice {
     display: flex;
     gap: var(--space-3);
@@ -1645,7 +1668,7 @@ progress::-moz-progress-bar {
     flex-wrap: wrap;
     gap: var(--space-1);
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
     padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
@@ -1760,10 +1783,6 @@ progress::-moz-progress-bar {
     width: 2.75rem;
 }
 
-.detail-thumb .thumb-frame {
-    width: 10rem;
-}
-
 .preview-poster .thumb-frame {
     width: min(100%, 22.5rem);
     margin-inline: auto;
@@ -1783,6 +1802,7 @@ progress::-moz-progress-bar {
 }
 
 .spec .icon {
+    flex: none;
     width: 0.875rem;
     height: 0.875rem;
 }
@@ -1831,34 +1851,67 @@ progress::-moz-progress-bar {
     line-height: var(--lh-caption);
 }
 
-/* The date sits at the bottom of the text block, at the same height in every card of a row. */
-.video-added {
+/*
+ * Chips below the thumbnail use the Home pill (.spec): two left-aligned rows of equal-height pills.
+ * Row 1 = the tiered media chips; row 2 = duration, size and the upload time.
+ */
+.video-chips {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
     margin-top: auto;
     padding-top: var(--space-2);
 }
 
-/* Badges drawn on the thumbnail: duration (bottom right, dark, readable on any image), quality. */
-.video-badge {
-    position: absolute;
-    bottom: var(--space-2);
-    z-index: 1;
-    padding: 0 var(--space-2);
-    border-radius: var(--radius-sm);
-    font-size: var(--text-caption);
-    font-weight: var(--weight-semibold);
-    line-height: var(--lh-caption);
+.video-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
+    align-items: center;
+    justify-content: flex-start;
 }
 
-.video-badge-duration {
-    right: var(--space-2);
-    background: rgb(0 0 0 / 70%);
-    color: #fff;
+/* Same pill height everywhere: a 1px border (transparent unless forced-colors) and no extra padding. */
+.video-chips .spec {
+    gap: 0.3125rem;
+    padding: 0 var(--space-2) 0 0.375rem;
+    border: 1px solid var(--chip-bd);
+    white-space: nowrap;
 }
 
-.video-badge-quality {
-    left: var(--space-2);
-    background: var(--quality-bg);
-    color: var(--quality-fg);
+/* Library chip icons are 16px (the Home pills keep the smaller .spec icon). */
+.video-chips .spec .icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+/* Upload time: a muted outlined pill with a leading upload icon. */
+.video-chips .spec-date {
+    border-color: var(--chip-neutral-bd);
+    background: var(--chip-neutral-bg);
+    color: var(--chip-neutral-fg);
+    font-weight: var(--weight-regular, 400);
+}
+
+.chip-tier-1 {
+    background: var(--chip-tier-1-bg);
+    color: var(--chip-tier-1-fg);
+}
+.chip-tier-2 {
+    background: var(--chip-tier-2-bg);
+    color: var(--chip-tier-2-fg);
+}
+.chip-tier-3 {
+    background: var(--chip-tier-3-bg);
+    color: var(--chip-tier-3-fg);
+}
+.chip-tier-4 {
+    background: var(--chip-tier-4-bg);
+    color: var(--chip-tier-4-fg);
+}
+.chip-tier-5 {
+    background: var(--chip-tier-5-bg);
+    color: var(--chip-tier-5-fg);
 }
 
 /* Skeleton cards while a page loads; the shimmer stops for reduced motion. */
@@ -1891,6 +1944,16 @@ progress::-moz-progress-bar {
 
 .video-skeleton .video-main {
     gap: var(--space-2);
+}
+
+.skeleton-chips {
+    display: flex;
+    gap: var(--space-1);
+}
+
+.skeleton-chip {
+    width: 2.75rem;
+    height: 1.125rem;
 }
 
 @keyframes skeleton-shimmer {
@@ -1941,11 +2004,7 @@ progress::-moz-progress-bar {
 
 .videos-wrap {
     container: library-list / inline-size;
-    --list-cols: 3.5rem minmax(0, 1fr) auto 4.5rem 7.5rem;
-}
-
-.videos-wrap.is-selecting {
-    --list-cols: 1.375rem 3.5rem minmax(0, 1fr) auto 4.5rem 7.5rem;
+    --list-cols: 3.5rem minmax(0, 1fr) 6.5rem 6rem 10rem;
 }
 
 .videos-head {
@@ -1953,14 +2012,17 @@ progress::-moz-progress-bar {
     grid-template-columns: var(--list-cols);
     gap: var(--space-3);
     align-items: center;
-    padding: 0 var(--space-3) var(--space-2);
+    /* +1px: the rows have a 1px border, so header text and cells share the same left edge. */
+    padding: 0 calc(var(--space-3) + 1px) var(--space-2);
     color: var(--on-surface-muted);
     font-size: var(--text-caption);
     font-weight: var(--weight-semibold);
+    text-align: left;
 }
 
-.videos-wrap.is-selecting .videos-head::before {
-    content: '';
+.videos-head > * {
+    min-width: 0;
+    justify-self: start;
 }
 
 .videos-list {
@@ -1984,7 +2046,7 @@ progress::-moz-progress-bar {
 }
 
 .videos-wrap.is-list:not(.is-selecting) .videos-head {
-    padding-right: calc(var(--quick-w) + var(--space-3));
+    padding-right: calc(var(--quick-w) + var(--space-3) + 1px);
 }
 
 .videos-list .video-tools {
@@ -1995,6 +2057,16 @@ progress::-moz-progress-bar {
     right: var(--space-3);
     opacity: 1;
     transform: translateY(-50%);
+}
+
+/*
+ * An open item menu must paint above the tools of the rows below it. In list view each
+ * .video-tools is its own stacking layer (z-index 2), so later rows would cover the popup.
+ * Raise the owning row/tools above its siblings but keep it under the sticky bar (5).
+ */
+.videos-list .video-tools:has(.video-menu [aria-expanded='true']),
+.videos:not(.videos-list) .video-row:has(.video-menu [aria-expanded='true']) {
+    z-index: 3;
 }
 
 .videos-list .video-open {
@@ -2010,20 +2082,14 @@ progress::-moz-progress-bar {
     justify-self: start;
 }
 
-.videos-list .video-check-box {
-    position: relative;
-    top: auto;
-    right: auto;
-    width: 1.375rem;
-    height: 1.375rem;
-}
-
 .videos-list .video-title {
     min-width: 0;
     white-space: nowrap;
 }
 
 .videos-list .video-cell {
+    min-width: 0;
+    justify-self: start;
     color: var(--on-surface-muted);
     font-size: var(--text-caption);
     white-space: nowrap;
@@ -2031,11 +2097,7 @@ progress::-moz-progress-bar {
 
 @container library-list (max-width: 43.6875rem) {
     .videos-wrap {
-        --list-cols: 3.5rem minmax(0, 1fr) auto 4.5rem;
-    }
-
-    .videos-wrap.is-selecting {
-        --list-cols: 1.375rem 3.5rem minmax(0, 1fr) auto 4.5rem;
+        --list-cols: 3.5rem minmax(0, 1fr) 6.5rem 6rem;
     }
 
     .video-created {
@@ -2045,11 +2107,7 @@ progress::-moz-progress-bar {
 
 @container library-list (max-width: 29.9375rem) {
     .videos-wrap {
-        --list-cols: 3.5rem minmax(0, 1fr) auto;
-    }
-
-    .videos-wrap.is-selecting {
-        --list-cols: 1.375rem 3.5rem minmax(0, 1fr) auto;
+        --list-cols: 3.5rem minmax(0, 1fr) 6.5rem;
     }
 
     .video-duration {
@@ -2128,54 +2186,79 @@ progress::-moz-progress-bar {
     text-align: right;
 }
 
+/* The detail page replaces the shell's top bar (its title is the page heading). */
+.workspace:has(.detail) > .topbar {
+    display: none;
+}
+
 /* ---- video detail page ---------------------------------------------------------------------- */
 
 .detail {
     container: detail / inline-size;
 }
 
-.detail-head {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-3);
-    align-items: center;
-    margin-bottom: var(--space-3);
-}
-
 /*
- * Sticky action bar under the title row. It sticks to the top of the .panel scroll container
- * (the negative offsets cancel the panel padding so it spans the full width). Below dialogs
- * (z-index 20) and toasts (30).
+ * One sticky header for the whole page: Back, title, then the actions group on the right. It
+ * sticks to the top of the .panel scroll container (the only scrolling ancestor; its padding is
+ * cancelled by the negative offsets so the bar spans the full width). Above the cards and the
+ * preview iframe, below dialogs (z-index 20) and toasts (30).
  */
-.detail-actionbar {
+.detail-header {
     position: sticky;
     top: calc(var(--space-5) * -1);
     z-index: 5;
     display: flex;
     flex-wrap: wrap;
-    gap: var(--space-2);
+    gap: var(--space-2) var(--space-3);
     align-items: center;
-    margin: 0 calc(var(--space-5) * -1) var(--space-4);
+    margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) var(--space-4);
     padding: var(--space-2) var(--space-5);
     border-bottom: 1px solid var(--border);
     background: var(--surface);
     box-shadow: var(--shadow-1);
 }
 
-.detail-actionbar .action-spacer {
-    flex: 1 1 0;
-}
-
 @media (max-width: 56.1875rem) {
-    .detail-actionbar {
+    .detail-header {
         top: calc(var(--space-4) * -1);
-        margin: 0 calc(var(--space-4) * -1) var(--space-4);
+        margin: calc(var(--space-4) * -1) calc(var(--space-4) * -1) var(--space-4);
         padding: var(--space-2) var(--space-4);
     }
 }
 
-/* Narrow page: the buttons keep their icon and accessible name, the visible label goes away. */
+.detail-actionbar,
+.detail-header-actions {
+    display: flex;
+    flex: none;
+    gap: var(--space-2);
+    align-items: center;
+    margin-left: auto;
+}
+
+/* A thin divider that sets the destructive Delete apart from the other actions. */
+.detail-actionbar .action-spacer {
+    flex: none;
+    width: 1px;
+    height: 1.25rem;
+    margin: 0 var(--space-1);
+    background: var(--border);
+}
+
+/* Narrow page: the actions drop below the title (the header stays sticky as a whole). */
 @container detail (max-width: 39.9375rem) {
+    .detail-actionbar,
+    .detail-header-actions {
+        flex: 1 1 100%;
+        margin-left: 0;
+    }
+
+    .detail-actionbar .action-spacer {
+        flex: 1 1 0;
+        width: auto;
+        height: 0;
+        background: none;
+    }
+
     .detail-actionbar .btn-label {
         position: absolute;
         width: 1px;
@@ -2192,31 +2275,23 @@ progress::-moz-progress-bar {
     }
 }
 
-.breadcrumb {
-    flex: 1 1 12.5rem;
-    min-width: 0;
-    color: var(--on-surface-muted);
+.detail-back {
+    min-width: 2rem;
+    min-height: 2rem;
+    padding: 0;
 }
 
-.breadcrumb ol {
-    display: flex;
-    gap: var(--space-2);
+.detail-title {
+    flex: 1 1 8rem;
     min-width: 0;
     margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.breadcrumb li:not(:last-child)::after {
-    margin-left: var(--space-2);
-    content: '\203A';
-}
-
-.breadcrumb li[aria-current='page'] {
+    padding-left: var(--space-3);
     overflow: hidden;
-    min-width: 0;
+    border-left: 3px solid var(--primary);
     color: var(--on-surface);
-    font-weight: var(--weight-semibold);
+    font-size: var(--text-title);
+    font-weight: var(--weight-bold);
+    line-height: 1.3;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -2267,11 +2342,15 @@ progress::-moz-progress-bar {
     position: relative;
 }
 
-.preview-load {
+.preview-loading {
     position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--surface-sunken);
+    color: var(--on-surface-muted);
+    pointer-events: none;
 }
 
 .preview-frame {
@@ -2434,61 +2513,107 @@ progress::-moz-progress-bar {
     font-weight: var(--weight-semibold);
 }
 
-/* Round select control: the native checkbox is transparent on top; the circle draws the state. */
-.video-check-box {
-    position: absolute;
-    top: var(--space-2);
-    right: var(--space-2);
-    z-index: 2;
-    display: grid;
-    width: 1.75rem;
-    height: 1.75rem;
-    place-items: center;
-    border: 2px solid var(--border-strong);
-    border-radius: var(--radius-pill);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-1);
-    color: var(--on-primary);
-}
-
-.video-check-box .icon {
-    display: none;
-    width: 1.125rem;
-    height: 1.125rem;
-}
-
-.video-check-box:has(.video-check:checked) {
-    border-color: var(--primary);
-    background: var(--primary);
-}
-
-.video-check-box:has(.video-check:checked) .icon {
-    display: block;
-}
-
-.video-check-box:has(.video-check:focus-visible) {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-}
-
+/* Select mode: the native checkbox is visually hidden (still focusable); the card shows the state. */
 .video-check {
     position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
+    width: 1px;
+    height: 1px;
     margin: 0;
     opacity: 0;
-    cursor: pointer;
+    pointer-events: none;
+}
+
+.video-row {
+    transition:
+        background-color 150ms ease,
+        border-color 150ms ease,
+        box-shadow 150ms ease;
+}
+
+.videos-wrap.is-selecting .video-row:not(.is-picked):hover {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 1px var(--primary);
 }
 
 .video-row.is-picked {
     border-color: var(--primary);
-    box-shadow: 0 0 0 2px var(--primary);
+    background: color-mix(in srgb, var(--primary-container) 70%, var(--surface-raised));
+    box-shadow:
+        0 0 0 1px var(--primary),
+        0 4px 14px color-mix(in srgb, var(--primary) 28%, transparent);
 }
 
-.video-open:has(.video-check:focus-visible) {
-    outline: 2px solid var(--primary);
-    outline-offset: -2px;
+.video-row.is-picked .thumb-frame::after {
+    background: color-mix(in srgb, var(--primary) 16%, transparent);
+}
+
+.video-row:has(.video-check:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+/*
+ * Select all, three unmistakable states with a fixed width (the label switches between
+ * "Select all" and "Unselect all"): none = neutral outline, some = primary outline and text,
+ * all = solid primary.
+ */
+.btn-select-toggle {
+    min-width: 6.5rem;
+}
+
+.btn-select-toggle.is-some {
+    border-color: var(--primary);
+    background: transparent;
+    color: var(--primary);
+}
+
+.btn-select-toggle.is-all {
+    border-color: var(--primary);
+    background: var(--primary);
+    color: var(--on-primary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .video-row {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .video-row.is-picked {
+        outline: 3px solid Highlight;
+        outline-offset: -3px;
+        background: Canvas;
+        box-shadow: none;
+    }
+
+    .video-row.is-picked .thumb-frame::after {
+        background: transparent;
+    }
+
+    .videos-wrap.is-selecting .video-row:not(.is-picked):hover {
+        outline: 2px solid Highlight;
+        outline-offset: -2px;
+        box-shadow: none;
+    }
+
+    .video-row:has(.video-check:focus-visible) {
+        outline: 3px solid CanvasText;
+        outline-offset: 2px;
+    }
+
+    .btn-select-toggle.is-some {
+        border: 2px solid Highlight;
+        background: ButtonFace;
+        color: ButtonText;
+    }
+
+    .btn-select-toggle.is-all {
+        border: 1px solid Highlight;
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
 }
 
 /* ---- home ---------------------------------------------------------------------------------- */
@@ -2949,6 +3074,29 @@ button.stat-card:hover {
     color: var(--on-surface);
 }
 
+/*
+ * The card's copy-shortcode button: tonal primary so it stands out from the neutral kebab. It
+ * keeps the .btn size and hit area; hover/focus use a stronger fill and a primary border.
+ */
+.btn.video-quick-primary {
+    border-color: var(--primary);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.btn.video-quick-primary:hover:not(:disabled)::after {
+    background: var(--state-pressed);
+}
+
+.btn.video-quick-primary:focus-visible {
+    box-shadow: 0 0 0 2px var(--primary);
+}
+
+.btn.video-quick-primary:disabled {
+    border-color: var(--border);
+    background: var(--surface);
+}
+
 @container recent (max-width: 35.9375rem) {
     .recent-grid {
         grid-template-columns: 2.75rem minmax(0, 1fr) 5rem 5.5rem 5.75rem;
@@ -3172,4 +3320,74 @@ button.stat-card:hover {
     :focus-visible {
         outline: 2px solid Highlight;
     }
+}
+
+/* ---- Images card (generated thumbnail + custom image, as on the web) -------------------------- */
+
+.image-grid {
+    display: grid;
+    gap: var(--space-3);
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container detail (max-width: 29.9375rem) {
+    .image-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+.image-card {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+}
+
+.image-card-label {
+    padding: var(--space-1) var(--space-3);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-raised);
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-bold);
+}
+
+.image-card-frame .thumb-frame {
+    border-radius: 0;
+}
+
+.image-card-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    padding: var(--space-2);
+    border-top: 1px solid var(--border);
+}
+
+.image-upload-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    margin: 0;
+    border: 1px dashed var(--border-strong);
+    background: transparent;
+    color: var(--on-surface-muted);
+    font: inherit;
+    cursor: pointer;
+}
+
+.image-upload-tile:hover:not(:disabled) {
+    background: var(--surface-raised);
+    color: var(--on-surface);
+}
+
+.image-upload-tile:disabled {
+    cursor: default;
+    opacity: 0.6;
 }

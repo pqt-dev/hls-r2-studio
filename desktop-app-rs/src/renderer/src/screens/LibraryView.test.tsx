@@ -164,7 +164,7 @@ describe('Library List view', () => {
         expect(within(rows[0]!).getByText('Holiday')).toHaveAttribute('title', 'Holiday');
         expect(within(rows[0]!).getByText('Ready')).toBeInTheDocument();
         expect(within(rows[0]!).getByText('1:15')).toBeInTheDocument();
-        expect(within(rows[0]!).getByText(/Jan 1, 2026/)).toBeInTheDocument();
+        expect(within(rows[0]!).getByText(/^Jan 1, (2026, )?\d/)).toBeInTheDocument();
         expect(rows[0]!.querySelector('img')).toHaveAttribute(
             'src',
             'https://cdn.example.com/a.jpg',
@@ -175,6 +175,17 @@ describe('Library List view', () => {
         // The narrow-width hiding is CSS only: every cell stays in the DOM.
         expect(rows[0]!.querySelector('.video-duration')).not.toBeNull();
         expect(rows[0]!.querySelector('.video-created')).not.toBeNull();
+        // Status, duration and created are fixed grid cells; the header cells use the same hooks.
+        expect(rows[0]!.querySelector('.video-cell.video-status .chip--dot')).not.toBeNull();
+        expect(rows[0]!.querySelector('.video-cell.video-duration .spec-duration')).not.toBeNull();
+        expect(
+            rows[0]!.querySelector('.video-cell.video-duration .spec-duration svg'),
+        ).not.toBeNull();
+        const head = document.querySelector('.videos-head')!;
+
+        expect(head.querySelector('.video-status')).toHaveTextContent('Status');
+        expect(head.querySelector('.video-duration')).toHaveTextContent('Duration');
+        expect(head.querySelector('.video-created')).toHaveTextContent('Created');
     });
 
     it('falls back to the placeholder when the image fails to load', async () => {

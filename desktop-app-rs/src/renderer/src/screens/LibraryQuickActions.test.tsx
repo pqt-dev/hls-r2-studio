@@ -53,11 +53,12 @@ async function fromMenu(
 }
 
 describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) => {
-    it('keeps ONE neutral quick action (Copy shortcode) on a ready video; the rest is in the menu', async () => {
+    it('keeps ONE accented quick action (Copy shortcode) on a ready video; the rest is in the menu', async () => {
         const { user } = await openLibrary(view);
         const button = screen.getByRole('button', { name: 'Copy shortcode for Alpha' });
 
-        expect(button).toHaveClass('video-quick-ghost');
+        expect(button).toHaveClass('video-quick-primary');
+        expect(button).not.toHaveClass('video-quick-ghost');
         expect(button).not.toHaveClass('btn-accent-share');
         expect(button).toHaveAttribute('title', 'Copy shortcode');
         // Only that one button of the family is visible on a card.
@@ -70,10 +71,10 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
             within(screen.getByRole('menu'))
                 .getAllByRole('menuitem')
                 .map((item) => item.textContent),
-        ).toEqual(['Select', 'Copy embed URL', 'Open in browser', 'Edit', 'Delete']);
+        ).toEqual(['Select', 'Copy embed URL', 'Open in browser', 'Details', 'Delete']);
     });
 
-    it('offers only Select, Edit and Delete in the menu of a video that is not ready', async () => {
+    it('offers only Select, Details and Delete in the menu of a video that is not ready', async () => {
         const { user } = await openLibrary(view);
 
         await user.click(screen.getByRole('button', { name: 'More actions for Beta' }));
@@ -81,7 +82,7 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
             within(screen.getByRole('menu'))
                 .getAllByRole('menuitem')
                 .map((item) => item.textContent),
-        ).toEqual(['Select', 'Edit', 'Delete']);
+        ).toEqual(['Select', 'Details', 'Delete']);
     });
 
     it('keeps the buttons out of the open button (no nested interactive markup)', async () => {

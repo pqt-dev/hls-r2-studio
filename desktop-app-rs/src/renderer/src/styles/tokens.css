@@ -24,6 +24,7 @@
     --weight-regular: 400;
     --weight-medium: 500;
     --weight-semibold: 600;
+    --weight-bold: 700;
 
     /* Radius scale */
     --radius-xs: 0.125rem;
@@ -143,6 +144,21 @@
     --tint-red-fg: #a80000;
     --quality-bg: #0f548c;
     --quality-fg: #ffffff;
+    /* Media chips of a video card (tier 1 = highest). Text contrast >= 4.5:1 on its background. */
+    --chip-tier-1-bg: #ece4fa;
+    --chip-tier-1-fg: #4a2f9c;
+    --chip-tier-2-bg: #e1eefb;
+    --chip-tier-2-fg: #0b4a7a;
+    --chip-tier-3-bg: #dff3dc;
+    --chip-tier-3-fg: #0b5a0b;
+    --chip-tier-4-bg: #fff0c2;
+    --chip-tier-4-fg: #6b4c00;
+    --chip-tier-5-bg: #ebebeb;
+    --chip-tier-5-fg: #4d4d4d;
+    --chip-neutral-bg: transparent;
+    --chip-neutral-fg: var(--on-surface-muted);
+    --chip-neutral-bd: var(--border);
+    --chip-bd: transparent;
     --hero-from: #deecf9;
     --hero-to: #f6fafe;
     --art-card: #ffffff;
@@ -250,6 +266,16 @@
         --tint-red-fg: #ffb4bb;
         --quality-bg: #479ef5;
         --quality-fg: #04203a;
+        --chip-tier-1-bg: #2c2347;
+        --chip-tier-1-fg: #d4c5ff;
+        --chip-tier-2-bg: #082338;
+        --chip-tier-2-fg: #9fcdf7;
+        --chip-tier-3-bg: #0e2a0e;
+        --chip-tier-3-fg: #9ee092;
+        --chip-tier-4-bg: #3b2c10;
+        --chip-tier-4-fg: #fbd38d;
+        --chip-tier-5-bg: #2e2e2e;
+        --chip-tier-5-fg: #c8c8c8;
         --hero-from: #0c2a46;
         --hero-to: #1c2430;
         --art-card: #2e3a4a;
@@ -356,6 +382,19 @@
         --tint-red-fg: CanvasText;
         --quality-bg: ButtonText;
         --quality-fg: ButtonFace;
+        --chip-tier-1-bg: Canvas;
+        --chip-tier-1-fg: CanvasText;
+        --chip-tier-2-bg: Canvas;
+        --chip-tier-2-fg: CanvasText;
+        --chip-tier-3-bg: Canvas;
+        --chip-tier-3-fg: CanvasText;
+        --chip-tier-4-bg: Canvas;
+        --chip-tier-4-fg: CanvasText;
+        --chip-tier-5-bg: Canvas;
+        --chip-tier-5-fg: CanvasText;
+        --chip-neutral-fg: CanvasText;
+        --chip-neutral-bd: ButtonText;
+        --chip-bd: ButtonText;
         --hero-from: Canvas;
         --hero-to: Canvas;
         --art-card: Canvas;

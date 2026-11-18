@@ -1,11 +1,11 @@
 import { useRef } from 'react';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
-import { CheckboxIcon, LinkIcon, OpenExternalIcon, PencilIcon, TrashIcon } from './icons';
+import { CheckboxIcon, InfoIcon, LinkIcon, OpenExternalIcon, TrashIcon } from './icons';
 import type { QuickAction } from './VideoQuickActions';
 
 /**
  * Kebab menu of one video card. A ready video offers Copy embed URL and Open in browser first;
- * then Edit (opens the detail page, where renaming and the thumbnail are managed) and Delete (the
+ * then Details (opens the detail page, where renaming and the thumbnail are managed) and Delete (the
  * caller asks for confirmation first). Select (first) starts multi-select with this video picked. Built on the shared ActionMenu.
  */
 export function VideoMenu({
@@ -13,7 +13,7 @@ export function VideoMenu({
     busy,
     ready,
     onQuick,
-    onEdit,
+    onOpen,
     onDelete,
     onSelect,
 }: {
@@ -22,7 +22,7 @@ export function VideoMenu({
     /** Only a ready video has an embed URL to copy or open. */
     ready: boolean;
     onQuick: (action: QuickAction) => void;
-    onEdit: (opener: HTMLButtonElement) => void;
+    onOpen: (opener: HTMLButtonElement) => void;
     onDelete: () => void;
     /** Enters the Library's select mode with this video picked. */
     onSelect: () => void;
@@ -54,11 +54,11 @@ export function VideoMenu({
               ]
             : []),
         {
-            key: 'edit',
-            label: 'Edit',
-            icon: <PencilIcon />,
+            key: 'details',
+            label: 'Details',
+            icon: <InfoIcon />,
             onSelect: () => {
-                if (trigger.current !== null) onEdit(trigger.current);
+                if (trigger.current !== null) onOpen(trigger.current);
             },
         },
         {

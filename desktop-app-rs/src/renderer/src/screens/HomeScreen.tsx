@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 
 import type { LogCounts, LogItem, Overview, RendererApi, VideoListItem } from '../../../shared/ipc';
 import { useNow } from '../components/JobRow';
 import { Thumbnail } from '../components/Thumbnail';
-import { useAddFiles } from '../components/useAddFiles';
+import { useUploadVideos } from '../components/useUploadVideos';
 import {
     ChevronRightIcon,
     ClockIcon,
@@ -154,7 +154,7 @@ function eventTime(item: LogItem): string | null {
 export function HomeScreen() {
     const { api, auth, settings, jobs } = useApp();
     const { openTab, openLibraryVideo } = useNavigation();
-    const { busy: adding, add } = useAddFiles();
+    const { busy: adding, upload: addVideos } = useUploadVideos();
     const quick = useQuickActions();
     const now = useNow();
     const [overview, setOverview] = useState<Card<Overview>>(LOADING);
@@ -235,12 +235,6 @@ export function HomeScreen() {
     const waiting = jobs.filter((job) => queueGroup(job.state) === 3).length;
     const attention = jobs.filter((job) => needsAttention(job.state)).length;
     const done = jobs.filter((job) => job.state === 'done').length;
-
-    async function addVideos(): Promise<void> {
-        const result = await add(() => api.jobs.addFiles());
-
-        if (result !== null && result.added > 0) openTab('queue');
-    }
 
     const statsId = useId();
     const retryOverview = () => load({ overview: true }, false);

@@ -279,6 +279,11 @@ pub enum VideoLinkKind {
     EmbedUrl,
     PlaylistUrl,
     Shortcode,
+    IframeCode,
+    /// The generated thumbnail image URL (the Images card of the detail page).
+    ThumbnailUrl,
+    /// The custom image URL (the Images card of the detail page).
+    CustomImageUrl,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
