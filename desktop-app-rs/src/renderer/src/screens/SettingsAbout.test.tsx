@@ -41,9 +41,9 @@ describe('Settings screen', () => {
 
         await openTab(user, 'Settings');
 
-        expect(screen.getByLabelText('Site URL')).toHaveValue('https://site.example.com');
+        expect(screen.getByLabelText('Embed site URL')).toHaveValue('https://site.example.com');
         // The site is fixed when the app is built: it can be read but not edited or changed.
-        expect(screen.getByLabelText('Site URL')).toHaveAttribute('readonly');
+        expect(screen.getByLabelText('Embed site URL')).toHaveAttribute('readonly');
         expect(screen.queryByRole('button', { name: 'Change site' })).not.toBeInTheDocument();
         expect(screen.getByLabelText('Temporary folder')).toHaveValue('C:\\Temp\\hls-r2-studio');
         expect(screen.getByLabelText('Temporary folder')).toHaveAttribute('readonly');
@@ -109,7 +109,37 @@ describe('Settings screen', () => {
 
         expect(set).toHaveBeenCalledWith({ maxConcurrent: 2 });
         expect(await screen.findByText('Parallel jobs saved.')).toBeInTheDocument();
+        // It is a toast, not inline text next to the field.
+        expect(screen.getByLabelText('Parallel jobs').closest('.field')).not.toHaveTextContent(
+            'Parallel jobs saved.',
+        );
         expect(screen.getByLabelText('Parallel jobs')).toHaveValue('2');
+    });
+
+    it('shows a toast when saving the parallel jobs setting fails', async () => {
+        const { fake, user } = await renderApp();
+
+        vi.spyOn(fake.api.settings, 'set').mockResolvedValue({ ok: false, error: 'Nope.' });
+        await openTab(user, 'Settings');
+        await user.selectOptions(screen.getByLabelText('Parallel jobs'), '2');
+
+        expect(await screen.findByText(/Nope\./)).toBeInTheDocument();
+        expect(screen.getByLabelText('Parallel jobs')).toHaveValue('1');
+    });
+
+    it('copies the site URL and confirms with a toast', async () => {
+        const { user } = await renderApp();
+        const writeText = vi.fn().mockResolvedValue(undefined);
+
+        await openTab(user, 'Settings');
+        Object.defineProperty(navigator, 'clipboard', {
+            value: { writeText },
+            configurable: true,
+        });
+        await user.click(screen.getByRole('button', { name: 'Copy site URL' }));
+
+        expect(writeText).toHaveBeenCalledWith('https://site.example.com');
+        expect(await screen.findByText('Link copied.')).toBeInTheDocument();
     });
 
     it('signs out immediately when no job is running', async () => {
@@ -147,10 +177,10 @@ describe('Settings screen', () => {
         const reload = vi.spyOn(fake.api.auth, 'reloadConfig');
 
         await openTab(user, 'Settings');
-        await user.click(screen.getByRole('button', { name: 'Reload config' }));
+        await user.click(screen.getByRole('button', { name: 'Refresh site settings' }));
 
         expect(reload).toHaveBeenCalled();
-        expect(await screen.findByText('Configuration reloaded.')).toBeInTheDocument();
+        expect(await screen.findByText('Site settings refreshed.')).toBeInTheDocument();
     });
 });
 

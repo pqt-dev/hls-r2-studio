@@ -4,7 +4,7 @@ import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
 import { Banner } from './Banner';
 
-export function ReloadConfigButton({ label = 'Reload config' }: { label?: string }) {
+export function ReloadConfigButton({ label = 'Refresh site settings' }: { label?: string }) {
     const { api } = useApp();
     const toast = useToast();
     const [busy, setBusy] = useState(false);
@@ -18,10 +18,10 @@ export function ReloadConfigButton({ label = 'Reload config' }: { label?: string
             if (state.status === 'offline' || state.error !== undefined) {
                 toast.show('error', state.error ?? 'Cannot reach the site.');
             } else {
-                toast.show('success', 'Configuration reloaded.');
+                toast.show('success', 'Site settings refreshed.');
             }
         } catch {
-            toast.show('error', 'Could not reload the configuration.');
+            toast.show('error', 'Could not refresh the site settings.');
         } finally {
             setBusy(false);
         }
@@ -29,7 +29,7 @@ export function ReloadConfigButton({ label = 'Reload config' }: { label?: string
 
     return (
         <button type="button" className="btn btn-sm" disabled={busy} onClick={() => void reload()}>
-            {busy ? 'Reloading…' : label}
+            {busy ? 'Refreshing…' : label}
         </button>
     );
 }

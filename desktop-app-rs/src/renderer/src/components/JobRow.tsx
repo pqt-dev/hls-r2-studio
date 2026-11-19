@@ -1,25 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { JobDto } from '../../../shared/ipc';
 import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
-import { ActionMenu, type ActionMenuItem } from './ActionMenu';
 import { JobProgress } from './JobProgress';
 import { JobStateChip } from './JobStateChip';
 import { MediaTile } from './MediaTile';
-import { VideoQuickActions, type QuickAction } from './VideoQuickActions';
+import { CloseIcon, InfoIcon, LibraryIcon, PlayIcon, RefreshIcon, TrashIcon } from './icons';
+import { QUICK_ACCENT_CLASS, QuickIconButton } from './VideoQuickActions';
 import { hasDetailsView, isRunning, statusKind } from '../lib/jobState';
 
 export type JobAction =
-    | 'cancel'
-    | 'retry'
-    | 'retry-register'
-    | 'resume'
-    | 'remove'
-    | 'copy-url'
-    | 'copy-shortcode'
-    | 'copy-thumbnail'
-    | 'open'
-    | 'view-library'
-    | 'details';
+    'cancel' | 'retry' | 'retry-register' | 'resume' | 'remove' | 'view-library' | 'details';
 
 /** Re-renders every `intervalMs` so relative times stay fresh. */
 export function useNow(intervalMs = 15_000): number {
@@ -76,6 +66,60 @@ function noteOf(job: JobDto): string | null {
     }
 }
 
+interface RowButton {
+    action: JobAction;
+    label: string;
+    icon: ReactNode;
+}
+
+/** Actions that can carry the accent, in priority order. */
+const ACCENT_ORDER: readonly JobAction[] = ['view-library', 'resume', 'retry', 'retry-register'];
+
+/**
+ * Every action of a row as a visible icon-only button, in display order: primary actions, then
+ * View details, Cancel, and Remove last. Queue rows only manage the local job: no copy/open of
+ * site links here (Library has them). Each action appears at most once.
+ */
+function actionButtons(job: JobDto): RowButton[] {
+    const all: Array<RowButton & { enabled: boolean }> = [
+        {
+            action: 'view-library',
+            label: 'View in Library',
+            icon: <LibraryIcon />,
+            enabled: job.state === 'done',
+        },
+        { action: 'resume', label: 'Resume', icon: <PlayIcon />, enabled: job.canResume },
+        {
+            action: 'retry',
+            label: job.state === 'upload_interrupted' ? 'Start over' : 'Retry',
+            icon: <RefreshIcon />,
+            enabled: job.canRetry,
+        },
+        {
+            action: 'retry-register',
+            label: 'Retry register',
+            icon: <RefreshIcon />,
+            enabled: job.canRetryRegister,
+        },
+        {
+            action: 'details',
+            label: 'View details',
+            icon: <InfoIcon />,
+            enabled: hasDetailsView(job.state),
+        },
+        { action: 'cancel', label: 'Cancel', icon: <CloseIcon />, enabled: job.canCancel },
+        { action: 'remove', label: 'Remove', icon: <TrashIcon />, enabled: job.canRemove },
+    ];
+
+    return all
+        .filter((button) => button.enabled)
+        .map(({ action, label, icon }) => ({
+            action,
+            label,
+            icon,
+        }));
+}
+
 export function JobRow({
     job,
     now,
@@ -94,45 +138,12 @@ export function JobRow({
     const paused = job.state === 'upload_interrupted';
 
     const name = job.fileName;
-    const item = (
-        action: JobAction,
-        label: string,
-        enabled: boolean,
-        danger = false,
-    ): ActionMenuItem[] =>
-        enabled
-            ? [
-                  {
-                      key: action,
-                      label,
-                      ariaLabel: `${label}: ${name}`,
-                      danger,
-                      onSelect: () => onAction(action, job),
-                  },
-              ]
-            : [];
-    const done = job.state === 'done';
-    // Everything except the one shortcut on the row lives in the kebab menu.
-    const items: ActionMenuItem[] = [
-        ...item('resume', 'Resume', job.canResume),
-        ...item('retry', paused ? 'Start over' : 'Retry', job.canRetry),
-        ...item('retry-register', 'Retry register', job.canRetryRegister),
-        ...item('copy-url', 'Copy direct URL', done && job.embedUrl !== null),
-        ...item('open', 'Open on site', done && job.embedUrl !== null),
-        ...item('view-library', 'View in Library', done),
-        ...item('details', 'View details', hasDetailsView(job.state)),
-        ...item('cancel', 'Cancel', job.canCancel, true),
-        ...item('remove', 'Remove', job.canRemove, true),
-    ];
-
-    // The thumbnail copy goes by video id through Rust, so it needs a registered video that
-    // already has a thumbnail.
-    const quickActions: QuickAction[] = [
-        ...(done && job.embedUrl !== null ? (['shortcode'] as const) : []),
-        ...(done && job.videoId !== undefined && (job.thumbnailUrl ?? null) !== null
-            ? (['thumbnail-url'] as const)
-            : []),
-    ];
+    const buttons = actionButtons(job);
+    // The accent is the primary action: View in Library, else Resume/Retry/Retry register, else
+    // Cancel when it is the only way forward (running and waiting rows).
+    const accent =
+        buttons.find((button) => ACCENT_ORDER.includes(button.action)) ??
+        buttons.find((button) => button.action === 'cancel');
 
     return (
         <li
@@ -141,7 +152,8 @@ export function JobRow({
             data-job-id={job.id}
             data-network-wait={job.waitingForNetwork ? 'true' : undefined}
         >
-            {/* Rust supplies the thumbnail URL when it knows it; else the neutral media tile. */}
+            {/* Local data only: the thumbnail URL stored in the job record at completion. Jobs
+                finished before it was stored have none and keep the neutral media tile. */}
             <MediaTile thumbnailUrl={job.thumbnailUrl ?? null} />
             <div className="job-main">
                 <p className="job-name" title={job.fileName}>
@@ -175,24 +187,23 @@ export function JobRow({
             </div>
 
             <div className="job-actions">
-                <VideoQuickActions
-                    title={name}
-                    busy={pending}
-                    actions={quickActions}
-                    onQuick={(action) => {
-                        if (action === 'shortcode') onAction('copy-shortcode', job);
-                        else if (action === 'thumbnail-url') onAction('copy-thumbnail', job);
-                    }}
-                    menu={
-                        items.length > 0 ? (
-                            <ActionMenu
-                                label={`More actions for ${name}`}
-                                items={items}
-                                disabled={pending}
-                            />
-                        ) : undefined
-                    }
-                />
+                {buttons.map((button) => (
+                    <QuickIconButton
+                        key={button.action}
+                        className={
+                            button === accent
+                                ? QUICK_ACCENT_CLASS
+                                : button.action === 'remove'
+                                  ? 'btn btn-sm video-quick job-remove'
+                                  : 'btn btn-sm video-quick'
+                        }
+                        ariaLabel={`${button.label} for ${name}`}
+                        label={button.label}
+                        icon={button.icon}
+                        busy={pending}
+                        onClick={() => onAction(button.action, job)}
+                    />
+                ))}
             </div>
         </li>
     );

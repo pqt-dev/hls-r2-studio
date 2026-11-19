@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { JobDto } from '../../../shared/ipc';
 import type { JobState } from '../../../shared/types';
 import { makeJob, makeSummary } from '../testing/fakeApi';
-import { clickJobAction, actionsOfRow } from '../testing/jobMenu';
-import { push, renderQueue } from '../testing/renderApp';
+import { actionsOfRow, clickJobAction } from '../testing/jobActions';
 
-const EMBED = 'https://site.example.com/embed/abc123';
+const actionOf = (button: HTMLElement) =>
+    (button.getAttribute('aria-label') ?? '').split(' for ')[0] ?? '';
+import { push, renderQueue } from '../testing/renderApp';
 
 const detail = {
     step: 'transcoding' as const,
@@ -18,6 +19,7 @@ const detail = {
 const CASES: ReadonlyArray<{
     state: JobState;
     stage: string;
+    /** Visible action buttons in visual order. */
     buttons: string[];
     job: Partial<JobDto>;
 }> = [
@@ -55,8 +57,8 @@ const CASES: ReadonlyArray<{
     {
         state: 'done',
         stage: 'Done',
-        buttons: ['Copy direct URL', 'Copy shortcode', 'Open on site', 'View in Library', 'Remove'],
-        job: { canRemove: true, progress: 100, embedUrl: EMBED, publicId: 'abc123' },
+        buttons: ['View in Library', 'Remove'],
+        job: { canRemove: true, progress: 100 },
     },
     {
         state: 'failed',
@@ -84,7 +86,7 @@ const CASES: ReadonlyArray<{
     {
         state: 'register_failed',
         stage: 'Register failed',
-        buttons: ['Cancel', 'Retry register', 'View details'],
+        buttons: ['Retry register', 'View details', 'Cancel'],
         job: { canCancel: true, canRetryRegister: true, errorMessage: 'Site unreachable.' },
     },
     {
@@ -101,7 +103,7 @@ const CASES: ReadonlyArray<{
     {
         state: 'needs_sign_in',
         stage: 'Sign-in needed',
-        buttons: ['Cancel', 'Retry register'],
+        buttons: ['Retry register', 'Cancel'],
         job: { canCancel: true, canRetryRegister: true },
     },
 ];
@@ -115,7 +117,7 @@ const ALL_ACTIONS = [
     'Remove',
     'Copy direct URL',
     'Copy shortcode',
-    'Open on site',
+    'Open in browser',
     'View in Library',
     'View details',
 ];
@@ -140,23 +142,31 @@ describe('Queue screen', () => {
         const item = screen.getByRole('listitem');
 
         expect(within(item).getByText(c.stage)).toBeInTheDocument();
-        // Visible buttons plus the items of the kebab menu: every action is still reachable.
-        const actions = await actionsOfRow(user, item);
+        // Every action is a visible icon button, in the exact visual order, once each, Remove last.
+        const actions = actionsOfRow(item);
 
-        expect(actions).toEqual([...c.buttons].sort());
+        expect(actions).toEqual(c.buttons);
+        expect(new Set(actions).size).toBe(actions.length);
+        expect(actions.indexOf('Remove')).toBe(
+            c.buttons.includes('Remove') ? actions.length - 1 : -1,
+        );
+        expect(within(item).queryByRole('button', { name: /^More actions/ })).toBeNull();
+        expect(screen.queryByRole('menu')).toBeNull();
 
         for (const action of ALL_ACTIONS.filter((name) => !c.buttons.includes(name))) {
             expect(actions).not.toContain(action);
         }
 
-        // Only the shortcode shortcut sits on the row itself; it needs a registered video.
-        const direct = within(item)
-            .queryAllByRole('button')
-            .map((button) => button.getAttribute('aria-label') ?? '')
-            .filter((label) => !label.startsWith('More actions for'));
+        // Each button has the "<Action> for <file>" name and an "<Action>" tooltip.
+        for (const button of within(item).getAllByRole('button')) {
+            const action = actionOf(button);
 
-        expect(direct).toHaveLength(c.state === 'done' ? 1 : 0);
-        expect(direct.every((label) => label.startsWith('Copy shortcode'))).toBe(true);
+            expect(button).toHaveAttribute(
+                'aria-label',
+                `${action} for ${c.job.fileName ?? 'holiday-video.mp4'}`,
+            );
+            expect(button).toHaveAttribute('title', action);
+        }
 
         const running = ['transcoding', 'thumbnail', 'storyboard', 'uploading', 'registering'];
 
@@ -213,7 +223,7 @@ describe('Queue screen', () => {
         expect(within(item).queryByText('Uploading')).not.toBeInTheDocument();
         expect(within(item).getByText('Retrying automatically')).toBeInTheDocument();
         expect(within(item).getByRole('progressbar')).toHaveValue(72);
-        expect(await actionsOfRow(user, item)).toEqual(['Cancel']);
+        expect(actionsOfRow(item)).toEqual(['Cancel']);
 
         push(() =>
             fake.emitJobs([
@@ -244,14 +254,14 @@ describe('Queue screen', () => {
             const { fake, user } = await renderQueue({ jobs: [paused()] });
             const resume = vi.spyOn(fake.api.jobs, 'resume');
 
-            await clickJobAction(user, /^Resume:/);
+            await clickJobAction(user, /^Resume for /);
             expect(resume).toHaveBeenCalledWith('p');
             expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
         });
 
         it.each([
             {
-                button: /^Start over:/,
+                button: /^Start over for /,
                 title: 'Start over?',
                 body: 'The saved progress for clip.mp4 will be discarded and the video will be processed again from the beginning.',
                 confirm: 'Start over',
@@ -259,7 +269,7 @@ describe('Queue screen', () => {
                 api: 'retry' as const,
             },
             {
-                button: /^Remove:/,
+                button: /^Remove for /,
                 title: 'Remove this video?',
                 body: 'The temporary files for clip.mp4 will be deleted, so it can no longer be resumed.',
                 confirm: 'Remove',
@@ -284,8 +294,8 @@ describe('Queue screen', () => {
         });
 
         it.each([
-            { button: /^Start over:/, cancel: 'Keep paused', api: 'retry' as const },
-            { button: /^Remove:/, cancel: 'Keep', api: 'remove' as const },
+            { button: /^Start over for /, cancel: 'Keep paused', api: 'retry' as const },
+            { button: /^Remove for /, cancel: 'Keep', api: 'remove' as const },
         ])('the cancel button does nothing ($api)', async (c) => {
             const { fake, user } = await renderQueue({ jobs: [paused()] });
             const spy = vi.spyOn(fake.api.jobs, c.api);
@@ -297,14 +307,14 @@ describe('Queue screen', () => {
             expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
         });
 
-        it.each([{ button: /^Start over:/ }, { button: /^Remove:/ }])(
+        it.each([{ button: /^Start over for / }, { button: /^Remove for / }])(
             'Escape closes the dialog and restores focus to the opener',
             async (c) => {
                 const { fake, user } = await renderQueue({ jobs: [paused()] });
                 const retry = vi.spyOn(fake.api.jobs, 'retry');
                 const remove = vi.spyOn(fake.api.jobs, 'remove');
-                // The action sits in the kebab menu: the focus returns to that menu button.
-                const opener = screen.getByRole('button', { name: /^More actions for/ });
+                // The focus returns to the action button that opened the dialog.
+                const opener = screen.getByRole('button', { name: c.button });
 
                 await clickJobAction(user, c.button);
                 await user.keyboard('{Escape}');
@@ -323,8 +333,8 @@ describe('Queue screen', () => {
             const retry = vi.spyOn(fake.api.jobs, 'retry');
             const remove = vi.spyOn(fake.api.jobs, 'remove');
 
-            await clickJobAction(user, /^Retry:/);
-            await clickJobAction(user, /^Remove:/);
+            await clickJobAction(user, /^Retry for /);
+            await clickJobAction(user, /^Remove for /);
 
             expect(retry).toHaveBeenCalledWith('f');
             expect(remove).toHaveBeenCalledWith('f');
@@ -341,7 +351,7 @@ describe('Queue screen', () => {
             ok: false,
             error: 'Sign in to resume this upload.',
         });
-        await clickJobAction(user, /^Resume:/);
+        await clickJobAction(user, /^Resume for /);
         expect(await screen.findByText(/Sign in to resume this upload\./)).toBeInTheDocument();
     });
 
@@ -465,14 +475,14 @@ describe('Queue screen', () => {
     });
 
     describe('banners', () => {
-        it('shows the offline banner with a working Reload config button', async () => {
+        it('shows the offline banner with a working Refresh site settings button', async () => {
             const { fake, user } = await renderQueue({
                 auth: { status: 'offline', username: 'a', siteUrl: 'https://s.example.com' },
             });
             const reload = vi.spyOn(fake.api.auth, 'reloadConfig');
 
             expect(screen.getByText('Cannot reach the site.')).toBeInTheDocument();
-            await user.click(screen.getByRole('button', { name: 'Reload config' }));
+            await user.click(screen.getByRole('button', { name: 'Refresh site settings' }));
             expect(reload).toHaveBeenCalled();
         });
 
@@ -551,31 +561,6 @@ describe('Queue screen', () => {
     });
 
     describe('actions, toasts and confirmations', () => {
-        it('copies the direct URL and shortcode and confirms with a toast', async () => {
-            const { fake, user } = await renderQueue({
-                jobs: [makeJob({ id: 'j', state: 'done', embedUrl: EMBED, canRemove: true })],
-            });
-            const copy = vi.spyOn(fake.api.jobs, 'copy');
-
-            await clickJobAction(user, /^Copy direct URL/);
-            expect(copy).toHaveBeenCalledWith('j', 'embed-url');
-            expect(await screen.findByText('Direct URL copied.')).toBeInTheDocument();
-
-            await clickJobAction(user, /^Copy shortcode/);
-            expect(copy).toHaveBeenCalledWith('j', 'shortcode');
-            expect(await screen.findByText('Shortcode copied.')).toBeInTheDocument();
-        });
-
-        it('opens the video on the site', async () => {
-            const { fake, user } = await renderQueue({
-                jobs: [makeJob({ id: 'j', state: 'done', embedUrl: EMBED })],
-            });
-            const open = vi.spyOn(fake.api.jobs, 'openEmbed');
-
-            await clickJobAction(user, /^Open on site/);
-            expect(open).toHaveBeenCalledWith('j');
-        });
-
         it('announces errors returned by an action in an aria-live toast', async () => {
             const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'j', state: 'failed', canRetry: true })],
@@ -585,7 +570,7 @@ describe('Queue screen', () => {
                 ok: false,
                 error: 'Disk is full.',
             });
-            await clickJobAction(user, /^Retry:/);
+            await clickJobAction(user, /^Retry for /);
 
             const region = document.querySelector('.toasts');
 
@@ -601,7 +586,7 @@ describe('Queue screen', () => {
             });
 
             vi.spyOn(fake.api.jobs, 'remove').mockRejectedValue(new Error('boom'));
-            await clickJobAction(user, /^Remove:/);
+            await clickJobAction(user, /^Remove for /);
             expect(await screen.findByText(/Something went wrong/)).toBeInTheDocument();
         });
 
@@ -611,7 +596,7 @@ describe('Queue screen', () => {
             });
             const cancel = vi.spyOn(fake.api.jobs, 'cancel');
 
-            await clickJobAction(user, /^Cancel:/);
+            await clickJobAction(user, /^Cancel for /);
 
             const dialog = screen.getByRole('alertdialog', { name: 'Cancel this video?' });
 
@@ -630,7 +615,7 @@ describe('Queue screen', () => {
             });
             const cancel = vi.spyOn(fake.api.jobs, 'cancel');
 
-            await clickJobAction(user, /^Cancel:/);
+            await clickJobAction(user, /^Cancel for /);
             expect(cancel).toHaveBeenCalledWith('w');
             expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
         });
@@ -686,7 +671,7 @@ describe('Queue screen', () => {
         it('shows message, failing step, exit code and the stderr tail', async () => {
             const { user } = await renderQueue({ jobs: [failed] });
 
-            await clickJobAction(user, /^View details/);
+            await clickJobAction(user, /^View details for /);
 
             const dialog = screen.getByRole('dialog', { name: 'Job details' });
 
@@ -714,7 +699,7 @@ describe('Queue screen', () => {
                 ],
             });
 
-            await clickJobAction(user, /^View details/);
+            await clickJobAction(user, /^View details for /);
 
             const dialog = screen.getByRole('dialog', { name: 'Job details' });
 
@@ -726,9 +711,9 @@ describe('Queue screen', () => {
 
         it('copies the details and closes with Escape, restoring focus', async () => {
             const { user } = await renderQueue({ jobs: [failed] });
-            const opener = screen.getByRole('button', { name: /^More actions for/ });
+            const opener = screen.getByRole('button', { name: /^View details for / });
 
-            await clickJobAction(user, /^View details/);
+            await clickJobAction(user, /^View details for /);
             await user.click(screen.getByRole('button', { name: 'Copy details' }));
 
             expect(await screen.findByText('Details copied.')).toBeInTheDocument();
@@ -748,7 +733,7 @@ describe('Queue screen', () => {
             const { user } = await renderQueue({ jobs: [failed] });
 
             vi.spyOn(navigator.clipboard, 'writeText').mockRejectedValue(new Error('denied'));
-            await clickJobAction(user, /^View details/);
+            await clickJobAction(user, /^View details for /);
             await user.click(screen.getByRole('button', { name: 'Copy details' }));
             expect(await screen.findByText(/Could not copy the details\./)).toBeInTheDocument();
         });
@@ -797,15 +782,16 @@ describe('Queue "View in Library"', () => {
             ],
         });
 
-        let offered = 0;
+        // The accented icon button of the done row is the only entry point.
+        expect(screen.getAllByRole('button', { name: /^View in Library for / })).toHaveLength(1);
+        expect(
+            within(document.querySelector<HTMLElement>('li[data-job-id="a"]')!).getByRole(
+                'button',
+                { name: 'View in Library for holiday-video.mp4' },
+            ),
+        ).toBeInTheDocument();
 
-        for (const kebab of screen.getAllByRole('button', { name: /^More actions for/ })) {
-            await user.click(kebab);
-            offered += screen.queryAllByRole('menuitem', { name: /^View in Library/ }).length;
-            await user.keyboard('{Escape}');
-        }
-
-        expect(offered).toBe(1);
+        expect(screen.queryByRole('button', { name: /^More actions/ })).toBeNull();
     });
 
     it('opens the video detail page when the cloud id is known', async () => {
@@ -814,7 +800,7 @@ describe('Queue "View in Library"', () => {
         });
         const get = vi.spyOn(fake.api.videos, 'get');
 
-        await clickJobAction(user, 'View in Library: clip.mp4');
+        await clickJobAction(user, 'View in Library for clip.mp4');
 
         const tab = screen.getByRole('tab', { name: 'Library' });
 
@@ -831,7 +817,7 @@ describe('Queue "View in Library"', () => {
         const list = vi.spyOn(fake.api.videos, 'list');
         const get = vi.spyOn(fake.api.videos, 'get');
 
-        await clickJobAction(user, 'View in Library: clip.mp4');
+        await clickJobAction(user, 'View in Library for clip.mp4');
 
         expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute(
             'aria-selected',

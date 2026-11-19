@@ -1,6 +1,7 @@
-import { useId, useLayoutEffect, useRef } from 'react';
+import { useLayoutEffect, useRef } from 'react';
 import type { VideoOrientation } from '../lib/format';
 import { STATUS_ICON, type StatusKind } from '../lib/jobState';
+import logoUrl from '../assets/logo.png';
 import { FLUENT, type FluentName } from './fluentIcons';
 
 /**
@@ -71,6 +72,7 @@ export const TrashIcon = () => <Glyph name="delete" />;
 export const MoreIcon = () => <Glyph name="more" />;
 export const VideoFileIcon = () => <Glyph name="video" />;
 export const UploadIcon = () => <Glyph name="upload" />;
+export const PlayIcon = () => <Glyph name="play" />;
 export const RefreshIcon = () => <Glyph name="refresh" />;
 export const CopyIcon = () => <Glyph name="copy" />;
 export const ImageIcon = () => <Glyph name="image" />;
@@ -80,7 +82,9 @@ export const WarningIcon = () => <Glyph name="warning" />;
 export const InfoIcon = () => <Glyph name="about" />;
 export const ArrowLeftIcon = () => <Glyph name="arrowLeft" />;
 /** Icon of a queue status kind (shown next to the status text). */
-export const StatusIcon = ({ kind }: { kind: StatusKind }) => <Glyph name={STATUS_ICON[kind]} />;
+export const StatusIcon = ({ kind }: { kind: StatusKind }) => (
+    <Glyph name={STATUS_ICON[kind]} filled />
+);
 /** Solid (filled) icons of the Home stat tiles; distinct silhouettes: rectangle, badge, circle, triangle. */
 export const StatTotalIcon = () => <Glyph name="statTotal" filled />;
 export const StatReadyIcon = () => <Glyph name="statReady" filled />;
@@ -110,55 +114,25 @@ export const CheckboxIcon = ({ state }: { state: 'none' | 'some' | 'all' }) => (
 );
 
 /**
- * App mark: a rounded tile with a brand-blue to cyan gradient, a white play triangle and two
- * convert arrows (white and warm amber) that say "transcode", not just "tool". Gradient ids come
- * from `useId` so several instances never clash. Keep in sync with
- * `src-tauri/icons/source/logo.svg`. `size` is in rem.
+ * App mark: the app logo (red circle, clapperboard and gear) as a decorative image. Source of truth
+ * is `src-tauri/icons/source/logo.png`; `src/assets/logo.png` is a downscaled copy for the UI.
+ * `size` is in rem.
  */
 export function BrandMark({ size = 1.75 }: { size?: number }) {
-    const ref = useRef<SVGSVGElement>(null);
-    const gradientId = `brand-grad-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
+    const ref = useRef<HTMLImageElement>(null);
 
     useLayoutEffect(() => {
         ref.current?.style.setProperty('--brand-size', `${size}rem`);
     }, [size]);
 
     return (
-        <svg
+        <img
             ref={ref}
             className="brand-mark"
-            viewBox="0 0 64 64"
+            src={logoUrl}
+            alt=""
             aria-hidden="true"
-            focusable="false"
-        >
-            <defs>
-                <linearGradient
-                    id={gradientId}
-                    x1="6"
-                    y1="2"
-                    x2="58"
-                    y2="62"
-                    gradientUnits="userSpaceOnUse"
-                >
-                    <stop offset="0" stopColor="#0f6cbd" />
-                    <stop offset="1" stopColor="#12b5cb" />
-                </linearGradient>
-            </defs>
-            <rect
-                className="brand-tile"
-                width="64"
-                height="64"
-                rx="14"
-                fill={`url(#${gradientId})`}
-            />
-            <path
-                className="brand-ink"
-                d="M14.5 18h13a6.5 6.5 0 0 1 6.5 6.5v15a6.5 6.5 0 0 1 -6.5 6.5h-13a6.5 6.5 0 0 1 -6.5 -6.5v-15a6.5 6.5 0 0 1 6.5 -6.5zM16.95 26.12L27.29 32L16.95 37.88z"
-                fill="#fff"
-                fillRule="evenodd"
-            />
-            <rect className="brand-ink" x="38" y="23" width="9" height="18" rx="3" fill="#fff" />
-            <rect className="brand-ink" x="50" y="28" width="6" height="8" rx="3" fill="#ffb324" />
-        </svg>
+            draggable={false}
+        />
     );
 }

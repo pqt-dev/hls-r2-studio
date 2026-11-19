@@ -29,8 +29,21 @@ describe('icons replace glyphs', () => {
 
         const { container } = render(<StatusIcon kind={kind} />);
 
-        expect(container.querySelector('svg.icon path')).not.toBeNull();
+        const svgs = container.querySelectorAll('svg');
+
+        expect(svgs).toHaveLength(1);
+        expect(svgs[0]).toHaveClass('icon');
+        expect(svgs[0]).not.toHaveClass('icon-regular');
+        expect([...svgs[0]!.querySelectorAll('path')].map((p) => p.getAttribute('d'))).toEqual(
+            FLUENT[STATUS_ICON[kind]].filled,
+        );
         expect(container).toHaveTextContent('');
+    });
+
+    it.each(['done', 'failed'] as const)('the %s status icon is solid, not the outline', (kind) => {
+        const { filled, regular } = FLUENT[STATUS_ICON[kind]];
+
+        expect(filled).not.toEqual(regular);
     });
 
     it.each([

@@ -619,7 +619,7 @@ button.stat-tile:focus-visible {
     height: 0.875rem;
 }
 
-/* Semantic status chips: a colored dot keeps the state readable without color alone. */
+/* Neutral (unknown status) chip: a colored dot keeps it readable without color alone. */
 .chip--dot::before {
     width: 0.375rem;
     height: 0.375rem;
@@ -811,19 +811,10 @@ progress::-moz-progress-bar {
 
 .brand-mark {
     flex: none;
+    display: block;
     width: var(--brand-size, 1.75rem);
     height: var(--brand-size, 1.75rem);
-}
-
-/* The tile carries its own gradient, so it looks the same on light and dark surfaces. */
-@media (forced-colors: active) {
-    .brand-tile {
-        fill: CanvasText;
-    }
-
-    .brand-ink {
-        fill: Canvas;
-    }
+    object-fit: contain;
 }
 
 .sidebar-brand {
@@ -1128,7 +1119,13 @@ progress::-moz-progress-bar {
 
 /* ---- settings and about -------------------------------------------------------------------- */
 
-.settings,
+.settings {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+    gap: var(--space-4);
+    align-items: start;
+}
+
 .about {
     display: grid;
     gap: var(--space-4);
@@ -1493,11 +1490,22 @@ progress::-moz-progress-bar {
     justify-self: end;
 }
 
+/* Remove is last and neutral at rest; its icon turns danger on hover/focus. A small extra gap
+   keeps it apart from the accent button before it. */
+.job-actions .job-remove {
+    margin-inline-start: var(--space-1);
+}
+
+.job-actions .job-remove:hover:not(:disabled),
+.job-actions .job-remove:focus-visible {
+    color: var(--danger);
+}
+
 @media (min-width: 62.5rem) {
-    /* The actions column has a fixed width, so the status column starts at the same x on every
+    /* The actions column has a fixed width (4 icon buttons + gaps), so the status column starts at the same x on every
        row (Done and Transcoding pills line up whatever buttons a row has). */
     .job {
-        grid-template-columns: 2.5rem minmax(0, 1.2fr) minmax(0, 1fr) 6.5rem;
+        grid-template-columns: 2.5rem minmax(0, 1.2fr) minmax(0, 1fr) 9rem;
     }
 
     .job-status {

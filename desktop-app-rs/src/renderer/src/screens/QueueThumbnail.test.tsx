@@ -13,8 +13,6 @@ function doneJob(partial: Partial<JobDto> = {}): JobDto {
         state: 'done',
         progress: 100,
         canRemove: true,
-        embedUrl: 'https://site.example.com/embed/abc123',
-        publicId: 'abc123',
         ...partial,
     });
 }
@@ -51,35 +49,24 @@ describe('Queue row thumbnail', () => {
         expect(row().querySelector('.thumb-placeholder')).toBeNull();
     });
 
-    it('copies the thumbnail URL by video id through Rust', async () => {
-        const { fake, user } = await renderQueue({
+    it('offers no thumbnail copy and calls no site API for Queue rows', async () => {
+        const { fake } = await renderQueue({
             jobs: [doneJob({ videoId: 7, thumbnailUrl: THUMB })],
         });
-        const copyLink = vi.spyOn(fake.api.videos, 'copyLink');
-        const group = within(row()).getByRole('group', { name: 'Quick actions for clip.mp4' });
-        const buttons = within(group).getAllByRole('button');
+        const spies = [
+            vi.spyOn(fake.api.videos, 'copyLink'),
+            vi.spyOn(fake.api.videos, 'list'),
+            vi.spyOn(fake.api.videos, 'get'),
+        ];
+        const buttons = within(row()).getAllByRole('button');
 
-        // Same order as the Library: shortcode, thumbnail, then the menu.
+        // A finished row has View in Library and Remove only.
         expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual([
-            'Copy shortcode for clip.mp4',
-            'Copy thumbnail URL for clip.mp4',
-            'More actions for clip.mp4',
+            'View in Library for clip.mp4',
+            'Remove for clip.mp4',
         ]);
-
-        await user.click(within(group).getByRole('button', { name: /Copy thumbnail URL/ }));
-
-        expect(copyLink).toHaveBeenCalledWith(7, 'thumbnail-url');
-        expect(await screen.findByText('Thumbnail URL copied.')).toBeInTheDocument();
-    });
-
-    it('offers no thumbnail copy without a video id or without a thumbnail URL', async () => {
-        await renderQueue({
-            jobs: [
-                doneJob({ id: 'a', thumbnailUrl: THUMB }),
-                doneJob({ id: 'b', fileName: 'other.mp4', videoId: 8 }),
-            ],
-        });
-
         expect(screen.queryByRole('button', { name: /Copy thumbnail URL/ })).toBeNull();
+
+        for (const spy of spies) expect(spy).not.toHaveBeenCalled();
     });
 });

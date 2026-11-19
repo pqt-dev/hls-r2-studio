@@ -22,9 +22,8 @@
  *   jobs:add-files                    jobs_add_files           -
  *   jobs:add-paths                    jobs_add_paths           { payload: {paths} }
  *   jobs:cancel|retry|retry-register  jobs_cancel|jobs_retry|  { payload: {id} }
- *     |resume|remove|open-embed         jobs_retry_register|...
+ *     |resume|remove                     jobs_retry_register|...
  *   jobs:clear-finished               jobs_clear_finished      -
- *   jobs:copy                         jobs_copy                { payload: {id,kind} }
  *   videos:list                       videos_list              { payload: {page?,perPage?,q?,sort?,status?} }
  *   videos:get                        videos_get               { payload: {id} }
  *   videos:copy-link                  videos_copy_link         { payload: {id,kind} }
@@ -202,8 +201,6 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
             resume: (id) => send<ActionResult>(IpcChannels.jobsResume, { id }),
             remove: (id) => send<ActionResult>(IpcChannels.jobsRemove, { id }),
             clearFinished: () => send<ActionResult>(IpcChannels.jobsClearFinished),
-            openEmbed: (id) => send<ActionResult>(IpcChannels.jobsOpenEmbed, { id }),
-            copy: (id, kind) => send<ActionResult>(IpcChannels.jobsCopy, { id, kind }),
             onUpdated: (listener) => subscribe<JobDto[]>(IpcEvents.jobsUpdated, listener),
             onSummary: (listener) => subscribe<QueueSummary>(IpcEvents.queueSummary, listener),
         },

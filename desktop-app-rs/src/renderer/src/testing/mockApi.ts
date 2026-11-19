@@ -47,8 +47,6 @@ function seedJobs(): JobDto[] {
             sizeBytes: 88 * 1024 ** 2,
             state: 'done',
             progress: 100,
-            publicId: 'abc123',
-            embedUrl: 'https://mock.invalid/embed/abc123',
             createdAt: iso(40 * MIN),
             finishedAt: iso(30 * MIN),
             canRemove: true,

@@ -191,29 +191,31 @@ describe('GroupHeader', () => {
 });
 
 describe('Queue rows with the shared pieces', () => {
-    it('shows the quick actions cluster on a finished row, with the shared row surface', async () => {
+    it('shows the accented View in Library button and Remove on a finished row, with the shared row surface', async () => {
         await renderQueue({
             jobs: [
                 makeJob({
                     id: 'd',
                     fileName: 'done.mp4',
                     state: 'done',
-                    embedUrl: 'https://site.example.com/embed/abc',
                     canRemove: true,
                 }),
             ],
         });
 
         const row = document.querySelector<HTMLElement>('li[data-job-id="d"]')!;
-        const group = within(row).getByRole('group', { name: 'Quick actions for done.mp4' });
 
         expect(row).toHaveClass('row-surface');
+        // No quick actions cluster (and no empty group) in the Queue.
+        expect(within(row).queryByRole('group')).toBeNull();
         expect(
-            within(group)
+            within(row)
                 .getAllByRole('button')
                 .map((button) => button.getAttribute('aria-label')),
-        ).toEqual(['Copy shortcode for done.mp4', 'More actions for done.mp4']);
-        expect(within(row).queryByText('Copy shortcode')).toBeNull();
+        ).toEqual(['View in Library for done.mp4', 'Remove for done.mp4']);
+        expect(
+            within(row).getByRole('button', { name: 'View in Library for done.mp4' }),
+        ).toHaveClass('video-quick-primary');
     });
 
     it('puts Clear finished in the Finished group header, right of the title', async () => {

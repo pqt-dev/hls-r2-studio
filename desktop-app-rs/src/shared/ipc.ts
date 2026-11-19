@@ -23,8 +23,6 @@ export const IpcChannels = {
     jobsResume: 'jobs:resume',
     jobsRemove: 'jobs:remove',
     jobsClearFinished: 'jobs:clear-finished',
-    jobsOpenEmbed: 'jobs:open-embed',
-    jobsCopy: 'jobs:copy',
     videosList: 'videos:list',
     videosGet: 'videos:get',
     videosCopyLink: 'videos:copy-link',
@@ -122,11 +120,9 @@ export interface JobDto {
     errorMessage: string | null;
     /** Failed/interrupted details; text already redacted. */
     errorDetail: JobErrorDetail | null;
-    publicId: string | null;
-    embedUrl: string | null;
     /** Numeric id of the video on the site; set only once the job is registered. */
     videoId?: number;
-    /** Public thumbnail URL of the registered video when Rust already knows it; absent otherwise. */
+    /** Public thumbnail URL stored in the job record at completion; absent for older jobs (never fetched from the site). */
     thumbnailUrl?: string | null;
     createdAt: string;
     updatedAt: string;
@@ -165,8 +161,6 @@ export interface DiagnosticsDto {
     platform: string;
     ffmpeg: FfmpegDiagnostics;
 }
-
-export type CopyKind = 'embed-url' | 'shortcode';
 
 // ---- cloud video library ------------------------------------------------------
 
@@ -446,8 +440,6 @@ export interface JobsApi {
     resume(id: string): Promise<ActionResult>;
     remove(id: string): Promise<ActionResult>;
     clearFinished(): Promise<ActionResult>;
-    openEmbed(id: string): Promise<ActionResult>;
-    copy(id: string, kind: CopyKind): Promise<ActionResult>;
     onUpdated(listener: (jobs: JobDto[]) => void): Unsubscribe;
     onSummary(listener: (summary: QueueSummary) => void): Unsubscribe;
 }

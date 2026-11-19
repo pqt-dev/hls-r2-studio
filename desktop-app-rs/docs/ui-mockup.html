@@ -1730,7 +1730,7 @@ function banner(tone, title, children, action) {
   const icon = { info: 'i', warning: '!', danger: '✕' }[tone];
   return '<div class="banner banner-' + tone + '" role="' + (tone === 'info' ? 'status' : 'alert') + '"><span class="banner-icon" aria-hidden="true">' + icon + '</span><div class="banner-text"><strong>' + title + '</strong>' + (children != null ? '<span class="banner-detail"> ' + children + '</span>' : '') + '</div>' + (action ? '<div class="banner-action">' + action + '</div>' : '') + '</div>';
 }
-function reloadBtn() { return '<button type="button" class="btn btn-sm" data-act="reload-config"' + (S.reloading ? ' disabled' : '') + '>' + (S.reloading ? 'Reloading…' : 'Reload config') + '</button>'; }
+function reloadBtn() { return '<button type="button" class="btn btn-sm" data-act="reload-config"' + (S.reloading ? ' disabled' : '') + '>' + (S.reloading ? 'Refreshing…' : 'Refresh site settings') + '</button>'; }
 function queueBanners() {
   const paused = S.jobs.filter((j) => j.state === 'upload_interrupted').length;
   const need = S.jobs.filter((j) => j.state === 'needs_sign_in').length;
@@ -2038,7 +2038,7 @@ function act(name, id, el) {
   switch (name) {
     case 'tab': setTab(id); focusAfter('#tab-' + id); break;
     case 'splash-retry': S.screen = 'splash-loading'; render(); setTimeout(() => { S.screen = 'main'; render(); }, 800); break;
-    case 'reload-config': S.reloading = true; render(); setTimeout(() => { S.reloading = false; if (S.auth.status === 'offline') toast('error', 'Cannot reach the site.'); else toast('success', 'Configuration reloaded.'); render(); }, 700); break;
+    case 'reload-config': S.reloading = true; render(); setTimeout(() => { S.reloading = false; if (S.auth.status === 'offline') toast('error', 'Cannot reach the site.'); else toast('success', 'Site settings refreshed.'); render(); }, 700); break;
     /* queue */
     case 'add-videos': S.jobs.push(mkJob({ id: 'n' + Date.now(), fileName: 'New_upload_' + (S.jobs.length + 1) + '.mp4', state: 'waiting', createdAt: new Date().toISOString() })); toast('success', 'Added 1 video to the queue.'); render(); break;
     case 'clear-finished': openDialog({ kind: 'clear' }); break;

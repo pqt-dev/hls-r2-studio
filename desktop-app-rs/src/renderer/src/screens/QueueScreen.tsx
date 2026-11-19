@@ -191,18 +191,13 @@ export function QueueScreen() {
     }
 
     /** Runs an action; failures from the main process are shown as an error toast. */
-    async function run(
-        id: string | null,
-        action: () => Promise<ActionResult>,
-        success?: string,
-    ): Promise<void> {
+    async function run(id: string | null, action: () => Promise<ActionResult>): Promise<void> {
         if (id !== null) setPending((set) => new Set(set).add(id));
 
         try {
             const result = await action();
 
             if (!result.ok) toast.show('error', result.error);
-            else if (success !== undefined) toast.show('success', success);
         } catch {
             toast.show('error', 'Something went wrong. Please try again.');
         } finally {
@@ -242,27 +237,6 @@ export function QueueScreen() {
                 if (job.state === 'upload_interrupted') setConfirm({ kind: 'remove-paused', job });
                 else void run(job.id, () => api.jobs.remove(job.id));
 
-                break;
-            case 'copy-url':
-                void run(job.id, () => api.jobs.copy(job.id, 'embed-url'), 'Direct URL copied.');
-                break;
-            case 'copy-shortcode':
-                void run(job.id, () => api.jobs.copy(job.id, 'shortcode'), 'Shortcode copied.');
-                break;
-            case 'copy-thumbnail':
-                if (job.videoId !== undefined) {
-                    const videoId = job.videoId;
-
-                    void run(
-                        job.id,
-                        () => api.videos.copyLink(videoId, 'thumbnail-url'),
-                        'Thumbnail URL copied.',
-                    );
-                }
-
-                break;
-            case 'open':
-                void run(job.id, () => api.jobs.openEmbed(job.id));
                 break;
             case 'view-library':
                 openLibraryVideo(job.videoId);

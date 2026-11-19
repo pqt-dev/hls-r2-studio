@@ -289,7 +289,7 @@ describe('Logs screen error details', () => {
 
         expect(detail?.textContent).toBe(HTML_DETAIL);
         expect(detail?.children).toHaveLength(0);
-        expect(document.querySelector('img, script, b, i')).toBeNull();
+        expect(errors.querySelector('img, script, b, i')).toBeNull();
 
         await user.click(toggle);
         expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -320,7 +320,7 @@ describe('Logs screen error details', () => {
         await user.click(await screen.findByRole('button', { name: 'Details' }));
 
         expect(document.querySelector('pre')?.textContent).toBe(HTML_DETAIL);
-        expect(document.querySelector('img')).toBeNull();
+        expect(document.querySelector('pre img')).toBeNull();
     });
 });
 

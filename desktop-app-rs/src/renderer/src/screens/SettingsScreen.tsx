@@ -4,12 +4,13 @@ import { ConfirmDialog } from '../components/Dialog';
 import { Feedback, type FeedbackMessage } from '../components/Feedback';
 import { ReloadConfigButton } from '../components/QueueBanners';
 import { SectionCard } from '../components/SectionCard';
+import { CopyIcon } from '../components/icons';
 import { SelectBox } from '../components/SelectBox';
-import { plural, siteHost } from '../lib/format';
+import { copyText } from '../lib/clipboard';
+import { plural } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
 
-type Section = 'tmp' | 'parallel';
 type Confirm = 'signout' | null;
 
 export function SettingsScreen() {
@@ -24,11 +25,8 @@ export function SettingsScreen() {
         parallelHelp: useId(),
     };
 
-    const [feedback, setFeedback] = useState<Record<Section, FeedbackMessage | null>>({
-        tmp: null,
-        parallel: null,
-    });
-    const [saving, setSaving] = useState<Section | null>(null);
+    const [tmpFeedback, setTmpFeedback] = useState<FeedbackMessage | null>(null);
+    const [saving, setSaving] = useState<'tmp' | 'parallel' | null>(null);
     const [confirm, setConfirm] = useState<Confirm>(null);
     const [signingOut, setSigningOut] = useState(false);
 
@@ -36,47 +34,63 @@ export function SettingsScreen() {
 
     const busyJobs = summary.running > 0;
 
-    async function save(section: Section, patch: SettingsPatch, success: string): Promise<void> {
+    /** Saves a patch. Returns the failure text, or null on success. */
+    async function save(section: 'tmp' | 'parallel', patch: SettingsPatch): Promise<string | null> {
         setSaving(section);
-        setFeedback((all) => ({ ...all, [section]: null }));
 
         try {
             const result = await api.settings.set(patch);
 
             if (result.ok) {
                 applySettings(result.settings);
-                setFeedback((all) => ({ ...all, [section]: { kind: 'success', text: success } }));
-            } else {
-                setFeedback((all) => ({
-                    ...all,
-                    [section]: { kind: 'error', text: result.error },
-                }));
+
+                return null;
             }
+
+            return result.error;
         } catch {
-            setFeedback((all) => ({
-                ...all,
-                [section]: { kind: 'error', text: 'Could not save the setting.' },
-            }));
+            return 'Could not save the setting.';
         } finally {
             setSaving(null);
         }
     }
 
+    async function saveTmpRoot(path: string): Promise<void> {
+        const error = await save('tmp', { tmpRoot: path });
+
+        setTmpFeedback(
+            error === null
+                ? { kind: 'success', text: 'Temporary folder saved.' }
+                : { kind: 'error', text: error },
+        );
+    }
+
+    async function saveParallel(value: number): Promise<void> {
+        const error = await save('parallel', { maxConcurrent: value });
+
+        if (error === null) toast.show('success', 'Parallel jobs saved.');
+        else toast.show('error', error);
+    }
+
     async function chooseFolder(): Promise<void> {
-        setFeedback((all) => ({ ...all, tmp: null }));
+        setTmpFeedback(null);
 
         try {
             const picked = await api.settings.pickDirectory();
 
             if (picked.canceled) return;
 
-            await save('tmp', { tmpRoot: picked.path }, 'Temporary folder saved.');
+            await saveTmpRoot(picked.path);
         } catch {
-            setFeedback((all) => ({
-                ...all,
-                tmp: { kind: 'error', text: 'Could not open the folder dialog.' },
-            }));
+            setTmpFeedback({ kind: 'error', text: 'Could not open the folder dialog.' });
         }
+    }
+
+    async function copySiteUrl(url: string): Promise<void> {
+        const ok = await copyText(url);
+
+        if (ok) toast.show('success', 'Link copied.');
+        else toast.show('error', 'Could not copy the link.');
     }
 
     async function signOut(): Promise<void> {
@@ -93,23 +107,56 @@ export function SettingsScreen() {
 
     return (
         <div className="settings">
-            <SectionCard title="Site">
+            <SectionCard title="Account" level={3}>
                 <div className="field">
-                    <label htmlFor={ids.url}>Site URL</label>
-                    <input
-                        id={ids.url}
-                        type="text"
-                        readOnly
-                        value={settings.siteUrl}
-                        aria-describedby={ids.urlHelp}
-                    />
+                    <label htmlFor={ids.url}>Embed site URL</label>
+                    <div className="row">
+                        <input
+                            id={ids.url}
+                            type="text"
+                            readOnly
+                            value={settings.siteUrl}
+                            aria-describedby={ids.urlHelp}
+                        />
+                        <button
+                            type="button"
+                            className="btn btn-sm embed-copy"
+                            aria-label="Copy site URL"
+                            title="Copy site URL"
+                            onClick={() => void copySiteUrl(settings.siteUrl)}
+                        >
+                            <CopyIcon />
+                        </button>
+                    </div>
                     <p id={ids.urlHelp} className="help">
-                        This app is built for one site and cannot be pointed at another.
+                        Embed links and players are served from this site. It is fixed when the app
+                        is built.
                     </p>
                 </div>
+                <p className="muted">
+                    {auth.username !== undefined ? `Signed in as ${auth.username}` : 'Signed in'}
+                </p>
+                <div className="row row-wrap">
+                    <ReloadConfigButton />
+                    <button
+                        type="button"
+                        className="btn btn-danger-quiet"
+                        disabled={signingOut}
+                        onClick={() => {
+                            if (summary.running > 0) setConfirm('signout');
+                            else void signOut();
+                        }}
+                    >
+                        Sign out
+                    </button>
+                </div>
+                <p className="muted">
+                    Fetch the latest settings from the site, for example after an admin changes
+                    storage.
+                </p>
             </SectionCard>
 
-            <SectionCard title="Processing">
+            <SectionCard title="Processing" level={3}>
                 <div className="field">
                     <label htmlFor={ids.tmp}>Temporary folder</label>
                     <div className="row">
@@ -134,7 +181,7 @@ export function SettingsScreen() {
                             ? 'The folder cannot be changed while videos are being processed.'
                             : 'Videos are converted here before upload. Pick a drive with plenty of free space.'}
                     </p>
-                    <Feedback message={feedback.tmp} />
+                    <Feedback message={tmpFeedback} />
                 </div>
 
                 <div className="field">
@@ -144,44 +191,14 @@ export function SettingsScreen() {
                         value={settings.maxConcurrent}
                         disabled={saving === 'parallel'}
                         aria-describedby={ids.parallelHelp}
-                        onChange={(event) =>
-                            void save(
-                                'parallel',
-                                { maxConcurrent: Number(event.target.value) },
-                                'Parallel jobs saved.',
-                            )
-                        }
+                        onChange={(event) => void saveParallel(Number(event.target.value))}
                     >
                         <option value={1}>1 (recommended)</option>
                         <option value={2}>2</option>
                     </SelectBox>
                     <p id={ids.parallelHelp} className="help">
-                        Two jobs at once can finish a batch sooner but use much more CPU and disk,
-                        so the computer may feel slower.
+                        Two jobs finish a batch sooner but use much more CPU and disk.
                     </p>
-                    <Feedback message={feedback.parallel} />
-                </div>
-            </SectionCard>
-
-            <SectionCard title="Account">
-                <p className="muted">
-                    {auth.username !== undefined
-                        ? `Signed in as ${auth.username} on ${siteHost(auth.siteUrl ?? settings.siteUrl)}.`
-                        : 'Signed in.'}
-                </p>
-                <div className="row row-wrap">
-                    <ReloadConfigButton />
-                    <button
-                        type="button"
-                        className="btn btn-danger-quiet"
-                        disabled={signingOut}
-                        onClick={() => {
-                            if (summary.running > 0) setConfirm('signout');
-                            else void signOut();
-                        }}
-                    >
-                        Sign out
-                    </button>
                 </div>
             </SectionCard>
 

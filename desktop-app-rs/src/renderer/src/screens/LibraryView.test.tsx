@@ -175,7 +175,10 @@ describe('Library List view', () => {
         // The narrow-width hiding is CSS only: every cell stays in the DOM.
         expect(rows[0]!.querySelector('.video-created')).not.toBeNull();
         // Status and created are fixed grid cells; the header cells use the same hooks.
-        expect(rows[0]!.querySelector('.video-cell.video-status .chip--dot')).not.toBeNull();
+        expect(
+            rows[0]!.querySelector('.video-cell.video-status .chip .chip-icon svg.icon'),
+        ).not.toBeNull();
+        expect(rows[0]!.querySelector('.chip--dot')).toBeNull();
         expect(rows[0]!.querySelector('.video-duration')).toBeNull();
 
         const head = document.querySelector('.videos-head')!;

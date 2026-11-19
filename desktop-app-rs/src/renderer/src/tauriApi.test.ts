@@ -49,7 +49,6 @@ describe('createTauriApi', () => {
         await api.auth.login('u', 'p', true);
         await api.settings.set({ maxConcurrent: 2 });
         await api.jobs.cancel('j1');
-        await api.jobs.copy('j1', 'shortcode');
         await api.jobs.clearFinished();
         await api.videos.list();
         await api.videos.list({ page: 2, q: 'a' });
@@ -71,7 +70,6 @@ describe('createTauriApi', () => {
             ['auth_login', { payload: { username: 'u', password: 'p', staySignedIn: true } }],
             ['settings_set', { payload: { maxConcurrent: 2 } }],
             ['jobs_cancel', { payload: { id: 'j1' } }],
-            ['jobs_copy', { payload: { id: 'j1', kind: 'shortcode' } }],
             ['jobs_clear_finished', undefined],
             ['videos_list', { payload: {} }],
             ['videos_list', { payload: { page: 2, q: 'a' } }],

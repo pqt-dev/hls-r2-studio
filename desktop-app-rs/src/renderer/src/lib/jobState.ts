@@ -47,13 +47,16 @@ export function hasDetailsView(state: JobState): boolean {
     );
 }
 
-/** Fluent icon (see fluentIcons.ts) shown next to the status text so the state is never color only. */
+/**
+ * Solid (filled) Fluent icon shown next to the status text so the state is never color only. All
+ * but `attention` belong to the same circle family: clock, sync, check, dismiss, pause, subtract.
+ */
 export const STATUS_ICON: Record<StatusKind, FluentName> = {
-    waiting: 'circle',
-    running: 'play',
+    waiting: 'clock',
+    running: 'statProcessing',
     done: 'success',
     failed: 'failure',
     attention: 'warning',
-    paused: 'pause',
+    paused: 'pauseCircle',
     cancelled: 'cancelled',
 };

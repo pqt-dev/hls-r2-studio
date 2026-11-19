@@ -11,6 +11,8 @@ Responsibilities between Rust (`src-tauri`) and the renderer (`src/renderer`) ar
 - Example: the renderer asks for the R2 path of a video -> Rust returns it (from data it already has from the detail screen's init fetch or its cache, or by calling the site API itself when missing); the renderer never builds it.
 - New fields: add them together in the Rust DTO, `src/shared/ipc.ts`, the fakeApi in `src/renderer/src/testing/`, and the tests (Rust and renderer).
 - Error and UI text stays in English.
+- API limits (per_page max etc.) are defined once in api/ and enforced in the client; callers never hardcode them.
+- Queue is local-only: it shows data stored in the job record at completion and never calls the site API (no list/detail lookups for Queue rows). Queue rows only manage the local job (cancel, retry, resume, remove, details, view in Library) as visible icon-only buttons "<Action> for <file>" (accent first, then View details, Cancel, Remove last; no kebab menu): no copy or open of site links there.
 
 ## Shared UI components
 
@@ -20,10 +22,10 @@ Responsibilities between Rust (`src-tauri`) and the renderer (`src/renderer`) ar
 - Current shared pieces:
     - `UploadVideosButton` (`variant` create/primary, `navigate`, `disabled`; uses `useUploadVideos`): Home hero, Library pager row, Queue drop zone.
     - `.btn-control` (size modifier: control height, padding, body font; on `UploadVideosButton` and on any button sharing a row with it, e.g. Home hero "Open Library"): buttons in one row must share one height.
-    - Content width: list/grid screens (Library, Home, Queue, Logs) use the full width, form screens (Settings, About) are capped (45rem).
+    - Content width: list/grid screens (Library, Home, Queue, Logs) use the full width, only the About screen is capped (45rem); Settings is a full-width responsive grid of cards.
     - `RefreshButton` (`busy`, `onClick`, `size` control/sm, `className`): icon-only Refresh (spinning icon, `aria-busy`, name never changes); Library toolbar, Home overview, video detail header. Explicit Refresh on Home and Library is quiet (data stays on screen; skeletons only for the first load and query changes).
     - `StatTile` (`icon`, `value` (null = loading dash), `label`, `tone` primary/success/warning/danger, `onClick`, `actionLabel`, `alert`): tonal-circle statistic; Home overview strip. `SectionCard` also takes `description` and `size="lg"` (Home overview header).
-    - `VideoQuickActions` (`actions`, `menu`, `variant` default/ghost; plus `useQuickActions` for video ids): Library rows, Queue finished rows, Home recent rows (same cluster as the Library: shortcode, thumbnail URL, then the `VideoMenu`). Fixed order: shortcode, thumbnail URL, direct URL, open, then the menu.
+    - `VideoQuickActions` (`actions`, `menu`, `variant` default/ghost; plus `useQuickActions` for video ids; `QuickIconButton` + `QUICK_ACCENT_CLASS` are the shared single quick button, also used by every Queue row action button: the Queue has no kebab menu): Library rows, Home recent rows (same cluster as the Library: shortcode, thumbnail URL, then the `VideoMenu`). Fixed order: shortcode, thumbnail URL, direct URL, open, then the menu.
     - `StatusCountChips` (dot + count: running blue, waiting amber, done green, failed red, attention; optional `onSelect` makes them buttons): Queue footer, Home Queue status.
     - `JobProgress` (`fileName`, `progress`; native `<progress>` + percent, `.job-progress`): Queue rows, Home running jobs. `JobStateChip` (`job`; icon + stage label colored by status kind): Queue rows, Home attention list.
     - Relative times: `formatRelativeTime(iso, now)` and `formatDateTime(iso)` in `lib/format.ts` (inject `now`; wrap in `<time dateTime title={formatDateTime(iso)}>`): Queue rows, Home recent rows and hero activity line.

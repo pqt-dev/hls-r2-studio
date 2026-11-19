@@ -62,13 +62,55 @@ const BUTTONS: Record<QuickAction, { label: string; icon: ReactNode }> = {
 /** Fixed display order of the cluster, whatever order the caller lists the actions in. */
 const ORDER: readonly QuickAction[] = ['shortcode', 'thumbnail-url', 'embed-url', 'open'];
 
+/**
+ * One icon-only quick button (shared look: size, hit area, busy cursor). `accent` is the tonal
+ * primary style of the one highlighted action of a row. Used by `VideoQuickActions` and by rows
+ * that have a single quick button of their own (Queue "View in Library").
+ */
+export function QuickIconButton({
+    label,
+    ariaLabel,
+    icon,
+    className,
+    busy = false,
+    disabled = false,
+    onClick,
+}: {
+    /** Tooltip (`title`). */
+    label: string;
+    ariaLabel: string;
+    icon: ReactNode;
+    className: string;
+    busy?: boolean;
+    /** The whole row is inert: the button is disabled and leaves the tab order. */
+    disabled?: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            type="button"
+            className={className}
+            aria-label={ariaLabel}
+            title={label}
+            aria-busy={busy}
+            disabled={busy || disabled}
+            aria-disabled={disabled ? true : undefined}
+            tabIndex={disabled ? -1 : undefined}
+            onClick={onClick}
+        >
+            {icon}
+        </button>
+    );
+}
+
+/** Class of the accented (tonal primary) quick button. */
+export const QUICK_ACCENT_CLASS = 'btn btn-sm btn-tonal video-quick video-quick-primary';
+
 function buttonClass(action: QuickAction, variant: 'default' | 'ghost'): string {
     if (variant === 'ghost') return 'btn btn-sm btn-text video-quick video-quick-ghost';
 
     // The shortcode is the one accented action; the rest are neutral like the kebab.
-    return action === 'shortcode'
-        ? 'btn btn-sm btn-tonal video-quick video-quick-primary'
-        : 'btn btn-sm video-quick';
+    return action === 'shortcode' ? QUICK_ACCENT_CLASS : 'btn btn-sm video-quick';
 }
 
 /**
@@ -76,7 +118,7 @@ function buttonClass(action: QuickAction, variant: 'default' | 'ghost'): string 
  * (copy shortcode accented, copy thumbnail URL, copy direct URL, open in browser) followed by an
  * optional kebab `menu`. The caller decides which `actions` exist and what the menu holds; the
  * buttons only report the kind through `onQuick` (Rust builds, copies and opens, never the
- * renderer). Used by the Library, the Queue and Home.
+ * renderer). Used by the Library and Home.
  */
 export function VideoQuickActions({
     title,
@@ -102,20 +144,16 @@ export function VideoQuickActions({
     return (
         <div className="video-actions" role="group" aria-label={`Quick actions for ${title}`}>
             {ORDER.filter((action) => actions.includes(action)).map((action) => (
-                <button
+                <QuickIconButton
                     key={action}
-                    type="button"
                     className={buttonClass(action, variant)}
-                    aria-label={`${BUTTONS[action].label} for ${title}`}
-                    title={BUTTONS[action].label}
-                    aria-busy={busy}
-                    disabled={busy || disabled}
-                    aria-disabled={disabled ? true : undefined}
-                    tabIndex={disabled ? -1 : undefined}
+                    ariaLabel={`${BUTTONS[action].label} for ${title}`}
+                    label={BUTTONS[action].label}
+                    icon={BUTTONS[action].icon}
+                    busy={busy}
+                    disabled={disabled}
                     onClick={() => onQuick(action)}
-                >
-                    {BUTTONS[action].icon}
-                </button>
+                />
             ))}
             {menu}
         </div>
