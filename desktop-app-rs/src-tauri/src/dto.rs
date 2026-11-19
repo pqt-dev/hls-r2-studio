@@ -210,8 +210,6 @@ pub struct JobDto {
     pub network_wait_since: Option<String>,
     pub error_message: Option<String>,
     pub error_detail: Option<JobErrorDetail>,
-    pub public_id: Option<String>,
-    pub embed_url: Option<String>,
     /// Numeric id of the video on the site (`registered.id`); set only for a registered job.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_id: Option<i64>,
@@ -268,13 +266,6 @@ pub struct IdPayload {
     pub id: String,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum CopyKind {
-    EmbedUrl,
-    Shortcode,
-}
-
 /// What `videos:copy-link` copies: a URL or the shortcode built from the video detail fetched
 /// by Rust.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -293,12 +284,6 @@ pub enum VideoLinkKind {
     /// One storyboard sprite-sheet URL, by position (0-based) among the detail's storyboards that
     /// have a URL, in the order the detail lists them.
     StoryboardUrl(usize),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-pub struct CopyPayload {
-    pub id: String,
-    pub kind: CopyKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -435,8 +420,6 @@ mod tests {
                 exit_code: None,
                 stderr_tail: vec!["x".into()],
             }),
-            public_id: None,
-            embed_url: None,
             video_id: None,
             thumbnail_url: None,
             created_at: "t".into(),
@@ -479,13 +462,6 @@ mod tests {
 
     #[test]
     fn payloads_deserialize_from_renderer_json() {
-        let copy: CopyPayload =
-            serde_json::from_value(json!({ "id": "1", "kind": "embed-url" })).unwrap();
-        assert_eq!(copy.kind, CopyKind::EmbedUrl);
-        let copy: CopyPayload =
-            serde_json::from_value(json!({ "id": "1", "kind": "shortcode" })).unwrap();
-        assert_eq!(copy.kind, CopyKind::Shortcode);
-
         let paths: AddPathsPayload = serde_json::from_value(json!({ "paths": ["/a"] })).unwrap();
         assert_eq!(paths.paths, vec!["/a".to_string()]);
     }

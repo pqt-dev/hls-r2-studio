@@ -299,7 +299,7 @@ impl AuthService {
         self.validate(username).await
     }
 
-    /// Re-fetches the site config (settings "Reload config", or recovery from `offline`).
+    /// Re-fetches the site config (settings "Refresh site settings", or recovery from `offline`).
     pub async fn reload_config(&self) -> AuthState {
         if self.vault.get().is_none() {
             return self.signed_out(None);

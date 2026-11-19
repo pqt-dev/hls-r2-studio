@@ -10,9 +10,10 @@ use serde_json::{Map, Value};
 
 use crate::api::logs::LogType;
 use crate::api::videos::{
-    normalize_video_title, VideoSort, MAX_BULK_DELETE, MAX_TITLE_CHARS, STATUS_FILTERS,
+    normalize_video_title, VideoSort, MAX_BULK_DELETE, MAX_TITLE_CHARS, MAX_VIDEOS_PER_PAGE,
+    STATUS_FILTERS,
 };
-use crate::dto::{CopyKind, VideoLinkKind};
+use crate::dto::VideoLinkKind;
 use crate::secure::Secret;
 use crate::settings::SettingsPatch;
 
@@ -198,7 +199,6 @@ pub fn parse_login(payload: Option<Value>) -> Result<LoginInput> {
 
 pub const MAX_ADD_PATHS: usize = 1000;
 pub const MAX_PATH_LENGTH: usize = 4096;
-const COPY_KINDS: &[&str] = &["embed-url", "shortcode"];
 
 /// `parseSettingsPatch`: only `tmpRoot` and `maxConcurrent` are accepted, so a `siteUrl` (or any
 /// other key) is rejected. Value rules (writable folder, 1..2) stay in the settings service.
@@ -232,21 +232,8 @@ pub fn parse_add_paths(payload: Option<Value>) -> Result<Vec<String>> {
     expect_string_array(object.get("paths"), "paths", MAX_ADD_PATHS, MAX_PATH_LENGTH)
 }
 
-/// `jobs:copy`: `{ id, kind }` where kind is `embed-url` or `shortcode`.
-pub fn parse_copy(payload: Option<Value>) -> Result<(String, CopyKind)> {
-    let object = expect_single_object(payload, "copy", &["id", "kind"])?;
-    let id = expect_job_id(object.get("id"), "id")?;
-    let kind = match expect_one_of(object.get("kind"), "kind", COPY_KINDS)? {
-        "embed-url" => CopyKind::EmbedUrl,
-        _ => CopyKind::Shortcode,
-    };
-
-    Ok((id, kind))
-}
-
 pub const DEFAULT_VIDEOS_PAGE: u32 = 1;
 pub const DEFAULT_VIDEOS_PER_PAGE: u32 = 24;
-pub const MAX_VIDEOS_PER_PAGE: u32 = 50;
 pub const MAX_VIDEOS_QUERY_LENGTH: usize = 100;
 /// Largest integer a JS number holds exactly (the server id is a PHP integer).
 const VIDEO_LINK_KINDS: &[&str] = &[
@@ -675,31 +662,6 @@ mod tests {
             Some(json!({ "paths": ["a".repeat(4097)] })),
         ] {
             assert!(parse_add_paths(bad.clone()).is_err());
-        }
-    }
-
-    #[test]
-    fn copy_validates_id_and_kind() {
-        assert_eq!(
-            parse_copy(Some(json!({ "id": "a", "kind": "shortcode" }))).unwrap(),
-            ("a".to_string(), CopyKind::Shortcode)
-        );
-        assert_eq!(
-            parse_copy(Some(json!({ "id": "a", "kind": "embed-url" })))
-                .unwrap()
-                .1,
-            CopyKind::EmbedUrl
-        );
-
-        for bad in [
-            None,
-            Some(json!({ "id": "a" })),
-            Some(json!({ "id": "a", "kind": "other" })),
-            Some(json!({ "id": "a", "kind": 1 })),
-            Some(json!({ "id": "a b", "kind": "shortcode" })),
-            Some(json!({ "id": "a", "kind": "shortcode", "evil": 1 })),
-        ] {
-            assert!(parse_copy(bad.clone()).is_err(), "{bad:?}");
         }
     }
 

@@ -1,38 +1,10 @@
 //! Frontend-free end-to-end smoke test: the same plain functions the Tauri commands call
-//! (`ipc::add_paths`, `ipc::job_action`, `ipc::open_embed`, `ipc::copy`) over the real queue with
+//! (`ipc::add_paths`, `ipc::job_action`) over the real queue with
 //! a fake pipeline, store and clock. No Tauri runtime, no window, no network, no ffmpeg.
 
-use std::sync::Mutex;
-
-use async_trait::async_trait;
-
 use super::testing::*;
-use crate::dto::{ActionResult, CopyKind, JobState};
-use crate::ipc::{add_paths, copy, job_action, open_embed, JobAction, JobsDesktop};
-use crate::logger::testing::RecordingLogger;
-
-#[derive(Default)]
-struct Desktop {
-    clipboard: Mutex<Vec<String>>,
-    opened: Mutex<Vec<String>>,
-}
-
-#[async_trait]
-impl JobsDesktop for Desktop {
-    async fn pick_video_files(&self) -> Option<Vec<String>> {
-        None
-    }
-
-    fn write_clipboard(&self, text: &str) -> Result<(), String> {
-        self.clipboard.lock().unwrap().push(text.to_string());
-        Ok(())
-    }
-
-    fn open_external(&self, url: &str) -> Result<(), String> {
-        self.opened.lock().unwrap().push(url.to_string());
-        Ok(())
-    }
-}
+use crate::dto::{ActionResult, JobState};
+use crate::ipc::{add_paths, job_action, JobAction};
 
 fn harness() -> Harness {
     Harness::with(|o| {
@@ -60,26 +32,6 @@ async fn add_run_done_then_open_and_copy() {
     assert_eq!(dto.state, JobState::Done);
     assert!(dto.can_remove && !dto.can_cancel);
 
-    let desktop = Desktop::default();
-    let logger = RecordingLogger::default();
-    let id = h.job("job-1").public_id.unwrap();
-
-    assert_eq!(
-        open_embed(&h.queue, &desktop, Some(SITE), "job-1", &logger),
-        ActionResult::Ok
-    );
-    assert_eq!(
-        *desktop.opened.lock().unwrap(),
-        [format!("{SITE}/embed/{id}")]
-    );
-    assert_eq!(
-        copy(&h.queue, &desktop, "job-1", CopyKind::Shortcode, &logger),
-        ActionResult::Ok
-    );
-    assert_eq!(
-        *desktop.clipboard.lock().unwrap(),
-        [format!("[hls_embed_vl id=\"{id}\"]")]
-    );
     assert_eq!(
         job_action(&h.queue, JobAction::Remove, "job-1").await,
         ActionResult::Ok

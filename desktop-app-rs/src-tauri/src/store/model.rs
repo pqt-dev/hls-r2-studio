@@ -89,6 +89,11 @@ pub struct JobRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub mode: Option<JobMode>,
     pub registered: Option<Value>,
+    /// Public URL of the generated thumbnail, stored when the job finished (built from the
+    /// register payload and the R2 public base the app already had; no request). Absent for
+    /// jobs finished before this field existed: they are never backfilled from the server.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail_url: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -169,6 +174,30 @@ mod tests {
         );
         assert_eq!(record.state, JobState::UploadInterrupted);
         assert_eq!(serde_json::to_value(&record).unwrap(), electron_record());
+    }
+
+    #[test]
+    fn thumbnail_url_is_optional_and_round_trips() {
+        // An old record (no field) loads unchanged and writes back without it.
+        let old: JobRecord = serde_json::from_value(electron_record()).unwrap();
+
+        assert_eq!(old.thumbnail_url, None);
+        assert!(serde_json::to_value(&old)
+            .unwrap()
+            .get("thumbnailUrl")
+            .is_none());
+
+        let mut stored = electron_record();
+
+        stored["thumbnailUrl"] = json!("https://cdn.example.com/a/thumbnail.jpg");
+
+        let record: JobRecord = serde_json::from_value(stored.clone()).unwrap();
+
+        assert_eq!(
+            record.thumbnail_url.as_deref(),
+            Some("https://cdn.example.com/a/thumbnail.jpg")
+        );
+        assert_eq!(serde_json::to_value(&record).unwrap(), stored);
     }
 
     #[test]

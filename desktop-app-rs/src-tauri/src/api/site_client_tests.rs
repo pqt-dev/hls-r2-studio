@@ -10,7 +10,9 @@ use super::*;
 use crate::api::app_config::Resolution;
 use crate::api::logs::{LogType, LogsReply};
 use crate::api::test_server::{closed_port_url, Recorded, Reply, TestServer};
-use crate::api::videos::{BulkDeleteOutcome, DeleteStatus, VideoSort, VideoStatus};
+use crate::api::videos::{
+    BulkDeleteOutcome, DeleteStatus, VideoSort, VideoStatus, MAX_VIDEOS_PER_PAGE,
+};
 use crate::logger::testing::RecordingLogger;
 
 fn config_body() -> Value {
@@ -957,6 +959,47 @@ async fn list_videos_sends_the_sort_only_when_it_is_not_the_default() {
         calls[1].path,
         "/api/app/videos?page=1&per_page=24&sort=size_desc"
     );
+}
+
+#[tokio::test]
+async fn list_videos_rejects_a_per_page_outside_the_contract_without_a_request() {
+    let t = setup(|_| {
+        Reply::json(
+            200,
+            json!({ "data": [], "meta": { "page": 1, "per_page": 24, "total": 0, "last_page": 1 } }),
+        )
+    })
+    .await;
+
+    for per_page in [0, MAX_VIDEOS_PER_PAGE + 1, u32::MAX] {
+        let error = t
+            .client
+            .list_videos(1, per_page, None, VideoSort::Newest, None)
+            .await
+            .unwrap_err();
+
+        assert_eq!(
+            error.code.as_deref(),
+            Some("invalid_per_page"),
+            "{per_page}"
+        );
+        assert_eq!(error.status, None);
+    }
+
+    assert!(t.server.requests().is_empty());
+
+    // Both ends of the range are sent as given.
+    for per_page in [1, MAX_VIDEOS_PER_PAGE] {
+        t.client
+            .list_videos(1, per_page, None, VideoSort::Newest, None)
+            .await
+            .unwrap();
+    }
+
+    let calls = t.server.requests();
+
+    assert_eq!(calls[0].path, "/api/app/videos?page=1&per_page=1");
+    assert_eq!(calls[1].path, "/api/app/videos?page=1&per_page=50");
 }
 
 #[tokio::test]

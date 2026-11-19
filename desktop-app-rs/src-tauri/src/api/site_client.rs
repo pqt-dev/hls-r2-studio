@@ -30,7 +30,7 @@ use super::logs::{LogType, LogsPage, LogsReply, LogsSummary};
 use super::overview::Overview;
 use super::videos::{
     clean_url, normalize_video_title, BulkDeleteOutcome, VideoDeleteOutcome, VideoDetail,
-    VideoPage, VideoSort, MAX_BULK_DELETE, MAX_LIST_ITEMS, TITLE_INVALID,
+    VideoPage, VideoSort, MAX_BULK_DELETE, MAX_LIST_ITEMS, MAX_VIDEOS_PER_PAGE, TITLE_INVALID,
 };
 use crate::logger::Log;
 use crate::pipeline::register::{
@@ -511,6 +511,8 @@ impl SiteClient {
 
     /// `GET /api/app/videos?page=&per_page=&q=&sort=` (one page of the cloud library). The search
     /// text is URL-encoded and never logged; the answer is parsed, size-capped and sanitized.
+    /// `per_page` must be within `1..=MAX_VIDEOS_PER_PAGE` (the site's contract): anything else is
+    /// a caller bug and fails with `invalid_per_page` before any request is sent (no clamping).
     pub async fn list_videos(
         &self,
         page: u32,
@@ -519,6 +521,13 @@ impl SiteClient {
         sort: VideoSort,
         status: Option<&str>,
     ) -> Result<VideoPage, SiteApiError> {
+        if !(1..=MAX_VIDEOS_PER_PAGE).contains(&per_page) {
+            return Err(SiteApiError::new(format!(
+                "The video list page size must be between 1 and {MAX_VIDEOS_PER_PAGE}."
+            ))
+            .code("invalid_per_page"));
+        }
+
         let path = videos_list_path(page, per_page, query, sort, status);
         let raw = self.send(Method::GET, &path, true, None).await?;
 

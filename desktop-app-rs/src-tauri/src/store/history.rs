@@ -54,6 +54,7 @@ pub(crate) mod tests_support {
             register_started: None,
             mode: None,
             registered: None,
+            thumbnail_url: None,
             extra: Map::new(),
         }
     }

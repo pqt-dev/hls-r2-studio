@@ -61,8 +61,12 @@ use serde::de::IgnoredAny;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use url::Url;
 
-/// The API never returns more than 50 items per page.
-pub const MAX_LIST_ITEMS: usize = 50;
+/// Largest `per_page` of `GET /api/app/videos`. The site validates `per_page` to 1..=50
+/// (`Api\App\VideoController`) and answers HTTP 422 beyond it. This is the single definition of
+/// the limit: `SiteClient::list_videos` enforces it, callers never hardcode it.
+pub const MAX_VIDEOS_PER_PAGE: u32 = 50;
+/// The API never returns more than `MAX_VIDEOS_PER_PAGE` items per page.
+pub const MAX_LIST_ITEMS: usize = MAX_VIDEOS_PER_PAGE as usize;
 
 const MAX_SHORT: usize = 64;
 const MAX_TEXT: usize = 512;

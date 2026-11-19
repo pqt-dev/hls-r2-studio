@@ -35,12 +35,13 @@ use tokio_util::sync::CancellationToken;
 
 use super::backend::{QueueBackend, QueueContext, RunOutcome};
 use super::file_validation::{validate_video_path, PathStyle, REASON_DUPLICATE};
-use super::job_dto::{has_register_payload, registered_video_id, to_job_dto, JobRuntimeInfo};
+use super::job_dto::{has_register_payload, to_job_dto, JobRuntimeInfo};
 use super::states::{
     is_attention_state, is_final_state, is_paused_upload, is_retryable_state, is_running_state,
 };
-use crate::api::video_links::{VideoLinkCache, VideoLinks};
+use crate::api::video_links::VideoLinks;
 use crate::api::AppConfig;
+use crate::desktop::safe_https_url;
 use crate::dto::{
     ActionResult, AuthState, AuthStatus, JobDto, JobState, QueueSummary, RejectedFile,
 };
@@ -114,9 +115,6 @@ pub struct JobQueueOptions {
     pub throttle: Duration,
     /// Max wait for running jobs to clean up on shutdown.
     pub shutdown_timeout: Duration,
-    /// Remembered video links (shared with the Videos screens); gives finished jobs their
-    /// thumbnail URL and receives the links of a video as soon as it is registered.
-    pub video_links: Option<Arc<VideoLinkCache>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -219,7 +217,6 @@ pub struct JobQueue {
     runtime: Handle,
     throttle_ms: i64,
     shutdown_timeout: Duration,
-    video_links: Option<Arc<VideoLinkCache>>,
     state: Mutex<QueueState>,
     /// Orders event emission; holds the last summary sent.
     emit_order: Mutex<Option<QueueSummary>>,
@@ -255,7 +252,6 @@ impl JobQueue {
             runtime: options.runtime,
             throttle_ms: i64::try_from(options.throttle.as_millis()).unwrap_or(i64::MAX),
             shutdown_timeout: options.shutdown_timeout,
-            video_links: options.video_links,
             state: Mutex::new(QueueState::default()),
             emit_order: Mutex::new(None),
             listeners: Mutex::new(Listeners::default()),
@@ -351,30 +347,14 @@ impl JobQueue {
         listeners.summaries.retain(|(i, _)| *i != id);
     }
 
-    /// The thumbnail URL the link cache remembers for the job's registered video (memory only,
-    /// no request).
-    fn remembered_thumbnail(&self, job: &JobRecord) -> Option<String> {
-        let id = registered_video_id(job)?;
-
-        self.video_links.as_ref()?.get(id)?.thumbnail_url
-    }
-
-    /// Emits the current jobs to the listeners again (e.g. after the link cache was filled).
-    pub fn notify_changed(&self) {
-        self.changed(None);
-    }
-
     fn runtime_info(
         &self,
         st: &QueueState,
         job: &JobRecord,
         reason: &Option<String>,
     ) -> JobRuntimeInfo {
-        let thumbnail_url = self.remembered_thumbnail(job);
-
         match st.runtimes.get(&job.id) {
             Some(rt) => JobRuntimeInfo {
-                thumbnail_url,
                 running: true,
                 cancel_requested: rt.cancel.is_cancelled(),
                 progress: Some(rt.progress),
@@ -383,7 +363,6 @@ impl JobQueue {
                 network_wait_since: rt.network_wait_since,
             },
             None => JobRuntimeInfo {
-                thumbnail_url,
                 waiting_reason: reason.clone(),
                 ..JobRuntimeInfo::default()
             },
@@ -993,6 +972,7 @@ impl JobQueue {
                         register_started: None,
                         mode: None,
                         registered: None,
+                        thumbnail_url: None,
                         extra: Map::new(),
                     })
                     .collect();
@@ -1333,11 +1313,13 @@ impl JobQueue {
 
             let now = self.iso();
             let registered = serde_json::to_value(&result.registered).ok();
+            let thumbnail_url = self.completed_thumbnail_url(&result);
 
             self.store.update(|d| {
                 if let Some(job) = d.jobs.iter_mut().find(|j| j.id == id) {
                     job.state = JobState::Done;
                     job.registered = registered;
+                    job.thumbnail_url = thumbnail_url;
                     job.prefix = Some(result.prefix.clone());
                     job.public_id = Some(result.registered.public_id.clone());
                     job.set_register_payload(None);
@@ -1354,28 +1336,22 @@ impl JobQueue {
             });
         }
 
-        self.remember_links(&result);
         self.logger.info("Job done", Some(json!({ "id": id })));
         self.changed(None);
     }
 
-    /// Puts the links of the video that was just registered into the cache (a new upload then
-    /// has its thumbnail at once). An existing entry (e.g. from a detail) is kept.
-    fn remember_links(&self, result: &PipelineResult) {
-        let Some(cache) = &self.video_links else {
-            return;
-        };
-
-        if result.registered.id <= 0 || cache.get(result.registered.id).is_some() {
-            return;
-        }
-
+    /// Public URL of the thumbnail of the video that was just registered, for the job record
+    /// (the Queue shows it from there and never asks the site). Built from the register payload
+    /// and the R2 public base the app already holds, and validated; `None` when either is
+    /// missing. Jobs finished before this field existed keep `None` (no backfill from the
+    /// server).
+    fn completed_thumbnail_url(&self, result: &PipelineResult) -> Option<String> {
         let r2_base = self.ctx.config().map(|config| config.r2.url);
 
-        cache.put(
-            result.registered.id,
-            VideoLinks::from_registered(&result.registered, &result.payload, r2_base.as_deref()),
-        );
+        VideoLinks::from_registered(&result.registered, &result.payload, r2_base.as_deref())
+            .thumbnail_url
+            .as_deref()
+            .and_then(safe_https_url)
     }
 
     async fn on_failure(self: &Arc<Self>, id: &str, seq: u64, failure: RunFailure) {

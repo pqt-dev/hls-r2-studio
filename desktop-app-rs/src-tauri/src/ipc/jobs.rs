@@ -3,26 +3,17 @@
 //! handler function below; the handlers take the queue and a `JobsDesktop` (dialog, clipboard,
 //! browser) so they are tested without Tauri.
 
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tauri::{Manager, Runtime, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use super::auth::rejected;
-use super::validate::{
-    expect_no_args, parse_add_paths, parse_copy, parse_job_id_payload, VideosListInput,
-    MAX_ADD_PATHS,
-};
-use super::videos::{list_videos, VideosListResult};
+use super::validate::{expect_no_args, parse_add_paths, parse_job_id_payload, MAX_ADD_PATHS};
 use super::IpcError;
-use crate::api::videos::VideoSort;
-use crate::desktop::{is_embed_url_of_site, open_external_https};
-use crate::dto::{ActionResult, AddFilesResult, AuthStatus, CopyKind, JobDto};
-use crate::logger::Log;
-use crate::queue::job_dto::registered_field;
+use crate::dto::{ActionResult, AddFilesResult, JobDto};
 use crate::queue::{JobQueue, VIDEO_EXTENSIONS};
 use crate::state::AppState;
 use crate::window::MAIN_WINDOW_LABEL;
@@ -30,7 +21,6 @@ use crate::window::MAIN_WINDOW_LABEL;
 pub const NO_EMBED_URL: &str = "This video has no direct URL yet.";
 pub const FOREIGN_EMBED_URL: &str = "The direct URL does not belong to the signed-in site.";
 pub const OPEN_FAILED: &str = "Could not open the link.";
-pub const NOT_REGISTERED: &str = "This video is not registered yet.";
 pub const INVALID_VIDEO_ID: &str = "The video ID is not valid.";
 pub const CLIPBOARD_FAILED: &str = "Could not copy to the clipboard.";
 
@@ -100,36 +90,6 @@ pub async fn job_action(queue: &Arc<JobQueue>, action: JobAction, id: &str) -> A
     }
 }
 
-/// Opens the embed URL of a registered video, only when it is https on the signed-in site.
-pub fn open_embed(
-    queue: &JobQueue,
-    desktop: &dyn JobsDesktop,
-    site_url: Option<&str>,
-    id: &str,
-    logger: &dyn Log,
-) -> ActionResult {
-    let job = queue.get_job(id);
-    let Some(embed_url) = job.as_ref().and_then(|j| registered_field(j, "embed_url")) else {
-        return ActionResult::err(NO_EMBED_URL);
-    };
-
-    if !is_embed_url_of_site(embed_url, site_url) {
-        return ActionResult::err(FOREIGN_EMBED_URL);
-    }
-
-    match open_external_https(embed_url, |url| desktop.open_external(url)) {
-        Ok(true) => ActionResult::Ok,
-        Ok(false) => ActionResult::err(OPEN_FAILED),
-        Err(error) => {
-            logger.warn(
-                "Could not open the direct URL",
-                Some(json!({ "error": error })),
-            );
-            ActionResult::err(OPEN_FAILED)
-        }
-    }
-}
-
 /// The id ends up inside a quoted shortcode attribute: keep it strictly `[a-z0-9]{1,32}`.
 fn is_friendly_id(id: &str) -> bool {
     (1..=32).contains(&id.len())
@@ -142,44 +102,6 @@ fn is_friendly_id(id: &str) -> bool {
 /// strictly `[a-z0-9]{1,32}`. Shared by the Queue copy and the Library quick action.
 pub(super) fn embed_shortcode(public_id: &str) -> Option<String> {
     is_friendly_id(public_id).then(|| format!("[hls_embed_vl id=\"{public_id}\"]"))
-}
-
-/// Copies the embed URL or the `[hls_embed_vl id="..."]` shortcode of a registered video.
-pub fn copy(
-    queue: &JobQueue,
-    desktop: &dyn JobsDesktop,
-    id: &str,
-    kind: CopyKind,
-    logger: &dyn Log,
-) -> ActionResult {
-    let job = queue.get_job(id);
-    let registered = job.as_ref().and_then(|j| {
-        Some((
-            registered_field(j, "embed_url")?,
-            registered_field(j, "public_id")?,
-        ))
-    });
-    let Some((embed_url, public_id)) = registered else {
-        return ActionResult::err(NOT_REGISTERED);
-    };
-    let text = match kind {
-        CopyKind::EmbedUrl => embed_url.to_string(),
-        CopyKind::Shortcode => match embed_shortcode(public_id) {
-            Some(shortcode) => shortcode,
-            None => return ActionResult::err(INVALID_VIDEO_ID),
-        },
-    };
-
-    match desktop.write_clipboard(&text) {
-        Ok(()) => ActionResult::Ok,
-        Err(error) => {
-            logger.warn(
-                "Could not write the clipboard",
-                Some(json!({ "error": error })),
-            );
-            ActionResult::err(CLIPBOARD_FAILED)
-        }
-    }
 }
 
 /// The built-in site origin; the only host embed links may open (`auth.getSiteUrl()`).
@@ -269,53 +191,7 @@ pub fn jobs_list(
 ) -> Result<Vec<JobDto>, IpcError> {
     expect_no_args(payload.as_ref()).map_err(|e| rejected(&state, "jobs:list", e))?;
 
-    let jobs = state.queue.list();
-
-    start_thumbnail_prefetch(&state, &jobs);
-
-    Ok(jobs)
-}
-
-/// Per page of the one-off prefetch (the newest videos of the site).
-const PREFETCH_PER_PAGE: u32 = 100;
-
-/// True when a finished job knows its video but has no thumbnail URL yet.
-pub(crate) fn needs_thumbnail_prefetch(jobs: &[JobDto]) -> bool {
-    jobs.iter()
-        .any(|job| job.video_id.is_some() && job.thumbnail_url.is_none())
-}
-
-/// Fills the link cache once per signed-in session when finished jobs lack a thumbnail (older
-/// history, cache cleared): ONE request for the newest page of videos, fire and forget, then the
-/// jobs are emitted again. Never one request per job.
-fn start_thumbnail_prefetch(state: &AppState, jobs: &[JobDto]) {
-    if !needs_thumbnail_prefetch(jobs)
-        || state.auth.get_state().status != AuthStatus::SignedIn
-        || state.thumbnails_prefetched.swap(true, Ordering::SeqCst)
-    {
-        return;
-    }
-
-    let client = Arc::clone(&state.site_client);
-    let cache = Arc::clone(&state.video_links);
-    let queue = Arc::clone(&state.queue);
-    let r2_base = state.config.r2_public_url();
-
-    tauri::async_runtime::spawn(async move {
-        let input = VideosListInput {
-            page: 1,
-            per_page: PREFETCH_PER_PAGE,
-            query: None,
-            sort: VideoSort::Newest,
-            status: None,
-        };
-
-        if let VideosListResult::Ok { .. } =
-            list_videos(&client, input, r2_base.as_deref(), &cache).await
-        {
-            queue.notify_changed();
-        }
-    });
+    Ok(state.queue.list())
 }
 
 #[tauri::command]
@@ -408,79 +284,13 @@ pub fn jobs_clear_finished(
     Ok(state.queue.clear_finished())
 }
 
-/// Off the main thread: the OS call may take a moment.
-#[tauri::command(async)]
-pub fn jobs_open_embed<R: Runtime>(
-    window: WebviewWindow<R>,
-    state: State<'_, AppState>,
-    payload: Option<Value>,
-) -> Result<ActionResult, IpcError> {
-    let id = parse_job_id_payload(payload, "open-embed")
-        .map_err(|e| rejected(&state, "jobs:open-embed", e))?;
-
-    Ok(open_embed(
-        &state.queue,
-        &TauriJobsDesktop { window },
-        site_url(&state).as_deref(),
-        &id,
-        &*state.logger,
-    ))
-}
-
-#[tauri::command(async)]
-pub fn jobs_copy<R: Runtime>(
-    window: WebviewWindow<R>,
-    state: State<'_, AppState>,
-    payload: Option<Value>,
-) -> Result<ActionResult, IpcError> {
-    let (id, kind) = parse_copy(payload).map_err(|e| rejected(&state, "jobs:copy", e))?;
-
-    Ok(copy(
-        &state.queue,
-        &TauriJobsDesktop { window },
-        &id,
-        kind,
-        &*state.logger,
-    ))
-}
-
 #[cfg(test)]
 pub(super) mod tests {
     use std::sync::Mutex;
 
-    use serde_json::json;
-
     use super::*;
     use crate::dto::JobState;
-    use crate::logger::testing::RecordingLogger;
-    use crate::queue::file_validation::PathStyle;
-    use crate::queue::job_dto::{to_job_dto, JobRuntimeInfo};
-    use crate::queue::testing::{record, signed_out, Harness};
-
-    #[test]
-    fn prefetch_is_needed_only_for_registered_jobs_without_a_thumbnail() {
-        let mut done = crate::store::history::tests_support::job("d", JobState::Done);
-        let dto = |record: &crate::store::JobRecord, thumbnail: Option<&str>| {
-            let info = JobRuntimeInfo {
-                thumbnail_url: thumbnail.map(str::to_string),
-                ..JobRuntimeInfo::default()
-            };
-
-            to_job_dto(record, &info, PathStyle::Posix)
-        };
-
-        assert!(!needs_thumbnail_prefetch(&[dto(&done, None)]));
-        done.registered = Some(json!({ "id": 3, "public_id": "p", "embed_url": EMBED }));
-        assert!(needs_thumbnail_prefetch(&[dto(&done, None)]));
-        assert!(!needs_thumbnail_prefetch(&[dto(
-            &done,
-            Some("https://cdn.example.com/t.jpg")
-        )]));
-        assert!(!needs_thumbnail_prefetch(&[]));
-    }
-
-    const EMBED: &str = "https://site.example.com/embed/abc123";
-    const SITE: Option<&str> = Some("https://site.example.com");
+    use crate::queue::testing::{signed_out, Harness};
 
     /// Shared with the videos tests (`ipc/videos.rs`).
     #[derive(Default)]
@@ -515,13 +325,6 @@ pub(super) mod tests {
             self.opened.lock().unwrap().push(url.to_string());
             Ok(())
         }
-    }
-
-    fn registered_job(embed: &str, public_id: &str) -> crate::store::JobRecord {
-        let mut job = record("j1", JobState::Done);
-        job.public_id = Some(public_id.into());
-        job.registered = Some(json!({ "id": 1, "public_id": public_id, "embed_url": embed }));
-        job
     }
 
     fn harness_with(job: Option<crate::store::JobRecord>) -> Harness {
@@ -649,118 +452,6 @@ pub(super) mod tests {
             ActionResult::Ok
         );
         assert!(h.queue.list().is_empty());
-    }
-
-    #[tokio::test]
-    async fn copy_writes_the_embed_url_or_the_shortcode() {
-        let h = harness_with(Some(registered_job(EMBED, "abc123")));
-        let desktop = FakeDesktop::default();
-        let log = RecordingLogger::default();
-
-        assert_eq!(
-            copy(&h.queue, &desktop, "j1", CopyKind::EmbedUrl, &log),
-            ActionResult::Ok
-        );
-        assert_eq!(
-            copy(&h.queue, &desktop, "j1", CopyKind::Shortcode, &log),
-            ActionResult::Ok
-        );
-        assert_eq!(
-            *desktop.clipboard.lock().unwrap(),
-            [EMBED, "[hls_embed_vl id=\"abc123\"]"]
-        );
-    }
-
-    #[tokio::test]
-    async fn copy_refuses_unregistered_jobs_and_unsafe_public_ids() {
-        let log = RecordingLogger::default();
-        let mut unregistered = registered_job(EMBED, "abc123");
-        unregistered.registered = None;
-        let none = harness_with(Some(unregistered));
-        let desktop = FakeDesktop::default();
-
-        assert_eq!(
-            copy(&none.queue, &desktop, "j1", CopyKind::EmbedUrl, &log),
-            ActionResult::err(NOT_REGISTERED)
-        );
-
-        let unsafe_id = harness_with(Some(registered_job(EMBED, "a\"b")));
-        assert_eq!(
-            copy(&unsafe_id.queue, &desktop, "j1", CopyKind::Shortcode, &log),
-            ActionResult::err(INVALID_VIDEO_ID)
-        );
-        assert!(desktop.clipboard.lock().unwrap().is_empty());
-
-        let missing = harness_with(None);
-        assert_eq!(
-            copy(&missing.queue, &desktop, "zz", CopyKind::EmbedUrl, &log),
-            ActionResult::err(NOT_REGISTERED)
-        );
-
-        let failing = FakeDesktop {
-            clipboard_fails: true,
-            ..FakeDesktop::default()
-        };
-        let ok = harness_with(Some(registered_job(EMBED, "abc123")));
-        assert_eq!(
-            copy(&ok.queue, &failing, "j1", CopyKind::EmbedUrl, &log),
-            ActionResult::err(CLIPBOARD_FAILED)
-        );
-    }
-
-    #[tokio::test]
-    async fn open_embed_opens_an_https_embed_url_of_the_signed_in_site_only() {
-        let log = RecordingLogger::default();
-        let ok = harness_with(Some(registered_job(EMBED, "abc123")));
-        let desktop = FakeDesktop::default();
-
-        assert_eq!(
-            open_embed(&ok.queue, &desktop, SITE, "j1", &log),
-            ActionResult::Ok
-        );
-        assert_eq!(*desktop.opened.lock().unwrap(), [EMBED]);
-
-        let refused = FakeDesktop::default();
-        let cases = [
-            (
-                harness_with(Some(registered_job(
-                    "https://evil.example.com/embed/abc123",
-                    "abc123",
-                ))),
-                SITE,
-                FOREIGN_EMBED_URL,
-            ),
-            (
-                harness_with(Some(registered_job(
-                    "http://site.example.com/embed/abc123",
-                    "abc123",
-                ))),
-                SITE,
-                FOREIGN_EMBED_URL,
-            ),
-            (
-                harness_with(Some(registered_job(EMBED, "abc123"))),
-                None,
-                FOREIGN_EMBED_URL,
-            ),
-            (
-                harness_with(Some(registered_job(
-                    "https://user@site.example.com/embed/abc123",
-                    "abc123",
-                ))),
-                SITE,
-                OPEN_FAILED,
-            ),
-            (harness_with(None), SITE, NO_EMBED_URL),
-        ];
-
-        for (h, site, error) in cases {
-            assert_eq!(
-                open_embed(&h.queue, &refused, site, "j1", &log),
-                ActionResult::err(error)
-            );
-        }
-        assert!(refused.opened.lock().unwrap().is_empty());
     }
 
     #[test]

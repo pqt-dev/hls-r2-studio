@@ -27,9 +27,6 @@ pub struct JobRuntimeInfo {
     pub waiting_for_network: bool,
     /// Epoch ms the current outage started.
     pub network_wait_since: Option<i64>,
-    /// Thumbnail URL Rust remembers for the job's video (link cache); validated before it is
-    /// put on the DTO.
-    pub thumbnail_url: Option<String>,
 }
 
 /// True when the record holds a usable register payload (`Boolean(job.registerPayload)`; a
@@ -37,11 +34,6 @@ pub struct JobRuntimeInfo {
 /// is offered).
 pub fn has_register_payload(job: &JobRecord) -> bool {
     job.register_payload_typed().is_some()
-}
-
-/// `registered.embed_url` / `registered.public_id` of a done job.
-pub fn registered_field<'a>(job: &'a JobRecord, field: &str) -> Option<&'a str> {
-    job.registered.as_ref()?.get(field)?.as_str()
 }
 
 /// `registered.id` (the site's numeric video id) of a done job, when it is a positive integer.
@@ -101,18 +93,10 @@ pub fn to_job_dto(job: &JobRecord, runtime: &JobRuntimeInfo, style: PathStyle) -
             .unwrap_or_else(|| fallback_progress(job.state))
     };
     let has_payload = has_register_payload(job);
-    let public_id = if job.state == JobState::Done {
-        registered_field(job, "public_id")
-            .map(str::to_string)
-            .or_else(|| job.public_id.clone())
-    } else {
-        job.public_id.clone()
-    };
-
     let video_id = registered_video_id(job);
-    let thumbnail_url = video_id
-        .and(runtime.thumbnail_url.as_deref())
-        .and_then(safe_https_url);
+    // Straight from the record (stored at completion); never looked up on the site. Jobs that
+    // finished before the field existed have none and are not backfilled.
+    let thumbnail_url = job.thumbnail_url.as_deref().and_then(safe_https_url);
 
     JobDto {
         id: job.id.clone(),
@@ -134,8 +118,6 @@ pub fn to_job_dto(job: &JobRecord, runtime: &JobRuntimeInfo, style: PathStyle) -
         },
         error_message: job.error_message.clone(),
         error_detail: error_detail_of(job),
-        public_id,
-        embed_url: registered_field(job, "embed_url").map(str::to_string),
         video_id,
         thumbnail_url,
         created_at: job.created_at.clone(),
@@ -188,10 +170,10 @@ mod tests {
         assert!(dto.thumbnail_url.is_none());
 
         // A finished job exposes only the https CDN URL, still no path or prefix.
-        let (mut done, info) = done_with_video(Some("https://cdn.example.com/x/thumbnail.jpg"));
+        let mut done = done_with_thumbnail(Some("https://cdn.example.com/x/thumbnail.jpg"));
         done.source_path = "/home/alice/secret/clip.mp4".into();
         done.prefix = Some("2026/01/01/t-aaaaaaaaaaaa/".into());
-        let dto = to_job_dto(&done, &info, PathStyle::Posix);
+        let dto = to_job_dto(&done, &JobRuntimeInfo::default(), PathStyle::Posix);
         let text = serde_json::to_string(&dto).unwrap();
 
         assert!(dto
@@ -203,24 +185,19 @@ mod tests {
         assert!(!text.contains("2026/01/01"));
     }
 
-    fn done_with_video(thumbnail: Option<&str>) -> (JobRecord, JobRuntimeInfo) {
+    fn done_with_thumbnail(thumbnail: Option<&str>) -> JobRecord {
         let mut done = job("d", JobState::Done);
         done.registered =
             Some(json!({ "id": 9, "public_id": "p", "embed_url": "https://s/embed/p" }));
+        done.thumbnail_url = thumbnail.map(str::to_string);
 
-        (
-            done,
-            JobRuntimeInfo {
-                thumbnail_url: thumbnail.map(str::to_string),
-                ..JobRuntimeInfo::default()
-            },
-        )
+        done
     }
 
     #[test]
-    fn thumbnail_url_is_a_safe_https_url_or_absent() {
-        let (done, info) = done_with_video(Some("https://cdn.example.com/a/thumbnail.jpg"));
-        let dto = to_job_dto(&done, &info, PathStyle::Posix);
+    fn thumbnail_url_comes_from_the_record_as_a_safe_https_url_or_is_absent() {
+        let done = done_with_thumbnail(Some("https://cdn.example.com/a/thumbnail.jpg"));
+        let dto = to_job_dto(&done, &JobRuntimeInfo::default(), PathStyle::Posix);
 
         assert_eq!(
             dto.thumbnail_url.as_deref(),
@@ -230,39 +207,27 @@ mod tests {
             .unwrap()
             .contains("\"thumbnailUrl\":\"https://cdn.example.com/a/thumbnail.jpg\""));
 
-        // Cache miss: absent and not serialized.
-        let (done, info) = done_with_video(None);
-        let dto = to_job_dto(&done, &info, PathStyle::Posix);
+        // Old job (nothing stored): absent and not serialized.
+        let done = done_with_thumbnail(None);
+        let dto = to_job_dto(&done, &JobRuntimeInfo::default(), PathStyle::Posix);
         assert_eq!(dto.thumbnail_url, None);
         assert!(!serde_json::to_string(&dto)
             .unwrap()
             .contains("thumbnailUrl"));
 
-        // Unsafe values are dropped.
+        // Unsafe stored values are dropped.
         for bad in [
             "http://cdn.example.com/t.jpg",
             "https://user:pw@cdn.example.com/t.jpg",
             "file:///home/alice/t.jpg",
             "/home/alice/t.jpg",
         ] {
-            let (done, info) = done_with_video(Some(bad));
+            let done = done_with_thumbnail(Some(bad));
             assert_eq!(
-                to_job_dto(&done, &info, PathStyle::Posix).thumbnail_url,
+                to_job_dto(&done, &JobRuntimeInfo::default(), PathStyle::Posix).thumbnail_url,
                 None
             );
         }
-
-        // Without a registered video id there is no thumbnail at all.
-        let mut no_id = job("n", JobState::Waiting);
-        no_id.registered = None;
-        let info = JobRuntimeInfo {
-            thumbnail_url: Some("https://cdn.example.com/t.jpg".into()),
-            ..JobRuntimeInfo::default()
-        };
-        assert_eq!(
-            to_job_dto(&no_id, &info, PathStyle::Posix).thumbnail_url,
-            None
-        );
     }
 
     #[test]
@@ -274,8 +239,6 @@ mod tests {
         let dto = to_job_dto(&done, &JobRuntimeInfo::default(), PathStyle::Posix);
 
         assert_eq!(dto.progress, 100.0);
-        assert_eq!(dto.public_id.as_deref(), Some("newid"));
-        assert_eq!(dto.embed_url.as_deref(), Some("https://s/embed/newid"));
         assert_eq!(dto.video_id, Some(1));
 
         // Without a usable id the field is absent (and not serialized).

@@ -395,12 +395,68 @@ async fn done_stores_the_registered_video_and_clears_the_payload() {
 
     let dto = &h.queue.list()[0];
     assert_eq!(dto.progress, 100.0);
-    assert_eq!(
-        dto.embed_url.as_deref(),
-        Some("https://site.example.com/embed/pub000000001")
-    );
     assert!(dto.can_remove && !dto.can_cancel);
     assert!(!h.queue.has_active_jobs());
+}
+
+/// Resolves the first run with a payload that has `thumbnail_path` set as given.
+async fn finish_with_thumbnail(h: &Harness, thumbnail_path: Option<&str>) {
+    let mut payload = payload();
+
+    payload.thumbnail_path = thumbnail_path.map(str::to_string);
+
+    h.run(0).resolve_with(crate::pipeline::run::PipelineResult {
+        registered: crate::pipeline::register::RegisteredVideo {
+            id: 1,
+            public_id: "pub000000001".into(),
+            embed_url: "https://site.example.com/embed/pub000000001".into(),
+        },
+        prefix: "2026/01/01/x-pub000000001/".into(),
+        payload,
+    });
+    flush().await;
+}
+
+#[tokio::test]
+async fn done_stores_a_safe_https_thumbnail_url_built_from_the_payload() {
+    let h = started(vec![("/v/a.mp4", 1)]).await;
+
+    finish_with_thumbnail(&h, Some("2026/01/01/x-pub000000001/thumbnail.jpg")).await;
+
+    let job = h.job("job-1");
+
+    assert_eq!(job.state, JobState::Done);
+    assert_eq!(
+        job.thumbnail_url.as_deref(),
+        Some("https://cdn.example.com/2026/01/01/x-pub000000001/thumbnail.jpg")
+    );
+    // The DTO takes it straight from the record.
+    assert_eq!(
+        h.queue.list()[0].thumbnail_url.as_deref(),
+        job.thumbnail_url.as_deref()
+    );
+}
+
+#[tokio::test]
+async fn done_stores_no_thumbnail_url_without_a_payload_thumbnail() {
+    let h = started(vec![("/v/a.mp4", 1)]).await;
+
+    finish_with_thumbnail(&h, None).await;
+
+    assert_eq!(h.job("job-1").state, JobState::Done);
+    assert_eq!(h.job("job-1").thumbnail_url, None);
+    assert_eq!(h.queue.list()[0].thumbnail_url, None);
+}
+
+#[tokio::test]
+async fn done_stores_no_thumbnail_url_when_the_r2_base_is_missing() {
+    let h = started(vec![("/v/a.mp4", 1)]).await;
+
+    h.set_config(None);
+    finish_with_thumbnail(&h, Some("2026/01/01/x-pub000000001/thumbnail.jpg")).await;
+
+    assert_eq!(h.job("job-1").state, JobState::Done);
+    assert_eq!(h.job("job-1").thumbnail_url, None);
 }
 
 #[tokio::test]

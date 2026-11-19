@@ -2,7 +2,6 @@
 //! thread-safe: the store and logger use internal locks.
 
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock, Weak};
 
 use tokio::runtime::Handle;
@@ -79,9 +78,6 @@ pub struct AppState {
     pub queue: Arc<JobQueue>,
     /// What the video list and detail returned, for instant Copy / Open (cleared on sign-out).
     pub video_links: Arc<VideoLinkCache>,
-    /// Set once the one-off background fill of the link cache for finished jobs was started in
-    /// this signed-in session (reset on sign-out).
-    pub thumbnails_prefetched: Arc<AtomicBool>,
 }
 
 impl AppState {
@@ -189,12 +185,7 @@ impl AppState {
         // Remembered links are dropped whenever the session ends (logout, 401, expired session).
         let video_links = Arc::new(VideoLinkCache::default());
         let cache_to_clear = Arc::clone(&video_links);
-        let thumbnails_prefetched = Arc::new(AtomicBool::new(false));
-        let prefetch_to_reset = Arc::clone(&thumbnails_prefetched);
-        auth.on_signed_out(Arc::new(move || {
-            cache_to_clear.clear();
-            prefetch_to_reset.store(false, Ordering::SeqCst);
-        }));
+        auth.on_signed_out(Arc::new(move || cache_to_clear.clear()));
 
         // ---- queue (index.ts wiring) ----
         let ffmpeg = Arc::new(FfmpegStatus::new());
@@ -220,7 +211,6 @@ impl AppState {
             runtime,
             throttle: DEFAULT_THROTTLE,
             shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
-            video_links: Some(Arc::clone(&video_links)),
         });
         let _ = queue_slot.set(Arc::downgrade(&queue));
 
@@ -237,7 +227,6 @@ impl AppState {
             ffmpeg,
             queue,
             video_links,
-            thumbnails_prefetched,
         }
     }
 }
@@ -337,12 +326,10 @@ mod tests {
             },
         );
         assert!(state.video_links.get(7).is_some());
-        state.thumbnails_prefetched.store(true, Ordering::SeqCst);
 
         state.auth.logout().await;
 
         assert!(state.video_links.is_empty());
-        assert!(!state.thumbnails_prefetched.load(Ordering::SeqCst));
     }
 
     #[test]
