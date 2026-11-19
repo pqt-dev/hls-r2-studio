@@ -7,6 +7,7 @@
 export const PREF_KEYS = {
     queuePerPage: 'hls.queue.perPage',
     libraryPerPage: 'hls.library.perPage',
+    logsPerPage: 'hls.logs.perPage',
     // Kept from the first release of the view toggle, so saved choices survive the update.
     libraryViewMode: 'hls-r2-studio:library-view',
 } as const;

@@ -74,6 +74,8 @@ export function QuickIconButton({
     className,
     busy = false,
     disabled = false,
+    ariaExpanded,
+    ariaControls,
     onClick,
 }: {
     /** Tooltip (`title`). */
@@ -84,6 +86,9 @@ export function QuickIconButton({
     busy?: boolean;
     /** The whole row is inert: the button is disabled and leaves the tab order. */
     disabled?: boolean;
+    /** For a button that toggles a region (Logs "Details"). */
+    ariaExpanded?: boolean;
+    ariaControls?: string;
     onClick: () => void;
 }) {
     return (
@@ -91,6 +96,8 @@ export function QuickIconButton({
             type="button"
             className={className}
             aria-label={ariaLabel}
+            aria-expanded={ariaExpanded}
+            aria-controls={ariaControls}
             title={label}
             aria-busy={busy}
             disabled={busy || disabled}

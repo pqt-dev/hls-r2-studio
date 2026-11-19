@@ -10,6 +10,7 @@ import { GroupHeader } from './GroupHeader';
 import { JobProgress } from './JobProgress';
 import { JobStateChip } from './JobStateChip';
 import { SectionCard } from './SectionCard';
+import { StatTile } from './StatTile';
 import { StatusCountChips } from './StatusCountChips';
 import { VideoMenu } from './VideoMenu';
 import { VideoQuickActions } from './VideoQuickActions';
@@ -105,6 +106,36 @@ describe('StatusCountChips', () => {
         rerender(<StatusCountChips counts={counts} onSelect={onSelect} />);
         await userEvent.click(screen.getByRole('button', { name: '3 done' }));
         expect(onSelect).toHaveBeenCalledWith('done');
+    });
+});
+
+describe('StatTile as a filter', () => {
+    it('is a toggle button with aria-pressed when selected is given', async () => {
+        const onClick = vi.fn();
+
+        render(
+            <StatTile
+                icon={null}
+                value={3}
+                label="Success"
+                actionLabel="show success logs"
+                selected
+                onClick={onClick}
+            />,
+        );
+
+        const button = screen.getByRole('button', { name: 'Success: 3, show success logs' });
+
+        expect(button).toHaveAttribute('aria-pressed', 'true');
+        expect(button).toHaveClass('is-selected');
+        await userEvent.click(button);
+        expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('has no pressed state when selected is omitted', () => {
+        render(<StatTile icon={null} value={3} label="Ready" onClick={() => undefined} />);
+
+        expect(screen.getByRole('button')).not.toHaveAttribute('aria-pressed');
     });
 });
 
@@ -306,7 +337,7 @@ describe('EmptyState', () => {
         expect((await screen.findByText('No videos yet')).closest('.empty-state')).not.toBeNull();
 
         await user.click(screen.getByRole('tab', { name: 'Logs' }));
-        expect((await screen.findByText('No logs yet')).closest('.empty-state')).not.toBeNull();
+        expect((await screen.findByText('No error logs.')).closest('.empty-state')).not.toBeNull();
     });
 });
 
