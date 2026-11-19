@@ -252,27 +252,6 @@ export function fpsTier(fps: number | null | undefined): Tier | null {
     return 5;
 }
 
-/** A frame may be this much smaller than a reference size and still land in its tier. */
-const PIXEL_TOLERANCE = 0.9;
-
-const PIXEL_TIER_MINS = [3840 * 2160, 2560 * 1440, 1920 * 1080, 1280 * 720] as const;
-
-/**
- * Tier of the frame size by total pixels (orientation independent): 4K (3840x2160) 1, 1440p 2,
- * 1080p 3, 720p 4, else 5. Each bound has 10% tolerance for slightly cropped encodes.
- */
-export function resolutionTier(
-    width: number | null | undefined,
-    height: number | null | undefined,
-): Tier | null {
-    if (!validSide(width) || !validSide(height)) return null;
-
-    const pixels = width * height;
-    const index = PIXEL_TIER_MINS.findIndex((min) => pixels >= min * PIXEL_TOLERANCE);
-
-    return (index === -1 ? 5 : index + 1) as Tier;
-}
-
 /**
  * Compact upload time: "Nov 18, 11:59 AM"; the year is added only when it differs from the year
  * of `now` ("Nov 18, 2025, 11:59 AM"). `now` is injected for testing. "" when missing or invalid.

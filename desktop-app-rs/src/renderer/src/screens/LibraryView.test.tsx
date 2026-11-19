@@ -231,6 +231,8 @@ describe('Library List view', () => {
         expect(chips.querySelector('[title="Quality"]')).toHaveTextContent('1080p');
         expect(chips.querySelector('[title="Dimensions"] svg')).not.toBeNull();
         expect(chips.querySelector('[title="Dimensions"]')).toHaveTextContent('1920\u00d71080');
+        expect(chips.querySelector('[title="Dimensions"]')).toHaveClass('chip-tier-3');
+        expect(chips.querySelector('[title="Orientation"]')!.className).not.toMatch(/chip-tier-/);
         expect(chips.querySelector('[title="Bitrate"]')).toHaveTextContent('2400 kbps');
         expect(chips.querySelector('.spec-duration')).toHaveTextContent('1:15');
         expect(chips.querySelector('.spec-size')).toHaveTextContent('62 MB');
@@ -277,7 +279,7 @@ describe('Library List view', () => {
         expect(dims.nextElementSibling).toBe(chip(wide!));
     });
 
-    it('does not add the orientation chip to grid cards', async () => {
+    it('shows the same six chips in the same order on grid cards', async () => {
         window.localStorage.setItem(KEY, 'grid');
         await openLibrary(() =>
             Promise.resolve(ok([makeVideo({ id: 1, title: 'Wide', width: 1920, height: 1080 })])),
@@ -285,8 +287,10 @@ describe('Library List view', () => {
 
         const card = screen.getAllByRole('listitem')[0]!;
 
-        expect(card.querySelector('[title="Orientation"]')).toBeNull();
-        expect(card.textContent).not.toContain('Horizontal');
+        expect(card.querySelector('[title="Orientation"]')).toHaveTextContent('Horizontal');
+        expect(card.querySelector('.video-chips [title="Dimensions"]')!.nextElementSibling).toBe(
+            card.querySelector('[title="Orientation"]'),
+        );
     });
 
     it('falls back to the placeholder when the image fails to load', async () => {

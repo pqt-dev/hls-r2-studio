@@ -64,93 +64,93 @@ describe('Library card details', () => {
         ]);
 
         const [first, second, third] = screen.getAllByRole('listitem');
-        const rowsOf = (row: HTMLElement) =>
-            Array.from(row.querySelectorAll('.video-chips .video-chip-row')) as HTMLElement[];
-        const chipsIn = (rowEl: HTMLElement | undefined) =>
-            Array.from(rowEl?.querySelectorAll('.spec') ?? []) as HTMLElement[];
+        const chipsOf = (row: HTMLElement) =>
+            Array.from(row.querySelectorAll('.video-chips .spec')) as HTMLElement[];
 
-        // Nothing is drawn over the thumbnail any more; the chips live in the text block.
+        // Nothing is drawn over the thumbnail; the chips live in ONE wrapping area in the text block.
         expect(first!.querySelector('.video-media .spec')).toBeNull();
         expect(first!.querySelector('.video-badge')).toBeNull();
-        expect(first!.querySelector('.video-main .video-chips')).not.toBeNull();
+        expect(first!.querySelectorAll('.video-main .video-chips')).toHaveLength(1);
+        expect(first!.querySelector('.video-chip-row')).toBeNull();
 
-        // Row 1: quality, dimensions, bitrate (tiered). Row 2: duration, size, upload time.
-        const [row1, row2] = rowsOf(first!);
+        // Same chips and order as the list row: quality, dimensions, orientation, bitrate, duration, size.
+        const chips = chipsOf(first!);
 
-        expect(rowsOf(first!)).toHaveLength(2);
-        expect(chipsIn(row1).map((chip) => [chip.textContent, chip.className])).toEqual([
-            ['1080p', expect.stringContaining('chip-tier-3')],
-            ['1280\u00d72770', expect.stringContaining('chip-tier-2')],
-            ['2400 kbps', expect.stringContaining('chip-tier-3')],
+        expect(chips.map((chip) => chip.textContent)).toEqual([
+            '1080p',
+            '1280\u00d72770',
+            'Vertical',
+            '2400 kbps',
+            '1:02:05',
+            '62 MB',
         ]);
-        // The resolution chip uses one neutral icon; the dimensions chip follows the orientation.
-        const [qualityChip, dimsChip] = chipsIn(row1);
+        const [qualityChip, dimsChip, orientationChip, bitrateChip, duration, size] = chips;
 
+        // Dimensions carry the quality tier.
+        expect(qualityChip).toHaveClass('chip-tier-3');
+        expect(dimsChip).toHaveClass('chip-tier-3');
+        expect(bitrateChip).toHaveClass('chip-tier-3');
+        expect(orientationChip!.className).not.toMatch(/chip-tier-/);
         expect(qualityChip!.querySelector('svg.icon')).not.toBeNull();
         expect(dimsChip!.querySelector('svg.icon')).toHaveAttribute('data-orientation', 'portrait');
         // Duration and size reuse the Home pills (same classes and icons).
-        const [duration, size, added] = chipsIn(row2);
+        const added = first!.querySelector('.video-tools .video-added');
 
         expect(duration).toHaveClass('spec', 'spec-duration');
-        expect(duration).toHaveTextContent('1:02:05');
         expect(duration!.querySelector('svg.icon')).not.toBeNull();
         expect(size).toHaveClass('spec', 'spec-size');
-        expect(size).toHaveTextContent('62 MB');
         expect(size!.querySelector('svg.icon')).not.toBeNull();
-        expect(added).toHaveClass('spec-date', 'video-added');
-        // The upload time carries a decorative leading upload icon.
-        expect(added!.querySelector('svg.icon[aria-hidden="true"]')).not.toBeNull();
+        // The upload time is plain caption text in the footer: no chip, no icon.
+        expect(added).not.toBeNull();
+        expect(added).not.toHaveClass('spec');
+        expect(added!.querySelector('svg')).toBeNull();
         // Value chips are hidden from assistive tech (the summary below carries them); the date is not.
-        expect(duration).toHaveAttribute('aria-hidden', 'true');
-        expect(row1!.querySelector('.spec')).toHaveAttribute('aria-hidden', 'true');
+        expect(chips.every((chip) => chip.getAttribute('aria-hidden') === 'true')).toBe(true);
         expect(added).not.toHaveAttribute('aria-hidden');
-        expect(chipsIn(rowsOf(third!)[0])[0]).toHaveTextContent('4K');
-        expect(chipsIn(rowsOf(third!)[0])[0]).toHaveClass('chip-tier-1');
+        expect(chipsOf(third!)[0]).toHaveTextContent('4K');
+        expect(chipsOf(third!)[0]).toHaveClass('chip-tier-1');
+        expect(chipsOf(third!)[1]).toHaveClass('chip-tier-1');
 
         // The old plain meta lines and the verbose "Added ..." line are gone.
         expect(first!.textContent).not.toContain('62 MB \u00b7');
         expect(first!.textContent).not.toMatch(/Added /);
 
-        // Missing values have no chip (and no dash); only the upload time chip is left.
-        expect(rowsOf(second!)).toHaveLength(1);
-        expect(chipsIn(rowsOf(second!)[0])).toHaveLength(1);
-        expect(chipsIn(rowsOf(second!)[0])[0]).toHaveClass('video-added');
+        // Missing values have no chip (and no dash): nothing is left to draw.
+        expect(second!.querySelector('.video-chips')).toBeNull();
         expect(within(second!).queryByText('\u2014')).toBeNull();
     });
 
-    it('picks the dimensions icon by orientation and one neutral icon for every resolution chip', async () => {
+    it('uses one neutral icon for the quality chip, whatever the resolution', async () => {
         await openLibrary([
             makeVideo({ id: 1, title: 'Wide', width: 1920, height: 1080 }),
-            makeVideo({ id: 2, title: 'Tall', width: 1280, height: 2770 }),
-            makeVideo({ id: 3, title: 'Small', width: 1280, height: 720 }),
+            makeVideo({ id: 2, title: 'Small', width: 1280, height: 720 }),
         ]);
 
         const rows = screen.getAllByRole('listitem');
-        const chipIcon = (row: HTMLElement, index: number) =>
-            row
-                .querySelectorAll('.video-chip-row[data-row="media"] .spec')
-                [index]!.querySelector('svg.icon')!;
+        const icon = (row: HTMLElement) => row.querySelector('.video-chips .spec svg.icon')!;
+        const path = (row: HTMLElement) => icon(row).querySelector('path')!.getAttribute('d');
 
-        expect(chipIcon(rows[0]!, 1)).toHaveAttribute('data-orientation', 'landscape');
-        expect(chipIcon(rows[1]!, 1)).toHaveAttribute('data-orientation', 'portrait');
-        // The orientation icons use the regular (outline) style like every other icon.
-        expect(chipIcon(rows[0]!, 1)).toHaveClass('icon-regular');
-        expect(chipIcon(rows[0]!, 1)).not.toHaveClass('icon-filled');
-        // The two shapes are different icons.
-        expect(
-            new Set(
-                [0, 1, 2].map((i) =>
-                    chipIcon(rows[i]!, 1).querySelector('path')!.getAttribute('d'),
-                ),
-            ).size,
-        ).toBe(2);
         // 1080p and 720p share the same neutral icon (no HD badge).
-        const path = (row: HTMLElement) =>
-            chipIcon(row, 0).querySelector('path')!.getAttribute('d');
-
-        expect(path(rows[0]!)).toBe(path(rows[2]!));
+        expect(path(rows[0]!)).toBe(path(rows[1]!));
         expect(path(rows[0]!)).toMatch(/^M8\.77 7\.08/);
-        expect(chipIcon(rows[0]!, 0)).not.toHaveAttribute('data-orientation');
+        expect(icon(rows[0]!)).not.toHaveAttribute('data-orientation');
+        expect(icon(rows[0]!)).toHaveClass('icon-regular');
+    });
+
+    it('gives the dimensions chip the quality tier of the same video', async () => {
+        await openLibrary([
+            makeVideo({ id: 1, title: 'Tall', width: 1280, height: 2770 }),
+            makeVideo({ id: 2, title: 'Wide', width: 3840, height: 2160 }),
+            makeVideo({ id: 3, title: 'Small', width: 854, height: 480 }),
+        ]);
+
+        for (const row of screen.getAllByRole('listitem')) {
+            const quality = row.querySelector('.video-chips [title="Quality"]')!;
+            const dims = row.querySelector('.video-chips [title="Dimensions"]')!;
+            const tier = /chip-tier-\d/.exec(quality.className)![0];
+
+            expect(dims).toHaveClass(tier);
+        }
     });
 
     it('exposes the media info once for assistive tech, after the title', async () => {
@@ -174,7 +174,9 @@ describe('Library card details', () => {
         );
 
         expect(summary).not.toBeNull();
-        expect(texts).toContain('1080p, Duration 1:15, 2400 kbps, 30 fps, 1920\u00d71080, 62 MB');
+        expect(texts).toContain(
+            '1080p, Duration 1:15, 2400 kbps, 30 fps, 1920\u00d71080, Horizontal, 62 MB',
+        );
         const title = row!.querySelector('.video-title')!;
 
         expect(
@@ -201,6 +203,7 @@ describe('Library card details', () => {
         const [recent, old] = screen.getAllByRole('listitem');
         const flat = (node: Element | null) => node!.textContent!.replace(/\s/g, ' ');
 
+        expect(recent!.querySelector('.spec-date')).toBeNull();
         expect(flat(recent!.querySelector('.video-added'))).toBe('Jan 5, 11:59 AM');
         expect(flat(old!.querySelector('.video-added'))).toBe('Nov 18, 2001, 11:05 PM');
         expect(recent!.querySelector('.video-added')).toHaveAttribute(
@@ -226,7 +229,7 @@ describe('Library card details', () => {
         expect(pending!.querySelector('.video-open > .chip')).toHaveTextContent('Pending');
     });
 
-    it('reserves two title lines and lines the date up at the bottom of every card', async () => {
+    it('reserves two title lines and keeps the chips at the bottom of the text block', async () => {
         await openLibrary([
             makeVideo({ id: 1, title: 'Short' }),
             makeVideo({ id: 2, title: 'A very long title '.repeat(8) }),
@@ -237,9 +240,32 @@ describe('Library card details', () => {
             const main = row.querySelector('.video-main') as HTMLElement;
 
             expect(main.lastElementChild).toHaveClass('video-chips');
-            expect(main.querySelector('.video-chip-row:last-child .video-added')).not.toBeNull();
             expect(row.querySelector('.video-title')).toBeInTheDocument();
         }
+    });
+
+    it('shows the compact date as plain text left of the three quick buttons in the footer', async () => {
+        await openLibrary([
+            makeVideo({
+                id: 1,
+                title: 'Alpha',
+                thumbnailUrl: 'https://cdn.example.com/a.jpg',
+                createdAt: new Date(2001, 10, 18, 23, 5).toISOString(),
+            }),
+        ]);
+
+        const [card] = screen.getAllByRole('listitem');
+        const tools = card!.querySelector('.video-tools')!;
+        const children = Array.from(tools.children);
+
+        expect(children).toHaveLength(4);
+        expect(children[0]).toHaveClass('video-added');
+        expect(children[0]!.tagName).toBe('SPAN');
+        expect(children.slice(1).every((node) => node !== children[0])).toBe(true);
+        expect(card!.querySelector('.spec-date')).toBeNull();
+        expect(card!.querySelector('.video-chips .video-added')).toBeNull();
+        // The date text appears once.
+        expect(card!.textContent!.match(/Nov 18, 2001/g)).toHaveLength(1);
     });
 
     it('shows every thumbnail in a square frame, whatever the video size', async () => {
@@ -567,8 +593,18 @@ describe('Library loading', () => {
         const skeleton = document.querySelector('.videos-skeleton') as HTMLElement;
 
         expect(skeleton).toHaveAttribute('aria-hidden', 'true');
-        expect(skeleton.querySelectorAll('.video-skeleton').length).toBeGreaterThan(0);
+        expect(skeleton).toHaveClass('videos-skeleton-grid');
+        expect(skeleton.querySelectorAll('.video-skeleton-card').length).toBeGreaterThan(0);
+        expect(skeleton.querySelector('.video-skeleton-row')).toBeNull();
         expect(skeleton.querySelector('.thumb-frame')).not.toBeNull();
+        expect(skeleton.querySelectorAll('.skeleton-chip').length).toBeGreaterThanOrEqual(4);
+        expect(skeleton.querySelectorAll('.skeleton-btn')).toHaveLength(
+            3 * skeleton.querySelectorAll('.video-skeleton-card').length,
+        );
+        const refresh = screen.getByRole('button', { name: 'Refresh' });
+
+        expect(refresh).toHaveAttribute('aria-busy', 'true');
+        expect(refresh).toHaveClass('is-spinning');
         expect(
             screen.getAllByRole('status').some((node) => node.getAttribute('aria-busy') === 'true'),
         ).toBe(true);
@@ -577,6 +613,38 @@ describe('Library loading', () => {
         finish(ok([makeVideo({ title: 'Alpha' })]));
         await screen.findByRole('list', { name: 'Videos' });
         expect(document.querySelector('.videos-skeleton')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute(
+            'aria-busy',
+            'false',
+        );
+        expect(screen.getByRole('button', { name: 'Refresh' })).not.toHaveClass('is-spinning');
+    });
+
+    it('shows list row placeholders with the list header in List mode', async () => {
+        window.localStorage.setItem('hls-r2-studio:library-view', 'list');
+
+        const rendered = await renderApp();
+
+        vi.spyOn(rendered.fake.api.videos, 'list').mockImplementation(
+            () => new Promise<VideosListResult>(() => undefined),
+        );
+        await rendered.user.click(screen.getByRole('tab', { name: 'Library' }));
+
+        const skeleton = document.querySelector('.videos-skeleton') as HTMLElement;
+        const wrap = skeleton.closest('.videos-wrap') as HTMLElement;
+
+        expect(wrap).toHaveAttribute('aria-hidden', 'true');
+        expect(wrap).toHaveClass('is-list');
+        expect(wrap.querySelector('.videos-head')).not.toBeNull();
+        expect(skeleton).toHaveClass('videos-list', 'videos-skeleton-list');
+        expect(skeleton.querySelector('.video-skeleton-card')).toBeNull();
+        expect(skeleton.querySelectorAll('.video-skeleton-row')).toHaveLength(6);
+        expect(skeleton.querySelectorAll('.skeleton-status')).toHaveLength(6);
+        expect(skeleton.querySelectorAll('.skeleton-btn')).toHaveLength(18);
+        expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute(
+            'aria-busy',
+            'true',
+        );
     });
 
     it('marks thumbnails as lazy and async decoded', async () => {

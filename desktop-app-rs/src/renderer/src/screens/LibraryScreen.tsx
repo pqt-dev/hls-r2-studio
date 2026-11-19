@@ -31,7 +31,6 @@ import {
     SearchIcon,
     CloseIcon,
     StorageIcon,
-    UploadedIcon,
     UploadIcon,
 } from '../components/icons';
 import { SelectBox } from '../components/SelectBox';
@@ -56,7 +55,6 @@ import {
     formatResolution,
     plural,
     qualityTier,
-    resolutionTier,
     videoOrientation,
     type Tier,
     type VideoOrientation,
@@ -111,25 +109,82 @@ function listParams(page: number, perPage: number, q: string, sort: VideoSort) {
     };
 }
 
-/** Placeholder cards shown while a page loads (same square media and text bars as a card). */
+function SkeletonTools() {
+    return (
+        <div className="video-tools">
+            <span className="skeleton-bar skeleton-date" />
+            <span className="skeleton-bar skeleton-btn" />
+            <span className="skeleton-bar skeleton-btn" />
+            <span className="skeleton-bar skeleton-btn" />
+        </div>
+    );
+}
+
+/** Five pill placeholders; their widths vary through nth-child rules in CSS (no inline styles). */
+function SkeletonChips() {
+    return (
+        <span className="skeleton-chips">
+            {Array.from({ length: 5 }, (_, index) => (
+                <span key={index} className="skeleton-bar skeleton-chip" />
+            ))}
+        </span>
+    );
+}
+
+/** Placeholder cards for Grid mode: same columns and card anatomy as the real list. */
 function SkeletonGrid({ count }: { count: number }) {
     return (
-        <ul className="videos videos-skeleton" aria-hidden="true">
+        <ul className="videos videos-skeleton videos-skeleton-grid" aria-hidden="true">
             {Array.from({ length: count }, (_, index) => (
-                <li key={index} className="video-row video-skeleton">
-                    <div className="thumb-frame skeleton-block" />
-                    <div className="video-main">
-                        <span className="skeleton-bar skeleton-bar-title" />
-                        <span className="skeleton-chips">
-                            <span className="skeleton-bar skeleton-chip" />
-                            <span className="skeleton-bar skeleton-chip" />
-                            <span className="skeleton-bar skeleton-chip" />
-                        </span>
-                        <span className="skeleton-bar skeleton-bar-short" />
+                <li key={index} className="video-row video-skeleton video-skeleton-card">
+                    <div className="video-open">
+                        <div className="video-media">
+                            <div className="thumb-frame skeleton-block" />
+                        </div>
+                        <div className="video-main">
+                            <span className="skeleton-bar skeleton-bar-title" />
+                            <span className="skeleton-bar skeleton-bar-title skeleton-bar-second" />
+                            <SkeletonChips />
+                        </div>
                     </div>
+                    <SkeletonTools />
                 </li>
             ))}
         </ul>
+    );
+}
+
+/** Placeholder rows for List mode: same header, columns and row look as the real list. */
+function SkeletonList({ count }: { count: number }) {
+    return (
+        <div className="videos-wrap is-list" aria-hidden="true">
+            <div className="videos-head">
+                <span>Preview</span>
+                <span>Title</span>
+                <span className="video-status">Status</span>
+                <span className="video-created">Created</span>
+            </div>
+            <ul className="videos videos-list videos-skeleton videos-skeleton-list">
+                {Array.from({ length: count }, (_, index) => (
+                    <li key={index} className="video-row video-skeleton video-skeleton-row">
+                        <div className="video-open">
+                            <div className="thumb-frame skeleton-block" />
+                            <div className="video-main">
+                                <span className="skeleton-bar skeleton-bar-title" />
+                                <SkeletonChips />
+                            </div>
+                            <span className="skeleton-bar skeleton-status video-status" />
+                            <span className="skeleton-bar skeleton-date video-created" />
+                        </div>
+                        <div className="video-tools">
+                            <span className="skeleton-bar skeleton-btn" />
+                            <span className="skeleton-bar skeleton-btn" />
+                            <span className="skeleton-bar skeleton-btn" />
+                        </div>
+                    </li>
+                ))}
+            </ul>
+        </div>
     );
 }
 
@@ -145,13 +200,13 @@ interface TierChipSpec {
     icon: ReactElement;
 }
 
-/** The tiered media chips (quality, dimensions, bitrate); shared by the grid card and the list row. */
+/** The media chips (quality, dimensions and bitrate, tier-coloured; the orientation chip is neutral); shared by the grid card and the list row. */
 function TierChips({
     chips,
     orientation = null,
 }: {
     chips: ReadonlyArray<TierChipSpec>;
-    /** List rows: the orientation chip goes right after the dimensions chip. */
+    /** The neutral orientation chip goes right after the dimensions chip. */
     orientation?: VideoOrientation | null;
 }) {
     return (
@@ -230,9 +285,10 @@ function VideoRow({
     const resolution = formatResolution(video.width, video.height);
     const bitrate = formatBitrate(video.bitrateKbps);
     const fps = formatFps(video.fps);
-    // Row 1: the three tiered media chips. Row 2: duration, size and upload time (neutral group).
-    // A missing value has no chip.
-    const tierChips: ReadonlyArray<TierChipSpec> = [
+    // Grid cards and list rows show the same chips in one wrapping area: quality, dimensions
+    // (same tier colour as the quality), orientation (neutral), bitrate, duration, size. A missing
+    // value has no chip. The upload time is the grid footer caption.
+    const allChips: ReadonlyArray<TierChipSpec> = [
         {
             label: quality,
             tier: qualityTier(video.width, video.height),
@@ -241,7 +297,7 @@ function VideoRow({
         },
         {
             label: resolution,
-            tier: resolutionTier(video.width, video.height),
+            tier: qualityTier(video.width, video.height) ?? 5,
             title: 'Dimensions',
             icon: <DimensionsIcon orientation={videoOrientation(video.width, video.height)} />,
         },
@@ -252,11 +308,9 @@ function VideoRow({
             icon: <BitrateIcon />,
         },
     ].filter((chip): chip is TierChipSpec => chip.label !== '');
-    // List rows only: a neutral Horizontal/Vertical chip after the dimensions chip.
-    const orientation =
-        view === 'list' && resolution !== '' ? videoOrientation(video.width, video.height) : null;
-    const hasChips = tierChips.length > 0 || duration !== '' || size !== '' || added !== '';
-    const hasSummary = tierChips.length > 0 || duration !== '' || size !== '';
+    // A neutral Horizontal/Vertical chip after the dimensions chip.
+    const orientation = resolution !== '' ? videoOrientation(video.width, video.height) : null;
+    const hasSummary = allChips.length > 0 || duration !== '' || size !== '';
     const summary = hasSummary ? (
         <span className="visually-hidden">
             {[
@@ -302,7 +356,7 @@ function VideoRow({
                     </span>
                     {hasSummary && (
                         <span className="video-chips">
-                            <TierChips chips={tierChips} orientation={orientation} />
+                            <TierChips chips={allChips} orientation={orientation} />
                             <MetaChips duration={duration} size={size} />
                         </span>
                     )}
@@ -323,27 +377,10 @@ function VideoRow({
                     <span className="video-title" title={video.title}>
                         {video.title}
                     </span>
-                    {hasChips && (
+                    {hasSummary && (
                         <span className="video-chips">
-                            {tierChips.length > 0 && (
-                                <span className="video-chip-row" data-row="media">
-                                    <TierChips chips={tierChips} />
-                                </span>
-                            )}
-                            {(duration !== '' || size !== '' || added !== '') && (
-                                <span className="video-chip-row" data-row="meta">
-                                    <MetaChips duration={duration} size={size} />
-                                    {added !== '' && (
-                                        <span
-                                            className="spec spec-date video-added"
-                                            title={fullDate}
-                                        >
-                                            <UploadedIcon />
-                                            {added}
-                                        </span>
-                                    )}
-                                </span>
-                            )}
+                            <TierChips chips={allChips} orientation={orientation} />
+                            <MetaChips duration={duration} size={size} />
                         </span>
                     )}
                 </span>
@@ -354,10 +391,19 @@ function VideoRow({
             </>
         );
 
+    // Grid footer caption: the compact upload time, plain muted text on the left of the tools row.
+    const addedCaption =
+        view === 'grid' && added !== '' ? (
+            <span className="video-added" title={fullDate}>
+                {added}
+            </span>
+        ) : null;
+
     if (selecting) {
         return (
             <li className={picked ? 'video-row is-picked' : 'video-row'}>
                 <label className="video-open">{content}</label>
+                {addedCaption !== null && <div className="video-tools">{addedCaption}</div>}
             </li>
         );
     }
@@ -372,6 +418,7 @@ function VideoRow({
                 {content}
             </button>
             <div className="video-tools">
+                {addedCaption}
                 {video.status === 'ready' && (
                     <QuickShortcodeButton
                         title={video.title}
@@ -933,8 +980,13 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                         </div>
                         <button
                             type="button"
-                            className="btn btn-sm library-refresh"
+                            className={
+                                load.kind === 'loading'
+                                    ? 'btn btn-sm library-refresh is-spinning'
+                                    : 'btn btn-sm library-refresh'
+                            }
                             aria-label="Refresh"
+                            aria-busy={load.kind === 'loading'}
                             title="Refresh"
                             onClick={refresh}
                         >
@@ -1020,7 +1072,11 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                         <p className="visually-hidden" role="status" aria-busy="true">
                             {'Loading…'}
                         </p>
-                        <SkeletonGrid count={Math.min(pageSize, 8)} />
+                        {viewMode === 'list' ? (
+                            <SkeletonList count={Math.min(pageSize, 6)} />
+                        ) : (
+                            <SkeletonGrid count={Math.min(pageSize, 8)} />
+                        )}
                     </>
                 )}
 

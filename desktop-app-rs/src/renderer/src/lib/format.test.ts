@@ -7,7 +7,6 @@ import {
     formatRelativeTime,
     plural,
     qualityTier,
-    resolutionTier,
     siteHost,
     STAGE_LABELS,
     stageLabel,
@@ -172,27 +171,6 @@ describe('bitrateTier', () => {
         [undefined, null],
     ])('%s kbps is tier %s', (kbps, expected) => {
         expect(bitrateTier(kbps)).toBe(expected);
-    });
-});
-
-describe('resolutionTier', () => {
-    it.each<[number | null, number | null, number | null]>([
-        [3840, 2160, 1],
-        [2160, 3840, 1],
-        [2560, 1440, 2],
-        [1280, 2770, 2],
-        [1920, 1080, 3],
-        [1080, 1920, 3],
-        [1920, 1000, 3],
-        [1280, 720, 4],
-        [720, 1280, 4],
-        [1000, 600, 5],
-        [854, 480, 5],
-        [1920, null, null],
-        [null, 1080, null],
-        [0, 1080, null],
-    ])('%s x %s is tier %s', (width, height, expected) => {
-        expect(resolutionTier(width, height)).toBe(expected);
     });
 });
 

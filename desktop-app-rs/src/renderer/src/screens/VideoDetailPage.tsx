@@ -32,7 +32,6 @@ import {
     formatResolution,
     fpsTier,
     qualityTier,
-    resolutionTier,
     videoOrientation,
 } from '../lib/format';
 import { splitUrlForMiddleEllipsis } from '../lib/middleEllipsis';
@@ -794,7 +793,7 @@ function InfoCard({
                         <span className="kv-chips">
                             <TierChip
                                 label={dimensions}
-                                tier={resolutionTier(width, height) ?? 5}
+                                tier={qualityTier(width, height) ?? 5}
                                 title="Dimensions in pixels (width by height)"
                                 icon={
                                     <DimensionsIcon orientation={videoOrientation(width, height)} />

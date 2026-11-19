@@ -307,7 +307,9 @@ describe('Video detail page', () => {
         const chip = (text: string) => info.getByText(text).closest('.media-chip');
 
         expect(chip('1080p')).toHaveClass('chip-tier-3');
+        // The dimensions chip has the same tier as the quality chip; orientation stays neutral.
         expect(chip('1920\u00d71080')).toHaveClass('chip-tier-3');
+        expect(chip('Horizontal')!.className).not.toMatch(/chip-tier-/);
         expect(chip('4000 kbps')).toHaveClass('chip-tier-2');
         expect(chip('60 fps')).toHaveClass('chip-tier-1');
         expect(chip('60 fps')).not.toHaveAttribute('aria-hidden');
@@ -358,10 +360,12 @@ describe('Video detail page', () => {
         await screen.findByText('Information');
 
         expect(screen.getByLabelText('Information').querySelector('.media-chip')).toBeNull();
-        expect(screen.queryByText('Dimensions')).toBeNull();
-        expect(screen.queryByText('Quality')).toBeNull();
-        expect(screen.queryByText('Horizontal')).toBeNull();
-        expect(screen.queryByText('Vertical')).toBeNull();
+        const info = within(screen.getByLabelText('Information'));
+
+        expect(info.queryByText('Dimensions')).toBeNull();
+        expect(info.queryByText('Quality')).toBeNull();
+        expect(info.queryByText('Horizontal')).toBeNull();
+        expect(info.queryByText('Vertical')).toBeNull();
     });
 
     it('loads the preview right away, without a click, only for a same-host https embed URL', async () => {
