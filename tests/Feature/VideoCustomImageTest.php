@@ -7,10 +7,12 @@ use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
+use Tests\Concerns\ConfiguresR2;
 use Tests\TestCase;
 
 class VideoCustomImageTest extends TestCase
 {
+    use ConfiguresR2;
     use RefreshDatabase;
 
     private const PREFIX = '2026/09/09/my-video-12/';
@@ -20,6 +22,8 @@ class VideoCustomImageTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        $this->configureR2();
 
         // Setting::r2Disk() builds its disk with Storage::build(), which
         // Storage::fake() cannot intercept, so hand back a fake disk instead.

@@ -64,8 +64,8 @@ Migration mới (không sửa migration cũ):
 ### 3.3 Config R2 trong DB
 
 - `Setting`: thêm `r2_access_key_id`, `r2_secret_access_key`, `r2_bucket`, `r2_endpoint`, `r2_url` vào `$fillable`; cast `encrypted` cho hai cột bí mật; `$hidden` cho hai cột đó.
-- `Setting::r2Disk()` đọc từ DB; trong giai đoạn chuyển tiếp (đến hết Phase C) fallback về `config('filesystems.disks.r2')` (env) khi DB chưa có.
-- Lệnh `php artisan r2:import-env`: copy giá trị từ env vào DB nếu DB còn trống (idempotent, không ghi đè). Sau Phase C bỏ các biến `R2_*` khỏi `.env`/`.env.example`/`config/filesystems.php`/docs.
+- `Setting::r2Disk()` chỉ đọc từ DB (không còn fallback env); ném `R2NotConfiguredException` khi cấu hình DB chưa đủ.
+- Các biến `R2_*` đã bị bỏ khỏi `.env`/`.env.example`/`config/filesystems.php`/docs; lệnh `r2:import-env` đã bị xoá. Cấu hình R2 chỉ nằm trong DB (mã hoá bằng `APP_KEY`, nên backup `APP_KEY` cùng database).
 - Validation khi lưu: `r2_endpoint` rule `url:https`, bucket/endpoint/url bắt buộc khi lưu form; bỏ trống ô secret = giữ giá trị cũ.
 - Không bao giờ log hoặc flash secret; view chỉ hiển thị "đã cấu hình" + 4 ký tự cuối của access key id.
 - Ghi chú vận hành: secret mã hoá bằng `APP_KEY` → PHẢI backup `APP_KEY`; đổi key cần dùng `APP_PREVIOUS_KEYS`.
@@ -171,7 +171,7 @@ Xoá (theo khảo sát code hiện tại; rà lại bằng grep trước khi xo�
 
 ### 3.10 Test cho site
 
-- Feature test: login (thành công/sai/throttle), logout thu hồi token, config (đủ/thiếu R2, không token → 401), register (hợp lệ, idempotent, conflict, validation prefix/path, playlist không tồn tại với `Storage::fake`), `Setting` mã hoá cột trong DB (đọc raw DB phải là ciphertext), `r2:import-env`, embed theo `public_id` + id số cũ, report resolve với id mới và id cũ, migration backfill, đổi mật khẩu thu hồi token.
+- Feature test: login (thành công/sai/throttle), logout thu hồi token, config (đủ/thiếu R2, không token → 401), register (hợp lệ, idempotent, conflict, validation prefix/path, playlist không tồn tại với `Storage::fake`), `Setting` mã hoá cột trong DB (đọc raw DB phải là ciphertext), embed theo `public_id` + id số cũ, report resolve với id mới và id cũ, migration backfill, đổi mật khẩu thu hồi token.
 - Không chạy full PHPUnit khi đang test thủ công (xem ghi chú dự án về `hls_tmp`).
 - Đã có (Phase A): `AppApiLoginTest`, `AppApiConfigTest`, `AppApiVideoRegisterTest` (gồm idempotent, race, giới hạn 255), `AppTokenSettingsTest`, `SettingsR2ConfigTest`, `SettingsR2Test`, `ImportR2EnvCommandTest`, `VideoPublicIdMigrationTest`, `EmbedShowTest`, `ReportApiTest`.
 
@@ -344,9 +344,9 @@ ffmpeg -y -format_whitelist <demuxers> -i <input>
 
 ## 5. Phasing và triển khai
 
-- **Phase A – Site (tương thích ngược): XONG, ĐÃ DEPLOY và đang dùng thật.** Migration (`public_id`, cột R2, Sanctum), `public_id` + route embed, R2 trong DB + `r2:import-env`, Settings card R2 + token, API `/api/app/*`, sửa report resolve, sửa `docs/wordpress-snippets/`. Luồng upload cũ vẫn chạy. Vẫn phải nhắc ở mỗi lần deploy: cập nhật snippet WPCode + purge cache (plugin cache và Cloudflare) cho đến khi chủ dự án xác nhận "Tôi đã thực hiện".
+- **Phase A – Site (tương thích ngược): XONG, ĐÃ DEPLOY và đang dùng thật.** Migration (`public_id`, cột R2, Sanctum), `public_id` + route embed, R2 trong DB, Settings card R2 + token, API `/api/app/*`, sửa report resolve, sửa `docs/wordpress-snippets/`. Luồng upload cũ vẫn chạy. Vẫn phải nhắc ở mỗi lần deploy: cập nhật snippet WPCode + purge cache (plugin cache và Cloudflare) cho đến khi chủ dự án xác nhận "Tôi đã thực hiện".
 - **Phase B – App Windows: ĐÃ VIẾT CODE VÀ TEST, chờ build Windows đầu tiên.** Pipeline, GUI, hàng đợi, bảo mật, đóng gói NSIS, fetch ffmpeg ghim hash, workflow CI đã có và pass test tự động (unit + integration với fake). Còn lại để coi Phase B là xong: (1) chạy workflow lần đầu trên `windows-latest` (cấu hình `electron-builder.yml`, icon, `extraResources`, NSIS, Fuses CHƯA từng chạy thật); (2) chạy checklist thủ công trong `desktop-app/docs/PACKAGING.md` trên Windows sạch; (3) thử với site thật và R2 thật (kể cả việc không gửi `ACL`, phát embed, xoá video từ site).
-- **Phase C – Dọn site: CHƯA BẮT ĐẦU.** Gỡ upload/queue/ffmpeg/Reverb theo mục 3.9 (hiện `routes/web.php` còn đủ các route upload, status, activity-log; `Setting::r2Disk()` còn fallback về env), bỏ biến `R2_*` khỏi `.env`/`config/filesystems.php`/docs, cập nhật docs/deploy, bỏ systemd units queue/reverb. Điều kiện bắt đầu: app Windows đã được dùng ổn định với site thật một thời gian (Phase B xong).
+- **Phase C – Dọn site: CHƯA BẮT ĐẦU.** Gỡ upload/queue/ffmpeg/Reverb theo mục 3.9 (hiện `routes/web.php` còn đủ các route upload, status, activity-log), (biến `R2_*` đã bỏ khỏi `.env`/`config/filesystems.php`/docs), cập nhật docs/deploy, bỏ systemd units queue/reverb. Điều kiện bắt đầu: app Windows đã được dùng ổn định với site thật một thời gian (Phase B xong).
 - Rollback: Phase A giữ nguyên luồng cũ; chỉ làm Phase C khi app đã chạy ổn định.
 - Mỗi phase có commit riêng theo từng tính năng và hướng dẫn "Deploy to VPS" riêng (theo quy ước dự án).
 

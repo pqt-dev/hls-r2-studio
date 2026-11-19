@@ -42,19 +42,13 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-**2. Sửa `.env`** (chỉ điền các key sau; sinh mỗi giá trị `REVERB_*` bằng `openssl rand -hex 16`)
+**2. Sửa `.env`** (chỉ điền các key sau; R2 không cấu hình ở đây; sinh mỗi giá trị `REVERB_*` bằng `openssl rand -hex 16`)
 
 ```env
 DB_HOST=127.0.0.1
 DB_DATABASE=hls_r2_studio
 DB_USERNAME=<user MySQL>
 DB_PASSWORD=<password MySQL>
-
-R2_ACCESS_KEY_ID=<access key>
-R2_SECRET_ACCESS_KEY=<secret key>
-R2_BUCKET=<tên bucket>
-R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_URL=<URL public phát video>
 
 REVERB_APP_ID=<ngẫu nhiên>
 REVERB_APP_KEY=<ngẫu nhiên>
@@ -89,7 +83,10 @@ Trang đăng nhập admin **không** nằm ở `/login` nữa mà chỉ truy c�
 
 **Lưu ý quan trọng**
 
-- URL public R2: code không tự public hoá bucket. Hãy cấu hình bucket public (custom domain hoặc `r2.dev`) trên Cloudflare rồi điền vào `R2_URL`.
+- Cấu hình R2: sau khi đăng nhập, vào Settings > Storage (R2) (hoặc dùng app desktop) và nhập access key ID, secret, bucket, endpoint, URL public. Các giá trị được lưu mã hoá trong database (không còn biến `R2_*` trong `.env`). Khi chưa lưu, site không thể liệt kê, phát hay xử lý video.
+- URL public R2: code không tự public hoá bucket. Hãy cấu hình bucket public (custom domain hoặc `r2.dev`) trên Cloudflare rồi điền làm URL public trong Settings.
+- Backup: thông tin R2 được mã hoá bằng `APP_KEY`, nên phải backup `APP_KEY` cùng với database. Mất `APP_KEY` thì không giải mã được giá trị R2 đã lưu, phải nhập lại.
+- Nâng cấp bản cài cũ vẫn còn `R2_*` trong `.env`: TRƯỚC KHI pull bản này, chạy `php artisan r2:import-env` một lần trên bản cũ (copy giá trị từ `.env` vào database), hoặc nhập lại R2 trong Settings sau khi nâng cấp. Sau đó có thể xoá các dòng `R2_*` trong `.env`.
 - Report từ domain khác: thêm domain đó vào Embed allowlist (Settings > Embed protection > Embed allowlist).
 - `DB_QUEUE_RETRY_AFTER` (`176400`) phải luôn lớn hơn `--timeout` của queue worker (`172800`).
 

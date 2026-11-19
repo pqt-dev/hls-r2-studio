@@ -2,12 +2,14 @@
 
 namespace App\Http\Controllers\Api\App;
 
+use App\Exceptions\R2NotConfiguredException;
 use App\Http\Controllers\Controller;
 use App\Models\Setting;
 use App\Models\Video;
 use App\Services\VideoActionException;
 use App\Services\VideoManager;
 use App\Support\EmbedStoryboard;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -286,11 +288,15 @@ class VideoController extends Controller
      */
     private function detail(Video $video): array
     {
-        $disk = Setting::current()->r2Disk();
+        try {
+            $disk = Setting::current()->r2Disk();
+        } catch (R2NotConfiguredException) {
+            $disk = null;
+        }
 
         // URLs are built from the public R2 URL; if R2 is not configured they are simply absent.
         $url = function (?string $path) use ($disk): ?string {
-            if (! $path) {
+            if (! $path || $disk === null) {
                 return null;
             }
 
@@ -314,7 +320,7 @@ class VideoController extends Controller
         }
 
         try {
-            $embedStoryboard = EmbedStoryboard::pick($video->storyboards, $disk);
+            $embedStoryboard = $disk === null ? null : EmbedStoryboard::pick($video->storyboards, $disk);
         } catch (\Throwable) {
             $embedStoryboard = null;
         }
@@ -371,7 +377,7 @@ class VideoController extends Controller
     /**
      * Orders the list. Videos without a duration/size (still processing) come last; `id` breaks every tie.
      *
-     * @param  \Illuminate\Database\Eloquent\Builder<Video>  $query
+     * @param  Builder<Video>  $query
      */
     private function applySort($query, string $sort): void
     {

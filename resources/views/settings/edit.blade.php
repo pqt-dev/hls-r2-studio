@@ -88,7 +88,7 @@
                     @method('PUT')
 
                     @unless ($settings->hasR2Config())
-                        <p class="text-xs text-muted-foreground">The active R2 config still comes from .env. Save the values below to store them in the database instead.</p>
+                        <p class="text-xs text-muted-foreground">R2 is not configured yet. Enter all the values below and save to store them (encrypted) in the database.</p>
                     @endunless
 
                     <div>

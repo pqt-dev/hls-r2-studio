@@ -26,6 +26,8 @@ class AppApiVideoManageTest extends TestCase
     {
         parent::setUp();
 
+        $this->configureR2();
+
         // Setting::r2Disk() uses Storage::build(), which Storage::fake() cannot intercept: hand back a fake disk.
         $this->disk = Storage::fake('r2-fake');
         Storage::partialMock()->shouldReceive('build')->andReturnUsing(fn () => $this->disk);

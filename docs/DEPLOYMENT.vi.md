@@ -9,7 +9,7 @@
 | Placeholder | Ý nghĩa |
 |---|---|
 | `embed-site.com` | Domain của app và embed (server này) |
-| `cdn.embed-site.com` | Custom domain public của R2 (= `R2_URL`) |
+| `cdn.embed-site.com` | Custom domain public của R2 (= URL public R2 nhập trong Settings) |
 | `main-site.com` | Website WordPress nhúng player (có thể trả lời trên cả `main-site.com` và `www.main-site.com`; cả hai đều đưa vào Embed allowlist) |
 | `<git-repo-url>` | URL repository của bạn |
 
@@ -45,7 +45,7 @@ Sau go-live: [Cập nhật](#cập-nhật--deploy-lại-khi-có-code-mới), [V�
 VPS: tối thiểu 2 vCPU / 4 GB, khuyến nghị 4 vCPU / 8 GB; ổ đĩa khoảng 2x dung lượng video lớn nhất nhân với số lượt upload đồng thời, cộng OS (upload bị từ chối khi dung lượng trống dưới 2x kích thước file + 256 MB).
 
 1. Thêm domain vào Cloudflare. DNS: `A` `embed-site.com` trỏ tới IP của VPS, **Proxied**. Giữ nguyên chế độ SSL/TLS cho đến mục 11.
-2. R2: tạo bucket, kết nối custom domain `cdn.embed-site.com` (Settings > Custom Domains). `R2_URL` phải là domain này, không bao giờ dùng `r2.dev`.
+2. R2: tạo bucket, kết nối custom domain `cdn.embed-site.com` (Settings > Custom Domains). URL public R2 (nhập ở dashboard Settings > Storage (R2) sau lần đăng nhập đầu tiên) phải là domain này, không bao giờ dùng `r2.dev`.
 3. R2 > Manage API tokens: token **Object Read & Write** giới hạn cho bucket này. Ghi lại Access Key ID, Secret Access Key và S3 endpoint `https://<account-id>.r2.cloudflarestorage.com`.
 4. SSL/TLS > Origin Server > Create Certificate: **RSA**, hostname `embed-site.com`, 15 năm. Copy certificate và private key ngay (key chỉ hiển thị một lần); cài ở mục 9.
 5. Xác định origin WordPress: site có thể trả lời trên cả `main-site.com` và `www.main-site.com` (cả hai đều đưa vào Embed allowlist, mục 12).
@@ -122,11 +122,9 @@ DB_QUEUE_RETRY_AFTER=176400
 CACHE_STORE=failover
 REDIS_CLIENT=phpredis
 # REDIS_PASSWORD=<redis-password>   (only if Redis has a password)
-R2_ACCESS_KEY_ID=<access-key-id>
-R2_SECRET_ACCESS_KEY=<secret-access-key>
-R2_BUCKET=<bucket-name>
-R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_URL=https://cdn.embed-site.com
+# R2 KHÔNG cấu hình ở đây: nhập giá trị R2 ở dashboard Settings > Storage (R2); chúng được lưu mã hoá trong database.
+# Backup APP_KEY cùng với database: thông tin R2 được mã hoá bằng APP_KEY.
+# Nâng cấp bản cài còn R2_* trong .env: TRƯỚC KHI pull bản này, chạy `php artisan r2:import-env` một lần trên bản cũ (hoặc nhập lại R2 trong Settings sau đó).
 # Đường dẫn đăng nhập bí mật: trang login nằm ở /<ADMIN_LOGIN_KEY>; để trống = tắt trang login (mọi URL đều 404). Chạy config:clear sau khi đổi.
 ADMIN_LOGIN_KEY=<random-secret>
 # REVERB_HOST/PORT/SCHEME are the PUBLIC address the browser uses

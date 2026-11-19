@@ -21,7 +21,7 @@ Backup: playbook này dựa vào backup tự động của aaPanel và không t�
 | Thiết lập | Nơi sửa |
 |---|---|
 | `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" trên website WordPress (nguồn: `docs/wordpress-snippets/hls-embed.wpcode.php`). Giá trị mặc định là placeholder `https://embed-site.com`, bắt buộc phải thay bằng URL thật của site embed |
-| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` (phần bổ sung tùy chọn, mặc định rỗng: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) |
+| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS` (phần bổ sung tùy chọn, mặc định rỗng: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) |
 | Embed allowlist (domain của site chính: được phép nhúng player, gửi báo cáo qua CORS và là host được chấp nhận trong báo cáo) | Dashboard Settings > Embed protection > Embed allowlist. Nằm trong database, KHÔNG nằm trong `.env` |
 | R2 CORS policy, R2 custom domain | Cloudflare > R2 > bucket > Settings |
 | Cache và Redirect rule, DNS, chế độ SSL, Origin certificate | Cloudflare, trong zone của domain đó |
@@ -41,7 +41,7 @@ Bài viết chỉ lưu shortcode, nên host embed chỉ đổi ở một chỗ (
    ```json
    [{"AllowedOrigins":["https://embed-site.com","https://<new-embed-host>"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAgeSeconds":86400}]
    ```
-4. Test trên WP Staging: đặt `HLS_EMBED_HOST` thành `https://<new-embed-host>`, purge cache staging, mở một bài có `[hls_embed_vl id="N"]`, rồi kiểm tra header. Việc phát video có thể trả 403 cho tới khi đổi `R2_URL` (hotlink rule); bản thân iframe phải load được. Verify: asset của trang embed có phụ thuộc `APP_URL` không (DevTools > Network: có request nào tới `embed-site.com` không?).
+4. Test trên WP Staging: đặt `HLS_EMBED_HOST` thành `https://<new-embed-host>`, purge cache staging, mở một bài có `[hls_embed_vl id="N"]`, rồi kiểm tra header. Việc phát video có thể trả 403 cho tới khi đổi URL public R2 (hotlink rule); bản thân iframe phải load được. Verify: asset của trang embed có phụ thuộc `APP_URL` không (DevTools > Network: có request nào tới `embed-site.com` không?).
 
    ```bash
    curl -sI https://<new-embed-host>/embed/ID
@@ -51,13 +51,12 @@ Bài viết chỉ lưu shortcode, nên host embed chỉ đổi ở một chỗ (
 ### Ứng phó
 
 1. Xác nhận bị chặn từ một mạng ở Việt Nam.
-2. Sửa `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) và đặt các dòng sau. `REVERB_PORT` và `REVERB_SCHEME` giữ nguyên. `R2_URL` cũng đổi ở đây, vì cdn bị chặn cùng domain embed.
+2. Sửa `.env` của dashboard (aaPanel > Files, hoặc SSH `nano`) và đặt các dòng sau. `REVERB_PORT` và `REVERB_SCHEME` giữ nguyên. URL public R2 cũng đổi (cdn bị chặn cùng domain embed), nhưng đặt ở dashboard Settings > Storage (R2), không phải `.env` (xem phần R2 bên dưới).
 
    ```env
    APP_URL=https://<new-embed-host>
    REVERB_HOST=new-embed-site.com
    REVERB_ALLOWED_ORIGINS=new-embed-site.com
-   R2_URL=https://cdn.new-embed-site.com
    ```
 3. Nạp lại config và restart. Restart queue làm gián đoạn video đang transcode, nên chỉ chạy khi không có video nào đang xử lý. Artisan chạy bằng user của site ([DEPLOYMENT.vi.md "Vận hành"](DEPLOYMENT.vi.md#vận-hành)); cần `npm run build` vì `REVERB_*` được nhúng vào JS.
 
@@ -79,7 +78,7 @@ Bài viết chỉ lưu shortcode, nên host embed chỉ đổi ở một chỗ (
 
 ## Custom domain (R2): `cdn.embed-site.com` sang `cdn.new-embed-site.com`
 
-Chỉ `R2_URL` thay đổi: database lưu đường dẫn tương đối và URL được dựng lúc runtime. Không upload lại, không đổi database.
+Chỉ URL public R2 (Settings > Storage (R2)) thay đổi: database lưu đường dẫn tương đối và URL được dựng lúc runtime. Không upload lại, không đổi database.
 
 ### Chuẩn bị
 
@@ -88,7 +87,7 @@ Chỉ `R2_URL` thay đổi: database lưu đường dẫn tương đối và URL
 
 ### Ứng phó
 
-1. `R2_URL` đã được đặt ở bước 2 phần Ứng phó của site embed. Lấy path `.m3u8` của một video đã ready từ DevTools > Network (chỉ path) và kiểm tra (mong đợi 200; path của một segment `.ts` kiểm tra tương tự):
+1. Đặt URL public R2 thành `https://cdn.new-embed-site.com` ở dashboard Settings > Storage (R2) (để trống ô secret để giữ nguyên). Lấy path `.m3u8` của một video đã ready từ DevTools > Network (chỉ path) và kiểm tra (mong đợi 200; path của một segment `.ts` kiểm tra tương tự):
 
    ```bash
    curl -I https://cdn.new-embed-site.com/<path>.m3u8
@@ -175,7 +174,7 @@ Thêm: [DEPLOYMENT.vi.md](DEPLOYMENT.vi.md#các-lỗi-thường-gặp-khi-deploy
 | Bài viết hiển thị văn bản thô `[hls_embed_vl ...]` | WPCode snippet không active hoặc bị mất (khôi phục từ bản sao bên ngoài) |
 | Page source có `<!-- hls-embed: invalid configuration -->` | `HLS_EMBED_HOST` bị thiếu, không phải `https`, hoặc `id` của shortcode không hợp lệ |
 | Iframe bị từ chối hoặc trống | Embed allowlist thiếu domain WordPress (tới 5 phút mới cập nhật) |
-| Player load được nhưng video không phát | Origin trong R2 CORS, `R2_URL`, `cdn.new-embed-site.com` chưa gắn, hoặc Referer của hotlink rule |
+| Player load được nhưng video không phát | Origin trong R2 CORS, URL public R2 trong Settings, `cdn.new-embed-site.com` chưa gắn, hoặc Referer của hotlink rule |
 | Thumbnail bị lỗi | FIFU vẫn dùng host cdn cũ: chạy mục FIFU |
 | Vẫn hiển thị host cũ | Page cache chưa được purge |
 | Live progress của dashboard dừng | `REVERB_*` sai, chưa chạy `npm run build`, hoặc chưa restart Reverb |

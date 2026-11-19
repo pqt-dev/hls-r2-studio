@@ -5,11 +5,20 @@ namespace Tests\Feature;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
+use Tests\Concerns\ConfiguresR2;
 use Tests\TestCase;
 
 class SettingsPasswordTest extends TestCase
 {
+    use ConfiguresR2;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->configureR2();
+    }
 
     private function makeUser(): User
     {

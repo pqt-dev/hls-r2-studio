@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\TranscodeVideoJob;
+use App\Models\Setting;
 use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
@@ -35,15 +36,12 @@ class TranscodeVideoJobUploadTest extends TestCase
      */
     private function pointR2AtUnreachableEndpoint(): void
     {
-        config()->set('filesystems.disks.r2', [
-            'driver' => 's3',
-            'key' => 'test-key',
-            'secret' => 'test-secret',
-            'region' => 'auto',
-            'bucket' => 'test-bucket',
-            'endpoint' => 'http://127.0.0.1:1',
-            'url' => 'http://127.0.0.1:1',
-            'use_path_style_endpoint' => true,
+        Setting::current()->update([
+            'r2_access_key_id' => 'test-key',
+            'r2_secret_access_key' => 'test-secret',
+            'r2_bucket' => 'test-bucket',
+            'r2_endpoint' => 'http://127.0.0.1:1',
+            'r2_url' => 'http://127.0.0.1:1',
         ]);
     }
 

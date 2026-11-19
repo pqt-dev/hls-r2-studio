@@ -42,19 +42,13 @@ cp .env.example .env
 php artisan key:generate
 ```
 
-**2. Edit `.env`** (fill only these keys; generate each `REVERB_*` value with `openssl rand -hex 16`)
+**2. Edit `.env`** (fill only these keys; R2 is not set here; generate each `REVERB_*` value with `openssl rand -hex 16`)
 
 ```env
 DB_HOST=127.0.0.1
 DB_DATABASE=hls_r2_studio
 DB_USERNAME=<MySQL user>
 DB_PASSWORD=<MySQL password>
-
-R2_ACCESS_KEY_ID=<access key>
-R2_SECRET_ACCESS_KEY=<secret key>
-R2_BUCKET=<bucket name>
-R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_URL=<public video URL>
 
 REVERB_APP_ID=<random>
 REVERB_APP_KEY=<random>
@@ -89,7 +83,10 @@ The admin login page is no longer at `/login`; it is only reachable at the secre
 
 **Important notes**
 
-- R2 public URL: the code does not make the bucket public. Set a public bucket (custom domain or `r2.dev`) in Cloudflare, then enter it in `R2_URL`.
+- R2 configuration: after logging in, open Settings > Storage (R2) (or the desktop app) and enter the access key ID, secret, bucket, endpoint and public URL. They are stored encrypted in the database (no `R2_*` variables in `.env`). Until they are saved, the site cannot list, play or process videos.
+- R2 public URL: the code does not make the bucket public. Set a public bucket (custom domain or `r2.dev`) in Cloudflare, then enter it as the public URL in Settings.
+- Backups: the R2 credentials are encrypted with `APP_KEY`, so back up `APP_KEY` together with the database. Without the same `APP_KEY` the stored R2 values cannot be decrypted and must be entered again.
+- Upgrading an existing install that still has `R2_*` in `.env`: BEFORE pulling this version, run `php artisan r2:import-env` once on the old version (copies the `.env` values into the database), or re-enter the R2 values in Settings afterwards. After that the `R2_*` lines in `.env` can be deleted.
 - Reports from another domain: add that domain to the Embed allowlist (Settings > Embed protection > Embed allowlist).
 - `DB_QUEUE_RETRY_AFTER` (`176400`) must stay greater than the queue worker `--timeout` (`172800`).
 

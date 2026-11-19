@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Exceptions\R2NotConfiguredException;
 use App\Models\Setting;
 use App\Models\Video;
 use App\Models\VideoStatusLog;
@@ -105,7 +106,12 @@ class VideoManager
 
         $extension = $file->guessExtension() === 'jpeg' ? 'jpg' : $file->guessExtension();
         $filename = 'custom-'.basename(rtrim($video->disk_prefix, '/')).'.'.$extension;
-        $disk = Setting::current()->r2Disk();
+        try {
+            $disk = Setting::current()->r2Disk();
+        } catch (R2NotConfiguredException) {
+            throw new VideoActionException('r2_not_configured', 'R2 storage is not configured. Enter the R2 values in Settings.', 409);
+        }
+
         $oldPath = $video->custom_image_path;
         $newPath = null;
 
@@ -153,8 +159,14 @@ class VideoManager
             throw new VideoActionException('no_custom_image', 'This video has no custom image.', 404);
         }
 
+        try {
+            $disk = Setting::current()->r2Disk();
+        } catch (R2NotConfiguredException) {
+            throw new VideoActionException('r2_not_configured', 'R2 storage is not configured. Enter the R2 values in Settings.', 409);
+        }
+
         // Keep the DB path when the object could not be deleted, otherwise it would be orphaned on R2.
-        if (! $this->deleteR2Object(Setting::current()->r2Disk(), $video->custom_image_path, $video)) {
+        if (! $this->deleteR2Object($disk, $video->custom_image_path, $video)) {
             throw new VideoActionException('image_delete_failed', 'Failed to delete the image. Please try again.', 500);
         }
 

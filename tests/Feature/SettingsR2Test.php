@@ -137,19 +137,20 @@ class SettingsR2Test extends TestCase
         $this->assertStringNotContainsString('AKIDEXAMPLE1234', $html);
         $this->assertStringContainsString('ends with 1234', $html);
         $this->assertStringContainsString('my-bucket', $html);
-        $this->assertStringNotContainsString('still comes from .env', $html);
+        $this->assertStringNotContainsString('R2 is not configured yet', $html);
     }
 
-    public function test_settings_page_hints_when_config_comes_from_env(): void
+    public function test_settings_page_hints_when_r2_is_not_configured(): void
     {
         $this->login();
 
-        $this->get('/settings')->assertOk()->assertSee('still comes from .env');
+        $this->get('/settings')->assertOk()->assertSee('R2 is not configured yet');
     }
 
     public function test_connection_test_writes_and_deletes_a_temp_object(): void
     {
         $this->login();
+        Setting::current()->update($this->validPayload());
         $fake = Storage::fake('r2-test');
         Storage::partialMock()->shouldReceive('build')->once()->andReturn($fake);
 
@@ -161,6 +162,7 @@ class SettingsR2Test extends TestCase
     public function test_connection_test_reports_a_generic_error_without_details(): void
     {
         $this->login();
+        Setting::current()->update($this->validPayload());
         $disk = \Mockery::mock(Filesystem::class);
         $disk->shouldReceive('put')->andThrow(new \RuntimeException('boom secret-leak'));
         Storage::partialMock()->shouldReceive('build')->once()->andReturn($disk);

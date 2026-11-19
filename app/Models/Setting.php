@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Exceptions\R2NotConfiguredException;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Storage;
 
@@ -299,28 +300,34 @@ class Setting extends Model
     }
 
     /**
-     * Disk definition for R2: DB values when complete, otherwise the env config.
+     * Disk definition for R2 built only from the values stored in the database.
+     * Missing values are null; use hasR2Config() to check completeness.
      *
      * @return array<string, mixed>
      */
     public function r2DiskConfig(): array
     {
-        $base = $this->storedR2Config() ?? config('filesystems.disks.r2');
-
         return [
             'driver' => 's3',
-            'key' => $base['key'],
-            'secret' => $base['secret'],
+            'key' => $this->readR2Credential('r2_access_key_id'),
+            'secret' => $this->readR2Credential('r2_secret_access_key'),
             'region' => 'auto',
-            'bucket' => $base['bucket'],
-            'endpoint' => $base['endpoint'],
-            'url' => $base['url'],
+            'bucket' => $this->readR2Credential('r2_bucket'),
+            'endpoint' => $this->readR2Credential('r2_endpoint'),
+            'url' => $this->readR2Credential('r2_url'),
             'use_path_style_endpoint' => true,
         ];
     }
 
+    /**
+     * @throws R2NotConfiguredException when the stored R2 config is incomplete.
+     */
     public function r2Disk()
     {
+        if (! $this->hasR2Config()) {
+            throw new R2NotConfiguredException;
+        }
+
         return Storage::build($this->r2DiskConfig());
     }
 }

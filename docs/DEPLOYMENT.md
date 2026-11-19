@@ -9,7 +9,7 @@ From a fresh VPS to a live, Cloudflare-fronted install, in order. The main flow 
 | Placeholder | Meaning |
 |---|---|
 | `embed-site.com` | App and embed domain (this server) |
-| `cdn.embed-site.com` | R2 public custom domain (= `R2_URL`) |
+| `cdn.embed-site.com` | R2 public custom domain (= the R2 public URL in Settings) |
 | `main-site.com` | WordPress site that embeds the player (may answer on both `main-site.com` and `www.main-site.com`; both go into the Embed allowlist) |
 | `<git-repo-url>` | Your repository URL |
 
@@ -45,7 +45,7 @@ After go-live: [Updating](#updating--redeploying-with-new-code), [Operations](#o
 VPS: 2 vCPU / 4 GB minimum, 4 vCPU / 8 GB recommended; disk about 2x the largest video times concurrent uploads, plus OS (uploads are rejected below 2x file size + 256 MB free).
 
 1. Add the domain to Cloudflare. DNS: `A` `embed-site.com` to the VPS IP, **Proxied**. Leave SSL/TLS mode unchanged until section 11.
-2. R2: create the bucket, connect the custom domain `cdn.embed-site.com` (Settings > Custom Domains). `R2_URL` must be this domain, never `r2.dev`.
+2. R2: create the bucket, connect the custom domain `cdn.embed-site.com` (Settings > Custom Domains). The R2 public URL (entered in dashboard Settings > Storage (R2) after the first login) must be this domain, never `r2.dev`.
 3. R2 > Manage API tokens: **Object Read & Write** token limited to this bucket. Note the Access Key ID, Secret Access Key and S3 endpoint `https://<account-id>.r2.cloudflarestorage.com`.
 4. SSL/TLS > Origin Server > Create Certificate: **RSA**, hostname `embed-site.com`, 15 years. Copy the certificate and private key now (the key is shown once); install them in section 9.
 5. Know your WordPress origin(s): the site may answer on both `main-site.com` and `www.main-site.com` (both go into the Embed allowlist, section 12).
@@ -122,11 +122,9 @@ DB_QUEUE_RETRY_AFTER=176400
 CACHE_STORE=failover
 REDIS_CLIENT=phpredis
 # REDIS_PASSWORD=<redis-password>   (only if Redis has a password)
-R2_ACCESS_KEY_ID=<access-key-id>
-R2_SECRET_ACCESS_KEY=<secret-access-key>
-R2_BUCKET=<bucket-name>
-R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
-R2_URL=https://cdn.embed-site.com
+# R2 is NOT configured here: enter the R2 values in dashboard Settings > Storage (R2); they are stored encrypted in the database.
+# Back up APP_KEY together with the database: the R2 credentials are encrypted with it.
+# Upgrading an install that still has R2_* in .env: BEFORE pulling this version run `php artisan r2:import-env` once on the old version (or re-enter R2 in Settings afterwards).
 # Secret login path: the login page is at /<ADMIN_LOGIN_KEY>; empty = login page disabled (every URL returns 404). Run config:clear after changing it.
 ADMIN_LOGIN_KEY=<random-secret>
 # REVERB_HOST/PORT/SCHEME are the PUBLIC address the browser uses

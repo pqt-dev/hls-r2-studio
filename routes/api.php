@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\App\AuthController as AppAuthController;
 use App\Http\Controllers\Api\App\ConfigController as AppConfigController;
 use App\Http\Controllers\Api\App\LogController as AppLogController;
 use App\Http\Controllers\Api\App\OverviewController as AppOverviewController;
+use App\Http\Controllers\Api\App\R2Controller as AppR2Controller;
 use App\Http\Controllers\Api\App\VideoController as AppVideoController;
 use App\Http\Controllers\Api\ReportController;
 use App\Http\Middleware\NoStoreResponse;
@@ -20,6 +21,9 @@ Route::prefix('app')->name('api.app.')->middleware(NoStoreResponse::class)->grou
     Route::middleware(['auth:sanctum', 'throttle:app-api'])->group(function () {
         Route::post('/logout', [AppAuthController::class, 'logout'])->name('logout');
         Route::get('/config', [AppConfigController::class, 'show'])->name('config');
+        Route::get('/r2', [AppR2Controller::class, 'show'])->name('r2.show');
+        Route::put('/r2', [AppR2Controller::class, 'update'])->name('r2.update');
+        Route::post('/r2/test', [AppR2Controller::class, 'test'])->middleware('throttle:10,1')->name('r2.test');
         Route::get('/videos', [AppVideoController::class, 'index'])->name('videos.index');
         Route::post('/videos', [AppVideoController::class, 'store'])->name('videos.store');
 

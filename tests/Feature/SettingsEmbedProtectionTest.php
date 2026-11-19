@@ -6,11 +6,20 @@ use App\Models\Setting;
 use App\Models\User;
 use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\Concerns\ConfiguresR2;
 use Tests\TestCase;
 
 class SettingsEmbedProtectionTest extends TestCase
 {
+    use ConfiguresR2;
     use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->configureR2();
+    }
 
     private function makeReadyVideo(): Video
     {

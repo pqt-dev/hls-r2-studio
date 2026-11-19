@@ -12,11 +12,6 @@ class AppApiConfigTest extends TestCase
     use InteractsWithAppApi;
     use RefreshDatabase;
 
-    private function emptyEnvR2(): void
-    {
-        config(['filesystems.disks.r2' => ['key' => null, 'secret' => null, 'bucket' => null, 'endpoint' => null, 'url' => null]]);
-    }
-
     public function test_config_requires_a_token(): void
     {
         $this->apiAs(null, 'GET', '/api/app/config')->assertUnauthorized()->assertJsonPath('message', 'Unauthenticated.');
@@ -56,7 +51,6 @@ class AppApiConfigTest extends TestCase
 
     public function test_incomplete_r2_config_returns_409(): void
     {
-        $this->emptyEnvR2();
         Setting::current()->update(['r2_bucket' => 'my-bucket']);
         $token = $this->tokenFor($this->makeUser());
 
@@ -66,32 +60,12 @@ class AppApiConfigTest extends TestCase
         $response->assertStatus(409)->assertExactJson(['error' => 'r2_not_configured']);
     }
 
-    public function test_falls_back_to_env_config_when_the_db_is_empty(): void
+    public function test_empty_database_returns_409(): void
     {
-        config(['filesystems.disks.r2' => [
-            'key' => 'ENVKEY', 'secret' => 'env-secret', 'bucket' => 'env-bucket',
-            'endpoint' => 'https://env.r2.cloudflarestorage.com', 'url' => 'https://env-cdn.example.com',
-        ]]);
         $token = $this->tokenFor($this->makeUser());
 
         $this->apiAs($token, 'GET', '/api/app/config')
-            ->assertOk()
-            ->assertJsonPath('r2.access_key_id', 'ENVKEY')
-            ->assertJsonPath('r2.bucket', 'env-bucket');
-    }
-
-    public function test_db_config_wins_over_env(): void
-    {
-        config(['filesystems.disks.r2' => [
-            'key' => 'ENVKEY', 'secret' => 'env-secret', 'bucket' => 'env-bucket',
-            'endpoint' => 'https://env.r2.cloudflarestorage.com', 'url' => 'https://env-cdn.example.com',
-        ]]);
-        $this->configureR2();
-        $token = $this->tokenFor($this->makeUser());
-
-        $this->apiAs($token, 'GET', '/api/app/config')
-            ->assertOk()
-            ->assertJsonPath('r2.access_key_id', 'AKIDEXAMPLE1234')
-            ->assertJsonPath('r2.bucket', 'my-bucket');
+            ->assertStatus(409)
+            ->assertExactJson(['error' => 'r2_not_configured']);
     }
 }

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -15,12 +16,12 @@ class VideoIndexR2UrlTest extends TestCase
     {
         $this->actingAs(User::factory()->create(['username' => 'tester']));
 
-        config([
-            'filesystems.disks.r2.key' => 'db-key',
-            'filesystems.disks.r2.secret' => 'db-secret',
-            'filesystems.disks.r2.bucket' => 'db-bucket',
-            'filesystems.disks.r2.endpoint' => 'https://db-endpoint.example.com',
-            'filesystems.disks.r2.url' => 'https://db-cdn.example.com',
+        Setting::current()->update([
+            'r2_access_key_id' => 'db-key',
+            'r2_secret_access_key' => 'db-secret',
+            'r2_bucket' => 'db-bucket',
+            'r2_endpoint' => 'https://db-endpoint.example.com',
+            'r2_url' => 'https://db-cdn.example.com',
         ]);
 
         Video::create([
@@ -42,12 +43,12 @@ class VideoIndexR2UrlTest extends TestCase
     {
         $this->actingAs(User::factory()->create(['username' => 'tester']));
 
-        config([
-            'filesystems.disks.r2.key' => 'db-key',
-            'filesystems.disks.r2.secret' => 'db-secret',
-            'filesystems.disks.r2.bucket' => 'db-bucket',
-            'filesystems.disks.r2.endpoint' => 'https://db-endpoint.example.com',
-            'filesystems.disks.r2.url' => 'https://db-cdn.example.com',
+        Setting::current()->update([
+            'r2_access_key_id' => 'db-key',
+            'r2_secret_access_key' => 'db-secret',
+            'r2_bucket' => 'db-bucket',
+            'r2_endpoint' => 'https://db-endpoint.example.com',
+            'r2_url' => 'https://db-cdn.example.com',
         ]);
 
         foreach (['100% real', '100 percent', 'a_b clip', 'aXb clip', 'bang! clip'] as $title) {

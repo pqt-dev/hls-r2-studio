@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Exceptions\R2NotConfiguredException;
 use App\Models\Setting;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -23,19 +24,6 @@ class SettingsR2ConfigTest extends TestCase
         ]);
 
         return $settings->fresh();
-    }
-
-    private function setEnvConfig(): void
-    {
-        config(['filesystems.disks.r2' => [
-            'driver' => 's3',
-            'key' => 'env-key',
-            'secret' => 'env-secret',
-            'bucket' => 'env-bucket',
-            'endpoint' => 'https://env.example.com',
-            'url' => 'https://cdn-env.example.com',
-            'use_path_style_endpoint' => true,
-        ]]);
     }
 
     public function test_secret_columns_are_encrypted_at_rest_and_decrypt_through_the_model(): void
@@ -64,7 +52,6 @@ class SettingsR2ConfigTest extends TestCase
 
     public function test_disk_uses_db_values_when_complete(): void
     {
-        $this->setEnvConfig();
         $settings = $this->fillDb();
 
         $this->assertTrue($settings->hasR2Config());
@@ -80,28 +67,22 @@ class SettingsR2ConfigTest extends TestCase
         $this->assertTrue($config['use_path_style_endpoint']);
     }
 
-    public function test_disk_falls_back_to_env_when_db_is_empty_or_incomplete(): void
+    public function test_disk_throws_when_db_is_empty_or_incomplete(): void
     {
-        $this->setEnvConfig();
-
         $settings = Setting::current();
         $this->assertFalse($settings->hasR2Config());
-        $this->assertSame('env-bucket', $settings->r2Disk()->getConfig()['bucket']);
+        $this->assertNull($settings->r2DiskConfig()['bucket']);
 
         $incomplete = $this->fillDb(['r2_url' => null]);
         $this->assertFalse($incomplete->hasR2Config());
+        $this->assertSame('db-bucket', $incomplete->r2DiskConfig()['bucket']);
 
-        $config = $incomplete->r2Disk()->getConfig();
-        $this->assertSame('env-key', $config['key']);
-        $this->assertSame('env-secret', $config['secret']);
-        $this->assertSame('env-bucket', $config['bucket']);
-        $this->assertSame('https://env.example.com', $config['endpoint']);
-        $this->assertSame('https://cdn-env.example.com', $config['url']);
+        $this->expectException(R2NotConfiguredException::class);
+        $incomplete->r2Disk();
     }
 
-    public function test_disk_falls_back_to_env_when_a_stored_value_cannot_be_decrypted(): void
+    public function test_disk_throws_when_a_stored_value_cannot_be_decrypted(): void
     {
-        $this->setEnvConfig();
         $this->fillDb();
         DB::table('settings')->where('id', 1)->update(['r2_secret_access_key' => 'not-a-valid-payload']);
 
@@ -109,6 +90,9 @@ class SettingsR2ConfigTest extends TestCase
 
         $this->assertFalse($settings->hasR2Config());
         $this->assertFalse($settings->hasR2Secret());
-        $this->assertSame('env-secret', $settings->r2Disk()->getConfig()['secret']);
+        $this->assertNull($settings->r2DiskConfig()['secret']);
+
+        $this->expectException(R2NotConfiguredException::class);
+        $settings->r2Disk();
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\R2NotConfiguredException;
 use App\Jobs\MergeUploadChunksJob;
 use App\Models\Setting;
 use App\Models\Video;
@@ -150,7 +151,12 @@ class VideoController extends Controller
             ->orderBy('created_at', 'desc')
             ->paginate($perPage);
 
-        $disk = Setting::current()->r2Disk();
+        try {
+            $disk = Setting::current()->r2Disk();
+        } catch (R2NotConfiguredException) {
+            return redirect()->route('settings.edit')
+                ->with('error', 'R2 storage is not configured. Enter the R2 values in Settings to list videos.');
+        }
 
         foreach ($completedVideos as $video) {
             if ($video->status === 'ready') {

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\R2NotConfiguredException;
 use App\Models\Setting;
 use App\Models\Video;
 use App\Support\EmbedStoryboard;
@@ -19,7 +20,11 @@ class EmbedController extends Controller
         }
 
         $settings = Setting::current();
-        $disk = $settings->r2Disk();
+        try {
+            $disk = $settings->r2Disk();
+        } catch (R2NotConfiguredException) {
+            abort(503, 'Video storage is not configured.');
+        }
 
         $playlistUrl = $disk->url($video->playlist_path);
 

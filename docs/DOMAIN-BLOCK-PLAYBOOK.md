@@ -21,7 +21,7 @@ Backups: this playbook relies on the automatic backups of aaPanel and does not c
 | Setting | Where |
 |---|---|
 | `HLS_EMBED_HOST` | WPCode snippet "HLS Embed shortcode" on the WordPress site (source: `docs/wordpress-snippets/hls-embed.wpcode.php`). Its default is the placeholder `https://embed-site.com`, which must be replaced with the real embed site URL |
-| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS`, `R2_URL` (optional extras, empty by default: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` of the dashboard (aaPanel > Files, or SSH `nano`) |
+| `APP_URL`, `REVERB_HOST`, `REVERB_PORT`, `REVERB_SCHEME`, `REVERB_ALLOWED_ORIGINS` (optional extras, empty by default: `CORS_ALLOWED_ORIGINS`, `REPORT_ALLOWED_HOSTS`) | `.env` of the dashboard (aaPanel > Files, or SSH `nano`) |
 | Embed allowlist (main site domains: allowed to frame the player, to send reports via CORS, and accepted as report hosts) | Dashboard Settings > Embed protection > Embed allowlist. It is in the database, NOT in `.env` |
 | R2 CORS policy, R2 custom domain | Cloudflare > R2 > the bucket > Settings |
 | Cache and Redirect rules, DNS, SSL mode, Origin certificate | Cloudflare, in the zone of that domain |
@@ -41,7 +41,7 @@ Posts store only the shortcode, so the embed host changes in one place (`HLS_EMB
    ```json
    [{"AllowedOrigins":["https://embed-site.com","https://<new-embed-host>"],"AllowedMethods":["GET","HEAD"],"AllowedHeaders":["*"],"MaxAgeSeconds":86400}]
    ```
-4. Test on WP Staging: set `HLS_EMBED_HOST` to `https://<new-embed-host>`, purge staging caches, open a post with `[hls_embed_vl id="N"]`, then check the headers. Playback can return 403 until `R2_URL` changes (hotlink rule); the iframe itself must load. Verify: whether embed page assets depend on `APP_URL` (DevTools > Network: any request to `embed-site.com`?).
+4. Test on WP Staging: set `HLS_EMBED_HOST` to `https://<new-embed-host>`, purge staging caches, open a post with `[hls_embed_vl id="N"]`, then check the headers. Playback can return 403 until the R2 public URL changes (hotlink rule); the iframe itself must load. Verify: whether embed page assets depend on `APP_URL` (DevTools > Network: any request to `embed-site.com`?).
 
    ```bash
    curl -sI https://<new-embed-host>/embed/ID
@@ -51,13 +51,12 @@ Posts store only the shortcode, so the embed host changes in one place (`HLS_EMB
 ### Respond
 
 1. Confirm the block from a network in Vietnam.
-2. Edit the dashboard `.env` (aaPanel > Files, or SSH `nano`) and set these lines. `REVERB_PORT` and `REVERB_SCHEME` stay the same. `R2_URL` changes here too, because the cdn goes down with the embed domain.
+2. Edit the dashboard `.env` (aaPanel > Files, or SSH `nano`) and set these lines. `REVERB_PORT` and `REVERB_SCHEME` stay the same. The R2 public URL changes too (cdn goes down with the embed domain), but it is set in dashboard Settings > Storage (R2), not in `.env` (see the R2 section below).
 
    ```env
    APP_URL=https://<new-embed-host>
    REVERB_HOST=new-embed-site.com
    REVERB_ALLOWED_ORIGINS=new-embed-site.com
-   R2_URL=https://cdn.new-embed-site.com
    ```
 3. Reload and restart. Restarting the queue interrupts a video being transcoded, so run this when none is processing. Artisan runs as the site user ([DEPLOYMENT.md "Operations"](DEPLOYMENT.md#operations)); `npm run build` is needed because `REVERB_*` is baked into the JS.
 
@@ -79,7 +78,7 @@ Posts store only the shortcode, so the embed host changes in one place (`HLS_EMB
 
 ## Custom domain (R2): `cdn.embed-site.com` to `cdn.new-embed-site.com`
 
-Only `R2_URL` changes: the database stores relative paths and the URL is built at runtime. No re-upload, no database change.
+Only the R2 public URL (Settings > Storage (R2)) changes: the database stores relative paths and the URL is built at runtime. No re-upload, no database change.
 
 ### Prepare
 
@@ -88,7 +87,7 @@ Only `R2_URL` changes: the database stores relative paths and the URL is built a
 
 ### Respond
 
-1. `R2_URL` is already set in embed Respond step 2. Take the `.m3u8` path of a ready video from DevTools > Network (path only) and check it (expect 200; a `.ts` segment path is checked the same way):
+1. Set the R2 public URL to `https://cdn.new-embed-site.com` in dashboard Settings > Storage (R2) (leave the secret field blank to keep it). Take the `.m3u8` path of a ready video from DevTools > Network (path only) and check it (expect 200; a `.ts` segment path is checked the same way):
 
    ```bash
    curl -I https://cdn.new-embed-site.com/<path>.m3u8
@@ -175,7 +174,7 @@ More: [DEPLOYMENT.md](DEPLOYMENT.md#troubleshooting-pointers) and [TROUBLESHOOTI
 | Post shows plain text `[hls_embed_vl ...]` | WPCode snippet is inactive or missing (restore it from your outside copy) |
 | Page source has `<!-- hls-embed: invalid configuration -->` | `HLS_EMBED_HOST` missing, not `https`, or the shortcode `id` is invalid |
 | Iframe is refused or blank | Embed allowlist misses the WordPress domain (up to 5 minutes to update) |
-| Player loads but video does not play | R2 CORS origin, `R2_URL`, `cdn.new-embed-site.com` not attached, or hotlink rule Referer |
+| Player loads but video does not play | R2 CORS origin, R2 public URL in Settings, `cdn.new-embed-site.com` not attached, or hotlink rule Referer |
 | Thumbnails are broken | FIFU still uses the old cdn host: run the FIFU section |
 | Old host is still shown | Page cache not purged |
 | Dashboard live progress stops | `REVERB_*` wrong, `npm run build` not run, or Reverb not restarted |

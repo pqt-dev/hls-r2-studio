@@ -7,10 +7,12 @@ use App\Models\Video;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Testing\TestResponse;
+use Tests\Concerns\ConfiguresR2;
 use Tests\TestCase;
 
 class EmbedAllowlistCorsTest extends TestCase
 {
+    use ConfiguresR2;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -214,6 +216,7 @@ class EmbedAllowlistCorsTest extends TestCase
 
     public function test_embed_csp_is_unchanged_by_the_embed_allowlist(): void
     {
+        $this->configureR2();
         $this->setEmbedAllowlist("main-site.com\nwww.main-site.com\n*.main-site.com\nhttps://host:8443\nhttp://host");
 
         $video = Video::create([
