@@ -34,10 +34,11 @@ async function openSettings(initial: Parameters<typeof renderApp>[0] = {}) {
 }
 
 describe('R2 storage card', () => {
-    it('loads the saved values and shows placeholders for the key and secret', async () => {
+    it('loads the saved values and shows the key and secret masked and read-only', async () => {
         await openSettings();
 
         expect(screen.getByRole('heading', { name: 'R2 storage' })).toBeInTheDocument();
+        expect(screen.getByText('Configured')).toBeInTheDocument();
         expect(screen.getByLabelText('Endpoint')).toHaveValue(
             'https://acct.r2.cloudflarestorage.com',
         );
@@ -47,32 +48,72 @@ describe('R2 storage card', () => {
         const key = screen.getByLabelText('Access Key ID');
         const secret = screen.getByLabelText('Secret Access Key');
 
-        expect(key).toHaveValue('');
-        expect(key).toHaveAttribute('placeholder', 'Saved (ends with wxyz) - leave blank to keep');
-        expect(secret).toHaveValue('');
-        expect(secret).toHaveAttribute('type', 'password');
-        expect(secret).toHaveAttribute('autocomplete', 'off');
-        expect(secret).toHaveAttribute('placeholder', 'Saved - leave blank to keep');
-        expect(screen.queryByText('R2 storage is not set up.')).not.toBeInTheDocument();
+        expect(key).toHaveValue('••••••••••••wxyz');
+        expect(key).toHaveAttribute('readonly');
+        expect(key).not.toHaveAttribute('placeholder');
+        expect(secret).toHaveValue('••••••••••••••••');
+        expect(secret).toHaveAttribute('readonly');
+        expect(screen.getByRole('button', { name: 'Change Access Key ID' })).toBeInTheDocument();
+        expect(
+            screen.getByRole('button', { name: 'Change Secret Access Key' }),
+        ).toBeInTheDocument();
+        expect(screen.getByText('Test connection checks the saved settings.')).toBeInTheDocument();
+        expect(screen.queryByText(/leave blank/i)).not.toBeInTheDocument();
     });
 
-    it('warns when R2 is not configured and disables the connection test', async () => {
+    it('swaps a masked field for an empty input on Change and restores it on Cancel', async () => {
+        const { user } = await openSettings();
+
+        await user.click(screen.getByRole('button', { name: 'Change Secret Access Key' }));
+
+        const secret = screen.getByLabelText('Secret Access Key');
+
+        expect(secret).toHaveValue('');
+        expect(secret).not.toHaveAttribute('readonly');
+        expect(secret).toHaveAttribute('type', 'password');
+        expect(secret).toHaveAttribute('autocomplete', 'off');
+
+        await user.type(secret, 'typed-secret');
+        await user.click(screen.getByRole('button', { name: 'Cancel changing Secret Access Key' }));
+
+        expect(screen.getByLabelText('Secret Access Key')).toHaveValue('••••••••••••••••');
+        expect(screen.getByLabelText('Secret Access Key')).toHaveAttribute('readonly');
+
+        await user.click(screen.getByRole('button', { name: 'Change Secret Access Key' }));
+        expect(screen.getByLabelText('Secret Access Key')).toHaveValue('');
+
+        await user.click(screen.getByRole('button', { name: 'Change Access Key ID' }));
+        expect(screen.getByLabelText('Access Key ID')).toHaveValue('');
+        await user.click(screen.getByRole('button', { name: 'Cancel changing Access Key ID' }));
+        expect(screen.getByLabelText('Access Key ID')).toHaveValue('••••••••••••wxyz');
+    });
+
+    it('shows Not configured with editable required key and secret fields', async () => {
         await openSettings({ r2: UNCONFIGURED });
 
-        expect(screen.getByText('R2 storage is not set up.')).toBeInTheDocument();
+        expect(screen.getByText('Not configured')).toBeInTheDocument();
         expect(screen.getByLabelText('Endpoint')).toHaveValue('');
-        expect(screen.getByLabelText('Access Key ID')).toHaveAttribute('placeholder', '');
+
+        const key = screen.getByLabelText('Access Key ID');
+        const secret = screen.getByLabelText('Secret Access Key');
+
+        expect(key).toHaveValue('');
+        expect(key).not.toHaveAttribute('readonly');
+        expect(key).toBeRequired();
+        expect(secret).toHaveValue('');
+        expect(secret).toHaveAttribute('type', 'password');
+        expect(secret).toBeRequired();
+        expect(screen.queryByRole('button', { name: /^Change / })).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /^Cancel changing/ })).not.toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Test connection' })).toBeDisabled();
     });
 
     it('shows an error with Retry when the status cannot be loaded', async () => {
         const { fake, user } = await renderApp();
-        const get = vi
-            .spyOn(fake.api.r2, 'get')
-            .mockResolvedValueOnce({
-                ok: false,
-                error: 'Could not load the R2 settings (HTTP 500).',
-            });
+        const get = vi.spyOn(fake.api.r2, 'get').mockResolvedValueOnce({
+            ok: false,
+            error: 'Could not load the R2 settings (HTTP 500).',
+        });
 
         await user.click(screen.getByRole('tab', { name: 'Settings' }));
         expect(
@@ -87,7 +128,7 @@ describe('R2 storage card', () => {
         expect(get).toHaveBeenCalledTimes(2);
     });
 
-    it('omits a blank key and secret from the save request', async () => {
+    it('omits the masked key and secret from the save request', async () => {
         const { fake, user } = await openSettings();
         const save = vi.spyOn(fake.api.r2, 'save');
 
@@ -108,6 +149,8 @@ describe('R2 storage card', () => {
         const { fake, user } = await openSettings();
         const save = vi.spyOn(fake.api.r2, 'save');
 
+        await user.click(screen.getByRole('button', { name: 'Change Access Key ID' }));
+        await user.click(screen.getByRole('button', { name: 'Change Secret Access Key' }));
         await user.type(screen.getByLabelText('Access Key ID'), 'AKIANEWKEY1234');
         await user.type(screen.getByLabelText('Secret Access Key'), 'super-secret-value');
         await user.click(screen.getByRole('button', { name: 'Save R2 settings' }));
@@ -120,12 +163,10 @@ describe('R2 storage card', () => {
             secretAccessKey: 'super-secret-value',
         });
         expect(await screen.findByText('R2 settings saved.')).toBeInTheDocument();
-        expect(screen.getByLabelText('Access Key ID')).toHaveValue('');
-        expect(screen.getByLabelText('Secret Access Key')).toHaveValue('');
-        expect(screen.getByLabelText('Access Key ID')).toHaveAttribute(
-            'placeholder',
-            'Saved (ends with 1234) - leave blank to keep',
-        );
+        expect(screen.getByLabelText('Access Key ID')).toHaveValue('••••••••••••1234');
+        expect(screen.getByLabelText('Access Key ID')).toHaveAttribute('readonly');
+        expect(screen.getByLabelText('Secret Access Key')).toHaveValue('••••••••••••••••');
+        expect(screen.getByLabelText('Secret Access Key')).toHaveAttribute('readonly');
 
         const page = document.body.innerHTML;
 
@@ -145,6 +186,7 @@ describe('R2 storage card', () => {
             },
         });
 
+        await user.click(screen.getByRole('button', { name: 'Change Secret Access Key' }));
         await user.type(screen.getByLabelText('Secret Access Key'), 'typed-secret');
         await user.click(screen.getByRole('button', { name: 'Save R2 settings' }));
 
@@ -241,6 +283,7 @@ describe('R2 storage card', () => {
     it('treats a typed secret as an unsaved change', async () => {
         const { user } = await openSettings();
 
+        await user.click(screen.getByRole('button', { name: 'Change Secret Access Key' }));
         await user.type(screen.getByLabelText('Secret Access Key'), 'abc');
 
         expect(screen.getByRole('button', { name: 'Test connection' })).toBeDisabled();

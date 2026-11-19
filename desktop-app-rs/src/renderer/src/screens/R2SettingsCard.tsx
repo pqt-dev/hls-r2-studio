@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { R2FieldName, R2SaveInput, R2Status } from '../../../shared/ipc';
-import { Banner } from '../components/Banner';
 import { Feedback, type FeedbackMessage } from '../components/Feedback';
+import { SuccessIcon, WarningIcon } from '../components/icons';
 import { SectionCard } from '../components/SectionCard';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
@@ -44,15 +44,10 @@ function isDirty(form: Form, status: R2Status): boolean {
     );
 }
 
-function keyPlaceholder(status: R2Status): string {
-    return status.accessKeyLast4 === null
-        ? ''
-        : `Saved (ends with ${status.accessKeyLast4}) - leave blank to keep`;
-}
+const MASKED_KEY_PREFIX = '••••••••••••';
+const MASKED_SECRET = '••••••••••••••••';
 
-function secretPlaceholder(status: R2Status): string {
-    return status.hasSecret ? 'Saved - leave blank to keep' : '';
-}
+type SecretField = 'accessKeyId' | 'secretAccessKey';
 
 /** The "R2 storage" card of the Settings screen: view, edit and test the site's R2 config. */
 export function R2SettingsCard() {
@@ -72,6 +67,11 @@ export function R2SettingsCard() {
         bucket: '',
         url: '',
         ...EMPTY_SECRETS,
+    });
+    // A saved key/secret stays masked (and is left out of the save) until Change is clicked.
+    const [editing, setEditing] = useState<Record<SecretField, boolean>>({
+        accessKeyId: false,
+        secretAccessKey: false,
     });
     const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
     const [formError, setFormError] = useState<FeedbackMessage | null>(null);
@@ -98,6 +98,7 @@ export function R2SettingsCard() {
             if (result.ok) {
                 setLoad({ kind: 'ready', status: result.status });
                 setForm(formOf(result.status));
+                setEditing({ accessKeyId: false, secretAccessKey: false });
             } else {
                 setLoad({ kind: 'error', message: result.error });
             }
@@ -120,6 +121,17 @@ export function R2SettingsCard() {
         setFormError(null);
     }
 
+    function startEditing(field: SecretField): void {
+        setEditing((current) => ({ ...current, [field]: true }));
+    }
+
+    function cancelEditing(field: SecretField): void {
+        setEditing((current) => ({ ...current, [field]: false }));
+        setForm((current) => ({ ...current, [field]: '' }));
+        setFieldErrors((current) => ({ ...current, [field]: undefined }));
+        setFormError(null);
+    }
+
     async function save(event: FormEvent): Promise<void> {
         event.preventDefault();
         setSaving(true);
@@ -132,9 +144,14 @@ export function R2SettingsCard() {
             url: form.url.trim(),
         };
 
-        // Blank = keep the stored value: the field is left out of the request.
-        if (form.accessKeyId.trim() !== '') input.accessKeyId = form.accessKeyId.trim();
-        if (form.secretAccessKey.trim() !== '') input.secretAccessKey = form.secretAccessKey.trim();
+        // A field still masked (or left blank) keeps the stored value: it is left out of the request.
+        if (editing.accessKeyId && form.accessKeyId.trim() !== '') {
+            input.accessKeyId = form.accessKeyId.trim();
+        }
+
+        if (editing.secretAccessKey && form.secretAccessKey.trim() !== '') {
+            input.secretAccessKey = form.secretAccessKey.trim();
+        }
 
         try {
             const result = await api.r2.save(input);
@@ -145,6 +162,7 @@ export function R2SettingsCard() {
                 // The typed key and secret are dropped from the state as soon as they are saved.
                 setLoad({ kind: 'ready', status: result.status });
                 setForm(formOf(result.status));
+                setEditing({ accessKeyId: false, secretAccessKey: false });
                 toast.show('success', 'R2 settings saved.');
             } else {
                 setFieldErrors(result.fieldErrors ?? {});
@@ -178,7 +196,7 @@ export function R2SettingsCard() {
 
     if (load.kind !== 'ready') {
         return (
-            <SectionCard title="R2 storage" level={3}>
+            <SectionCard title="R2 storage" level={3} className="card-wide">
                 {load.kind === 'loading' ? (
                     <p className="muted" role="status" aria-busy="true">
                         {'Loading…'}
@@ -209,11 +227,28 @@ export function R2SettingsCard() {
     };
 
     return (
-        <SectionCard title="R2 storage" level={3}>
+        <SectionCard title="R2 storage" level={3} className="card-wide">
+            <p className="r2-status">
+                {status.configured ? (
+                    <span className="chip chip-done">
+                        <span className="chip-icon" aria-hidden="true">
+                            <SuccessIcon />
+                        </span>
+                        Configured
+                    </span>
+                ) : (
+                    <span className="chip chip-attention">
+                        <span className="chip-icon" aria-hidden="true">
+                            <WarningIcon />
+                        </span>
+                        Not configured
+                    </span>
+                )}
+            </p>
             {!status.configured && (
-                <Banner tone="warning" title="R2 storage is not set up.">
+                <p className="help">
                     Videos cannot be uploaded until the settings below are saved.
-                </Banner>
+                </p>
             )}
 
             <form onSubmit={(event) => void save(event)} autoComplete="off" noValidate>
@@ -261,31 +296,95 @@ export function R2SettingsCard() {
 
                 <div className="field">
                     <label htmlFor={ids.key}>Access Key ID</label>
-                    <input
-                        id={ids.key}
-                        type="text"
-                        autoComplete="off"
-                        spellCheck={false}
-                        value={form.accessKeyId}
-                        placeholder={keyPlaceholder(status)}
-                        aria-invalid={fieldErrors.accessKeyId !== undefined}
-                        onChange={(event) => change('accessKeyId', event.target.value)}
-                    />
+                    {status.accessKeyLast4 !== null && !editing.accessKeyId ? (
+                        <div className="row">
+                            <input
+                                id={ids.key}
+                                type="text"
+                                readOnly
+                                autoComplete="off"
+                                value={`${MASKED_KEY_PREFIX}${status.accessKeyLast4}`}
+                            />
+                            <button
+                                type="button"
+                                className="btn"
+                                aria-label="Change Access Key ID"
+                                onClick={() => startEditing('accessKeyId')}
+                            >
+                                Change
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="row">
+                            <input
+                                id={ids.key}
+                                type="text"
+                                autoComplete="off"
+                                spellCheck={false}
+                                required={status.accessKeyLast4 === null}
+                                value={form.accessKeyId}
+                                aria-invalid={fieldErrors.accessKeyId !== undefined}
+                                onChange={(event) => change('accessKeyId', event.target.value)}
+                            />
+                            {status.accessKeyLast4 !== null && (
+                                <button
+                                    type="button"
+                                    className="btn"
+                                    aria-label="Cancel changing Access Key ID"
+                                    onClick={() => cancelEditing('accessKeyId')}
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <Feedback message={fieldError('accessKeyId')} />
                 </div>
 
                 <div className="field">
                     <label htmlFor={ids.secret}>Secret Access Key</label>
-                    <input
-                        id={ids.secret}
-                        type="password"
-                        autoComplete="off"
-                        spellCheck={false}
-                        value={form.secretAccessKey}
-                        placeholder={secretPlaceholder(status)}
-                        aria-invalid={fieldErrors.secretAccessKey !== undefined}
-                        onChange={(event) => change('secretAccessKey', event.target.value)}
-                    />
+                    {status.hasSecret && !editing.secretAccessKey ? (
+                        <div className="row">
+                            <input
+                                id={ids.secret}
+                                type="text"
+                                readOnly
+                                autoComplete="off"
+                                value={MASKED_SECRET}
+                            />
+                            <button
+                                type="button"
+                                className="btn"
+                                aria-label="Change Secret Access Key"
+                                onClick={() => startEditing('secretAccessKey')}
+                            >
+                                Change
+                            </button>
+                        </div>
+                    ) : (
+                        <div className="row">
+                            <input
+                                id={ids.secret}
+                                type="password"
+                                autoComplete="off"
+                                spellCheck={false}
+                                required={!status.hasSecret}
+                                value={form.secretAccessKey}
+                                aria-invalid={fieldErrors.secretAccessKey !== undefined}
+                                onChange={(event) => change('secretAccessKey', event.target.value)}
+                            />
+                            {status.hasSecret && (
+                                <button
+                                    type="button"
+                                    className="btn"
+                                    aria-label="Cancel changing Secret Access Key"
+                                    onClick={() => cancelEditing('secretAccessKey')}
+                                >
+                                    Cancel
+                                </button>
+                            )}
+                        </div>
+                    )}
                     <Feedback message={fieldError('secretAccessKey')} />
                 </div>
 
@@ -314,7 +413,7 @@ export function R2SettingsCard() {
                         ? 'The settings cannot be saved while videos are being processed.'
                         : dirty
                           ? 'Save your changes first: the test uses the saved settings, not the values in this form.'
-                          : 'The test uses the saved settings. Leave the key and secret blank to keep the saved ones.'}
+                          : 'Test connection checks the saved settings.'}
                 </p>
                 <Feedback message={formError} />
             </form>

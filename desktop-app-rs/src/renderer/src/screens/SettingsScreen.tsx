@@ -134,10 +134,10 @@ export function SettingsScreen() {
                         is built.
                     </p>
                 </div>
-                <div className="row row-wrap">
-                    <span className="muted">
-                        {auth.username !== undefined ? `Signed in as ${auth.username}` : 'Signed in'}
-                    </span>
+                <p className="muted settings-signed-in">
+                    {auth.username !== undefined ? `Signed in as ${auth.username}` : 'Signed in'}
+                </p>
+                <div className="settings-actions">
                     <ReloadConfigButton />
                     <button
                         type="button"
@@ -151,7 +151,7 @@ export function SettingsScreen() {
                         Sign out
                     </button>
                 </div>
-                <p className="muted">
+                <p className="help">
                     Fetch the latest settings from the site, for example after an admin changes
                     storage.
                 </p>
