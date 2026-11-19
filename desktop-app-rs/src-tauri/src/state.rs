@@ -316,6 +316,7 @@ mod tests {
                 public_id: "abc".into(),
                 embed_url: Some("https://site.example.com/embed/abc".into()),
                 playlist_url: None,
+                storage_folder: None,
                 thumbnail_url: None,
                 custom_image_url: None,
                 storyboard_urls: Vec::new(),

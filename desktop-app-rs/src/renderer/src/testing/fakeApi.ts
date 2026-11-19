@@ -87,6 +87,7 @@ export function makeVideoDetail(partial: Partial<VideoDetail> = {}): VideoDetail
         outputCodec: 'h264',
         embedUrl: 'https://site.example.com/embed/abcdefghijkl',
         playlistUrl: 'https://cdn.example.com/videos/abcdefghijkl/master.m3u8',
+        storageFolder: '2026/11/18/holiday-video-abcdefghijkl/',
         shortcode: '[hls_embed_vl id="abcdefghijkl"]',
         iframeCode:
             '<iframe src="https://site.example.com/embed/abcdefghijkl" style="width:100%; aspect-ratio:16 / 9; max-height:75vh; border:0;" allowfullscreen allow="autoplay; fullscreen"></iframe>',

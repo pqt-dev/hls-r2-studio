@@ -1,12 +1,18 @@
 import { useRef, useState, type ReactNode } from 'react';
-import { LinkIcon, OpenExternalIcon, ShortcodeIcon } from './icons';
+import { ImageIcon, LinkIcon, OpenExternalIcon, ShortcodeIcon } from './icons';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
+const COPIED_TOASTS = {
+    shortcode: 'Shortcode copied.',
+    'embed-url': 'Direct URL copied.',
+    'thumbnail-url': 'Thumbnail URL copied.',
+} as const;
+
 /** Quick actions of a ready video: Rust builds the text and copies/opens, never the renderer. */
-export type QuickAction = 'shortcode' | 'embed-url' | 'open';
+export type QuickAction = 'shortcode' | 'embed-url' | 'thumbnail-url' | 'open';
 
 /**
  * Runs the quick actions with the same toasts everywhere. `busyIds` are the videos with an
@@ -34,11 +40,7 @@ export function useQuickActions(): {
             .then((result) => {
                 if (!result.ok) toast.show('error', result.error);
                 else if (action === 'open') toast.show('success', 'Opened in your browser.');
-                else
-                    toast.show(
-                        'success',
-                        action === 'shortcode' ? 'Shortcode copied.' : 'Direct URL copied.',
-                    );
+                else toast.show('success', COPIED_TOASTS[action]);
             })
             .catch(() => toast.show('error', GENERIC_ERROR))
             .finally(() => {
@@ -71,6 +73,35 @@ export function QuickShortcodeButton({
             onClick={() => onQuick('shortcode')}
         >
             <ShortcodeIcon />
+        </button>
+    );
+}
+
+/**
+ * Copy the generated thumbnail URL: a neutral icon button (same family and size as the kebab)
+ * next to the accented shortcode button. Rust builds and copies the URL; only the id and the kind
+ * are sent.
+ */
+export function QuickThumbnailButton({
+    title,
+    busy,
+    onQuick,
+}: {
+    title: string;
+    busy: boolean;
+    onQuick: (action: QuickAction) => void;
+}) {
+    return (
+        <button
+            type="button"
+            className="btn btn-sm video-quick"
+            aria-label={`Copy thumbnail URL for ${title}`}
+            title="Copy thumbnail URL"
+            aria-busy={busy}
+            disabled={busy}
+            onClick={() => onQuick('thumbnail-url')}
+        >
+            <ImageIcon />
         </button>
     );
 }

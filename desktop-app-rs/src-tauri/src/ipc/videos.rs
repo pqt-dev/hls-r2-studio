@@ -20,7 +20,8 @@ use super::IpcError;
 use crate::api::image_upload::{read_image_file, IMAGE_UNREADABLE};
 use crate::api::video_links::{VideoLinkCache, VideoLinks};
 use crate::api::videos::{
-    build_public_url, DeleteStatus, VideoDetail, VideoListItem, VideoListMeta, VideoStatus,
+    build_public_url, normalize_storage_folder, DeleteStatus, VideoDetail, VideoListItem,
+    VideoListMeta, VideoStatus,
 };
 use crate::api::{SiteApiError, SiteClient};
 use crate::desktop::{is_embed_url_of_site, open_external_https, safe_https_url};
@@ -31,6 +32,7 @@ use crate::state::AppState;
 pub const NO_PLAYLIST_URL: &str = "This video has no HLS URL (.m3u8) yet.";
 pub const NO_THUMBNAIL_URL: &str = "This video has no thumbnail yet.";
 pub const NO_CUSTOM_IMAGE_URL: &str = "This video has no custom image.";
+pub const NO_STORAGE_FOLDER: &str = "This video has no storage folder yet.";
 pub const NO_STORYBOARD_URL: &str = "This video has no such storyboard.";
 
 /// One list row for the renderer: URLs built here from the R2 public base URL. The storage
@@ -481,6 +483,11 @@ fn link_text(
                 .map(str::to_string)
                 .ok_or(missing)
         }
+        VideoLinkKind::StorageFolder => links
+            .storage_folder
+            .as_deref()
+            .and_then(normalize_storage_folder)
+            .ok_or(NO_STORAGE_FOLDER),
         VideoLinkKind::StoryboardUrl(index) => links
             .storyboard_urls
             .get(index)
@@ -619,6 +626,21 @@ async fn image_links(
     }
 }
 
+/// The links for the thumbnail Copy button: a remembered entry (from the list or a detail) that
+/// already has the generated thumbnail URL is used as is (the generated thumbnail does not change
+/// when a custom image is set or removed, so no `?v=` freshness is needed); otherwise the detail
+/// is fetched once.
+async fn thumbnail_links(
+    client: &SiteClient,
+    cache: &VideoLinkCache,
+    id: i64,
+) -> Result<VideoLinks, SiteApiError> {
+    match cache.get(id) {
+        Some(links) if links.thumbnail_url.is_some() => Ok(links),
+        _ => fresh_links(client, cache, id).await,
+    }
+}
+
 /// The links of a video from a new detail request, remembered for later Copy / Open.
 async fn fresh_links(
     client: &SiteClient,
@@ -642,24 +664,21 @@ pub async fn videos_copy_link<R: Runtime>(
 ) -> Result<ActionResult, IpcError> {
     let (id, kind) =
         parse_video_link(payload).map_err(|e| rejected(&state, "videos:copy-link", e))?;
-    // Image URLs change when an image is replaced or removed (and carry a cache-buster): they come
-    // from the remembered detail, which set/remove image and every detail load keep current.
-    let links = match if matches!(
-        kind,
-        VideoLinkKind::ThumbnailUrl
-            | VideoLinkKind::CustomImageUrl
-            | VideoLinkKind::StoryboardUrl(_)
-    ) {
-        image_links(&state.site_client, &state.video_links, id).await
-    } else {
-        stored_links(
-            &state.site_client,
-            &state.video_links,
-            id,
-            kind == VideoLinkKind::PlaylistUrl,
-        )
-        .await
-    } {
+    // Custom-image and storyboard URLs change when an image is replaced or removed (and carry a
+    // cache-buster): they come from the remembered detail, which set/remove image and every detail
+    // load keep current.
+    let client = &state.site_client;
+    let cache = &state.video_links;
+    let links = match kind {
+        VideoLinkKind::ThumbnailUrl => thumbnail_links(client, cache, id).await,
+        // Needs a loaded detail: current `?v=` URLs / storyboards, or the storage folder (a list
+        // entry has none).
+        VideoLinkKind::CustomImageUrl
+        | VideoLinkKind::StoryboardUrl(_)
+        | VideoLinkKind::StorageFolder => image_links(client, cache, id).await,
+        _ => stored_links(client, cache, id, kind == VideoLinkKind::PlaylistUrl).await,
+    };
+    let links = match links {
         Ok(links) => links,
         Err(error) => return Ok(ActionResult::err(error.message)),
     };
@@ -736,6 +755,7 @@ mod tests {
             public_id: "abcdefghijkl".into(),
             embed_url: Some("https://site.example.com/embed/abcdefghijkl".into()),
             playlist_url: Some("https://cdn.example.com/v/master.m3u8".into()),
+            storage_folder: None,
             thumbnail_url: None,
             custom_image_url: None,
             storyboard_urls: Vec::new(),
@@ -1283,6 +1303,7 @@ mod tests {
             public_id: "abcdefghijkl".into(),
             embed_url: None,
             playlist_url: None,
+            storage_folder: None,
             thumbnail_url: Some("https://cdn.example.com/t.jpg?v=1".into()),
             custom_image_url: None,
             storyboard_urls: Vec::new(),
@@ -1323,6 +1344,7 @@ mod tests {
             public_id: "abcdefghijkl".into(),
             embed_url: None,
             playlist_url: None,
+            storage_folder: None,
             thumbnail_url: None,
             custom_image_url: None,
             storyboard_urls: vec![
@@ -1519,6 +1541,162 @@ mod tests {
             assert_eq!(server.requests().len(), 1);
         }
 
+        fn list_item_with_thumbnail_reply() -> Reply {
+            Reply::json(
+                200,
+                json!({
+                    "data": [{
+                        "id": 7,
+                        "public_id": "abcdefghijkl",
+                        "title": "T",
+                        "status": "ready",
+                        "thumbnail_path": "videos/abcdefghijkl/thumbnail.jpg",
+                        "custom_image_path": "videos/abcdefghijkl/custom.jpg",
+                        "embed_url": "https://site.example.com/embed/abcdefghijkl"
+                    }],
+                    "meta": { "page": 1, "per_page": 24, "total": 1, "last_page": 1 }
+                }),
+            )
+        }
+
+        #[tokio::test]
+        async fn a_list_entry_serves_the_thumbnail_without_a_request_but_not_custom_or_storyboard()
+        {
+            let server = TestServer::start(|request| {
+                if request.path.contains("/videos/7") {
+                    detail_with_image_reply(3)
+                } else {
+                    list_item_with_thumbnail_reply()
+                }
+            })
+            .await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            list_videos(
+                &client,
+                parse_videos_list(None).unwrap(),
+                Some("https://cdn.example.com"),
+                &cache,
+            )
+            .await;
+            assert_eq!(server.requests().len(), 1);
+
+            let links = thumbnail_links(&client, &cache, 7).await.unwrap();
+
+            assert_eq!(
+                links.thumbnail_url.as_deref(),
+                Some("https://cdn.example.com/videos/abcdefghijkl/thumbnail.jpg")
+            );
+            assert_eq!(server.requests().len(), 1);
+
+            // The stricter rule still holds for the custom image and storyboards.
+            image_links(&client, &cache, 7).await.unwrap();
+            assert_eq!(server.requests().len(), 2);
+        }
+
+        #[tokio::test]
+        async fn the_thumbnail_falls_back_to_one_fetch_when_nothing_is_remembered() {
+            let server = TestServer::start(|_| detail_with_image_reply(1)).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            let links = thumbnail_links(&client, &cache, 7).await.unwrap();
+
+            assert!(links.thumbnail_url.is_some());
+            assert_eq!(server.requests().len(), 1);
+            thumbnail_links(&client, &cache, 7).await.unwrap();
+            assert_eq!(server.requests().len(), 1);
+        }
+
+        fn detail_with_folder_reply(folder: serde_json::Value) -> Reply {
+            Reply::json(
+                200,
+                json!({
+                    "id": 7,
+                    "public_id": "abcdefghijkl",
+                    "title": "T",
+                    "status": "ready",
+                    "disk_prefix": folder,
+                    "embed_url": "https://site.example.com/embed/abcdefghijkl"
+                }),
+            )
+        }
+
+        #[tokio::test]
+        async fn the_storage_folder_is_copied_from_a_loaded_detail_without_a_request() {
+            let server = TestServer::start(|_| {
+                detail_with_folder_reply(json!("2026/11/18/clip-abcdefghijkl"))
+            })
+            .await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+            let result = remember_and_fill(get_video(&client, 7).await, &cache, SITE);
+            let value = serde_json::to_value(&result).unwrap();
+
+            // Normalised (one trailing slash) and exposed to the renderer as `storageFolder`.
+            assert_eq!(
+                value["video"]["storageFolder"],
+                json!("2026/11/18/clip-abcdefghijkl/")
+            );
+            assert!(value["video"].get("diskPrefix").is_none());
+            assert_eq!(server.requests().len(), 1);
+
+            let links = image_links(&client, &cache, 7).await.unwrap();
+
+            assert_eq!(server.requests().len(), 1);
+            assert_eq!(
+                link_text(&links, VideoLinkKind::StorageFolder, SITE),
+                Ok("2026/11/18/clip-abcdefghijkl/".to_string())
+            );
+        }
+
+        #[tokio::test]
+        async fn a_list_entry_fetches_the_detail_once_for_the_storage_folder() {
+            let server = TestServer::start(|request| {
+                if request.path.contains("/videos/7") {
+                    detail_with_folder_reply(json!("2026/11/18/clip-abcdefghijkl/"))
+                } else {
+                    list_reply()
+                }
+            })
+            .await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            list_videos(&client, parse_videos_list(None).unwrap(), None, &cache).await;
+            let links = image_links(&client, &cache, 7).await.unwrap();
+
+            assert_eq!(server.requests().len(), 2);
+            assert_eq!(
+                links.storage_folder.as_deref(),
+                Some("2026/11/18/clip-abcdefghijkl/")
+            );
+        }
+
+        #[test]
+        fn the_storage_folder_copy_errors_when_absent_or_unsafe() {
+            let mut links = VideoLinks::from_list_item(
+                &serde_json::from_value(json!({
+                    "id": 7, "public_id": "abcdefghijkl", "title": "T", "status": "ready"
+                }))
+                .unwrap(),
+                None,
+            );
+
+            assert_eq!(
+                link_text(&links, VideoLinkKind::StorageFolder, SITE),
+                Err(NO_STORAGE_FOLDER)
+            );
+            assert_eq!(NO_STORAGE_FOLDER, "This video has no storage folder yet.");
+
+            links.storage_folder = Some("/../etc".into());
+            assert_eq!(
+                link_text(&links, VideoLinkKind::StorageFolder, SITE),
+                Err(NO_STORAGE_FOLDER)
+            );
+        }
+
         #[tokio::test]
         async fn image_links_fall_back_to_one_fetch_when_empty_or_from_the_list() {
             let server = TestServer::start(|_| detail_with_image_reply(1)).await;
@@ -1650,6 +1828,7 @@ mod tests {
                     public_id: "abcdefghijkl".into(),
                     embed_url: Some("https://site.example.com/embed/abcdefghijkl".into()),
                     playlist_url: None,
+                    storage_folder: None,
                     thumbnail_url: None,
                     custom_image_url: None,
                     storyboard_urls: Vec::new(),

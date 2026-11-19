@@ -65,7 +65,7 @@ describe('Library view toggle', () => {
         expect(viewButton('Grid')).toHaveAttribute('aria-pressed', 'false');
         expect(viewButton('List')).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByRole('list', { name: 'Videos' })).toHaveClass('videos-list');
-        expect(screen.getByText('Duration')).toBeInTheDocument();
+        expect(document.querySelector('.videos-head')).not.toBeNull();
         expect(window.localStorage.getItem(KEY)).toBe('list');
 
         await user.click(viewButton('Grid'));
@@ -142,7 +142,7 @@ describe('Library view toggle', () => {
 });
 
 describe('Library List view', () => {
-    it('shows thumbnail, title, status, duration and date cells', async () => {
+    it('shows thumbnail, title with chips, status and date cells', async () => {
         window.localStorage.setItem(KEY, 'list');
         await openLibrary(() =>
             Promise.resolve(
@@ -173,19 +173,120 @@ describe('Library List view', () => {
         expect(within(rows[1]!).getByText('Failed')).toBeInTheDocument();
 
         // The narrow-width hiding is CSS only: every cell stays in the DOM.
-        expect(rows[0]!.querySelector('.video-duration')).not.toBeNull();
         expect(rows[0]!.querySelector('.video-created')).not.toBeNull();
-        // Status, duration and created are fixed grid cells; the header cells use the same hooks.
+        // Status and created are fixed grid cells; the header cells use the same hooks.
         expect(rows[0]!.querySelector('.video-cell.video-status .chip--dot')).not.toBeNull();
-        expect(rows[0]!.querySelector('.video-cell.video-duration .spec-duration')).not.toBeNull();
-        expect(
-            rows[0]!.querySelector('.video-cell.video-duration .spec-duration svg'),
-        ).not.toBeNull();
+        expect(rows[0]!.querySelector('.video-duration')).toBeNull();
+
         const head = document.querySelector('.videos-head')!;
 
+        expect(screen.queryByText('Duration')).toBeNull();
+        expect(Array.from(head.children).map((cell) => cell.textContent)).toEqual([
+            'Preview',
+            'Title',
+            'Status',
+            'Created',
+        ]);
         expect(head.querySelector('.video-status')).toHaveTextContent('Status');
-        expect(head.querySelector('.video-duration')).toHaveTextContent('Duration');
         expect(head.querySelector('.video-created')).toHaveTextContent('Created');
+    });
+
+    it('shows every chip under the title in the main block, like the grid card', async () => {
+        window.localStorage.setItem(KEY, 'list');
+        await openLibrary(() =>
+            Promise.resolve(
+                ok([
+                    makeVideo({
+                        id: 1,
+                        title: 'Holiday',
+                        duration: 75,
+                        width: 1920,
+                        height: 1080,
+                        bitrateKbps: 2400,
+                        sizeBytes: 65_000_000,
+                    }),
+                    makeVideo({
+                        id: 2,
+                        title: 'Bare',
+                        duration: null,
+                        width: null,
+                        height: null,
+                        bitrateKbps: null,
+                        sizeBytes: null,
+                    }),
+                ]),
+            ),
+        );
+
+        const [full, bare] = screen.getAllByRole('listitem');
+        const main = full!.querySelector('.video-main')!;
+        const title = main.querySelector('.video-title')!;
+        const chips = main.querySelector('.video-chips')!;
+
+        expect(title).toHaveTextContent('Holiday');
+        expect(
+            title.compareDocumentPosition(chips) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+        expect(chips.querySelector('[title="Quality"]')).toHaveClass('chip-tier-3');
+        expect(chips.querySelector('[title="Quality"]')).toHaveTextContent('1080p');
+        expect(chips.querySelector('[title="Dimensions"] svg')).not.toBeNull();
+        expect(chips.querySelector('[title="Dimensions"]')).toHaveTextContent('1920\u00d71080');
+        expect(chips.querySelector('[title="Bitrate"]')).toHaveTextContent('2400 kbps');
+        expect(chips.querySelector('.spec-duration')).toHaveTextContent('1:15');
+        expect(chips.querySelector('.spec-size')).toHaveTextContent('62 MB');
+        expect(chips.querySelector('[title="Orientation"]')).toHaveTextContent('Horizontal');
+        expect(chips.querySelectorAll('.spec')).toHaveLength(6);
+        expect(chips.querySelectorAll('.spec[aria-hidden="true"]')).toHaveLength(6);
+        expect(full!.querySelector('.video-open')!.textContent).toContain(
+            '1080p, Duration 1:15, 2400 kbps',
+        );
+
+        // Missing values have no chips.
+        expect(bare!.querySelector('.video-chips')).toBeNull();
+        expect(bare!.querySelector('.video-main .video-title')).toHaveTextContent('Bare');
+    });
+
+    it('shows an orientation chip on list rows only when the dimensions are known', async () => {
+        window.localStorage.setItem(KEY, 'list');
+        await openLibrary(() =>
+            Promise.resolve(
+                ok([
+                    makeVideo({ id: 1, title: 'Wide', width: 1920, height: 1080 }),
+                    makeVideo({ id: 2, title: 'Tall', width: 1280, height: 2770 }),
+                    makeVideo({ id: 3, title: 'Unknown', width: null, height: null }),
+                ]),
+            ),
+        );
+
+        const [wide, tall, unknown] = screen.getAllByRole('listitem');
+        const chip = (row: HTMLElement) => row.querySelector('.video-chips [title="Orientation"]');
+
+        expect(chip(wide!)).toHaveTextContent('Horizontal');
+        expect(chip(wide!)).toHaveAttribute('aria-hidden', 'true');
+        expect(chip(wide!)!.querySelector('svg')).not.toBeNull();
+        expect(chip(tall!)).toHaveTextContent('Vertical');
+        expect(chip(unknown!)).toBeNull();
+        // Announced once, in the visually hidden summary.
+        expect(wide!.querySelector('.video-open')!.textContent).toContain(
+            '1920\u00d71080, Horizontal',
+        );
+        expect(tall!.querySelector('.video-open')!.textContent).toContain('Vertical');
+        // After the dimensions chip.
+        const dims = wide!.querySelector('.video-chips [title="Dimensions"]')!;
+
+        expect(dims.nextElementSibling).toBe(chip(wide!));
+    });
+
+    it('does not add the orientation chip to grid cards', async () => {
+        window.localStorage.setItem(KEY, 'grid');
+        await openLibrary(() =>
+            Promise.resolve(ok([makeVideo({ id: 1, title: 'Wide', width: 1920, height: 1080 })])),
+        );
+
+        const card = screen.getAllByRole('listitem')[0]!;
+
+        expect(card.querySelector('[title="Orientation"]')).toBeNull();
+        expect(card.textContent).not.toContain('Horizontal');
     });
 
     it('falls back to the placeholder when the image fails to load', async () => {

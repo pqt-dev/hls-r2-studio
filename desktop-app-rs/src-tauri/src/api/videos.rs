@@ -148,6 +148,28 @@ fn cap_opt(value: &mut Option<String>, max_chars: usize) {
     }
 }
 
+/// Normalises a storage folder (R2 key prefix) from the site: a relative key without a leading
+/// slash, backslash, `.` / `..` segment, control character or empty segment, at most `MAX_TEXT`
+/// bytes, with exactly one trailing slash. Anything else is `None`.
+pub(crate) fn normalize_storage_folder(raw: &str) -> Option<String> {
+    let trimmed = raw.trim_end_matches('/');
+
+    if trimmed.is_empty()
+        || raw.len() > MAX_TEXT
+        || trimmed.starts_with('/')
+        || trimmed
+            .chars()
+            .any(|c| c.is_control() || c.is_whitespace() || matches!(c, '\\' | '?' | '#'))
+        || trimmed
+            .split('/')
+            .any(|segment| segment.is_empty() || segment == "." || segment == "..")
+    {
+        return None;
+    }
+
+    Some(format!("{trimmed}/"))
+}
+
 /// Keeps only an absolute `https://` URL of sane length.
 pub(crate) fn clean_url(value: &mut Option<String>) {
     let keep = value
@@ -391,6 +413,14 @@ pub struct VideoDetail {
     pub output_bitrate_kbps: Option<u64>,
     #[serde(default)]
     pub output_codec: Option<String>,
+    /// Storage folder (R2 key prefix, e.g. `2026/11/18/<slug>-<id>/`) of the video's files: path
+    /// only, never a URL. The site sends it as `disk_prefix` (older sites omit it); the renderer
+    /// gets it as `storageFolder`. Normalised by `normalize_storage_folder` in `sanitize`.
+    #[serde(
+        default,
+        rename(deserialize = "disk_prefix", serialize = "storageFolder")
+    )]
+    pub storage_folder: Option<String>,
     #[serde(default)]
     pub embed_url: Option<String>,
     #[serde(default)]
@@ -435,6 +465,10 @@ impl VideoDetail {
             cap_opt(&mut error.failed_at, MAX_SHORT);
         }
 
+        self.storage_folder = self
+            .storage_folder
+            .take()
+            .and_then(|folder| normalize_storage_folder(&folder));
         clean_url(&mut self.embed_url);
         clean_url(&mut self.playlist_url);
         clean_url(&mut self.thumbnail_url);
@@ -565,6 +599,73 @@ impl BulkDeleteOutcome {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn storage_folder_is_normalised_to_a_relative_key_with_one_trailing_slash() {
+        let ok = "2026/11/18/chintai-630-evidence-ios-54a51fhqca77/";
+
+        assert_eq!(normalize_storage_folder(ok).as_deref(), Some(ok));
+        assert_eq!(
+            normalize_storage_folder("2026/11/18/clip-abc").as_deref(),
+            Some("2026/11/18/clip-abc/")
+        );
+        assert_eq!(
+            normalize_storage_folder("2026/11/18/clip-abc///").as_deref(),
+            Some("2026/11/18/clip-abc/")
+        );
+
+        let too_long = format!("a/{}", "x".repeat(MAX_TEXT));
+
+        for bad in [
+            "",
+            "/",
+            "/2026/11/18/clip/",
+            "../x/",
+            "a/../b/",
+            "a/./b/",
+            "a//b/",
+            "a\\b/",
+            "a/b\n/",
+            "a/b\u{7}/",
+            "a b/",
+            "a/b?x/",
+            too_long.as_str(),
+        ] {
+            assert_eq!(normalize_storage_folder(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn detail_reads_disk_prefix_as_storage_folder_and_older_sites_give_none() {
+        let base =
+            serde_json::json!({ "id": 1, "public_id": "abc", "title": "T", "status": "ready" });
+        let mut with = base.clone();
+
+        with["disk_prefix"] = serde_json::json!("2026/11/18/clip-abc");
+
+        let mut detail: VideoDetail = serde_json::from_value(with).unwrap();
+
+        detail.sanitize();
+        assert_eq!(
+            detail.storage_folder.as_deref(),
+            Some("2026/11/18/clip-abc/")
+        );
+
+        let mut unsafe_folder = base.clone();
+
+        unsafe_folder["disk_prefix"] = serde_json::json!("/etc/../x");
+
+        let mut detail: VideoDetail = serde_json::from_value(unsafe_folder).unwrap();
+
+        detail.sanitize();
+        assert_eq!(detail.storage_folder, None);
+
+        let mut older: VideoDetail = serde_json::from_value(base).unwrap();
+
+        older.sanitize();
+        assert_eq!(older.storage_folder, None);
+        assert!(serde_json::to_value(&older).unwrap()["storageFolder"].is_null());
+    }
+
     use super::*;
 
     const BASE: &str = "https://cdn.example.com";

@@ -298,3 +298,44 @@ export function formatDateCompact(
         hour12: true,
     }).format(time);
 }
+
+const CODEC_NAMES: Readonly<Record<string, string>> = {
+    h264: 'H.264',
+    avc: 'H.264',
+    avc1: 'H.264',
+    libx264: 'H.264',
+    x264: 'H.264',
+    'h.264': 'H.264',
+    hevc: 'H.265 (HEVC)',
+    h265: 'H.265 (HEVC)',
+    hvc1: 'H.265 (HEVC)',
+    hev1: 'H.265 (HEVC)',
+    libx265: 'H.265 (HEVC)',
+    x265: 'H.265 (HEVC)',
+    'h.265': 'H.265 (HEVC)',
+    av1: 'AV1',
+    'libaom-av1': 'AV1',
+    libsvtav1: 'AV1',
+    svtav1: 'AV1',
+    libdav1d: 'AV1',
+    vp9: 'VP9',
+    'libvpx-vp9': 'VP9',
+    vp8: 'VP8',
+    libvpx: 'VP8',
+    mpeg4: 'MPEG-4',
+};
+
+/**
+ * Human-readable codec name for the value ffmpeg reported ("libx264" -> "H.264"). The match is
+ * case-insensitive on the trimmed value; an unknown value is returned unchanged (never guessed),
+ * and an empty or missing one gives ''.
+ */
+export function formatCodec(raw: string | null | undefined): string {
+    const value = (raw ?? '').trim();
+
+    if (value === '') return '';
+
+    const key = value.toLowerCase();
+
+    return Object.hasOwn(CODEC_NAMES, key) ? CODEC_NAMES[key]! : value;
+}

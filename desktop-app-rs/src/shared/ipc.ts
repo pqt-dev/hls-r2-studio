@@ -210,7 +210,9 @@ export interface VideoListMeta {
 
 /**
  * One row of the list. Thumbnail and embed URLs are built by the main process; storage paths
- * and the R2 base URL never reach the renderer.
+ * and the R2 base URL never reach the renderer. The one deliberate exception is the video's
+ * storage FOLDER key (`VideoDetail.storageFolder`, path only), returned by Rust on purpose; the
+ * R2 base URL, bucket and credentials never reach the renderer.
  */
 export interface VideoListItem {
     id: number;
@@ -276,6 +278,11 @@ export interface VideoDetail {
     embedUrl: string | null;
     playlistUrl: string | null;
     /**
+     * Storage folder (key prefix, e.g. `2026/11/18/<slug>-<id>/`) of the video's files: path only,
+     * normalised by Rust; null when the site does not report it.
+     */
+    storageFolder: string | null;
+    /**
      * Ready-made `[hls_embed_vl id="..."]` and iframe snippet, built by the main process with the
      * same checks as the Copy buttons; null when they cannot be offered. Displayed as is.
      */
@@ -323,7 +330,8 @@ export type VideoLinkKind =
     | 'iframe-code'
     | 'thumbnail-url'
     | 'custom-image-url'
-    | 'storyboard-url';
+    | 'storyboard-url'
+    | 'storage-folder';
 
 // ---- overview + logs (site dashboard numbers) ----------------------------------------------
 

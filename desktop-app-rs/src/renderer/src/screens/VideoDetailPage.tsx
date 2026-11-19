@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { VideoDetail, VideoLinkKind } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { ImageZoom } from '../components/ImageZoom';
+import { OrientationChip } from '../components/OrientationChip';
 import { TierChip } from '../components/TierChip';
 import {
     ArrowLeftIcon,
@@ -23,6 +24,7 @@ import {
     bitrateTier,
     formatBitrate,
     formatBytes,
+    formatCodec,
     formatDateTime,
     formatDuration,
     formatFps,
@@ -134,6 +136,7 @@ const LINK_LABELS: Record<VideoLinkKind, string> = {
     'thumbnail-url': 'Thumbnail URL',
     'custom-image-url': 'Image URL',
     'storyboard-url': 'Storyboard URL',
+    'storage-folder': 'Storage folder',
 };
 
 interface Actions {
@@ -455,6 +458,55 @@ function PreviewCard({
 const COPIED_FEEDBACK_MS = 1500;
 
 /**
+ * Icon-only Copy button with the "copied" feedback: after a successful copy it shows a check and a
+ * "Copied" tooltip for a moment (the screen-reader announcement is the toast the copy action shows).
+ */
+function CopyIconButton({
+    ariaLabel,
+    disabled,
+    onCopy,
+}: {
+    ariaLabel: string;
+    disabled: boolean;
+    /** Resolves to whether the copy succeeded. */
+    onCopy: () => Promise<boolean>;
+}) {
+    const [copied, setCopied] = useState(false);
+    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+    useEffect(
+        () => () => {
+            if (timer.current !== null) clearTimeout(timer.current);
+        },
+        [],
+    );
+
+    function copy(): void {
+        void onCopy().then((ok) => {
+            if (!ok) return;
+
+            if (timer.current !== null) clearTimeout(timer.current);
+
+            setCopied(true);
+            timer.current = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
+        });
+    }
+
+    return (
+        <button
+            type="button"
+            className={copied ? 'btn btn-sm embed-copy is-copied' : 'btn btn-sm embed-copy'}
+            aria-label={ariaLabel}
+            title={copied ? 'Copied' : ariaLabel}
+            disabled={disabled}
+            onClick={copy}
+        >
+            {copied ? <CheckIcon /> : <CopyIcon />}
+        </button>
+    );
+}
+
+/**
  * Single-line text with an ellipsis in the middle: the head shrinks, the tail stays. The two
  * visible spans are hidden from assistive tech; one visually-hidden node carries the full text.
  */
@@ -499,27 +551,6 @@ function CopyBox({
     /** One line with the start and the end of the text visible (ellipsis in the middle). */
     middle?: boolean;
 }) {
-    const [copied, setCopied] = useState(false);
-    const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-    useEffect(
-        () => () => {
-            if (timer.current !== null) clearTimeout(timer.current);
-        },
-        [],
-    );
-
-    function copy(): void {
-        void onCopy().then((ok) => {
-            if (!ok) return;
-
-            if (timer.current !== null) clearTimeout(timer.current);
-
-            setCopied(true);
-            timer.current = setTimeout(() => setCopied(false), COPIED_FEEDBACK_MS);
-        });
-    }
-
     return (
         <div className={wrap ? 'embed-box embed-box-wrap' : 'embed-box'}>
             <div className="embed-value mono" title={value ?? undefined}>
@@ -529,16 +560,7 @@ function CopyBox({
                     (display ?? 'Copy URL')
                 )}
             </div>
-            <button
-                type="button"
-                className={copied ? 'btn btn-sm embed-copy is-copied' : 'btn btn-sm embed-copy'}
-                aria-label={ariaLabel}
-                title={copied ? 'Copied' : ariaLabel}
-                disabled={disabled}
-                onClick={copy}
-            >
-                {copied ? <CheckIcon /> : <CopyIcon />}
-            </button>
+            <CopyIconButton ariaLabel={ariaLabel} disabled={disabled} onCopy={onCopy} />
         </div>
     );
 }
@@ -669,14 +691,41 @@ function TitleEditor({
     );
 }
 
+/**
+ * The storage folder (path only, as returned by Rust) in monospace, wrapping anywhere, with the
+ * last segment (slug-id) emphasised, and an icon-only Copy button. Rust copies it; the renderer
+ * never sends the text.
+ */
+function StorageFolder({ folder, actions }: { folder: string; actions: Actions }) {
+    const trimmed = folder.replace(/\/+$/, '');
+    const cut = trimmed.lastIndexOf('/') + 1;
+
+    return (
+        <span className="storage-folder">
+            <span className="storage-folder-path mono" title={folder}>
+                {trimmed.slice(0, cut)}
+                <strong>{trimmed.slice(cut)}</strong>
+                {folder.slice(trimmed.length)}
+            </span>
+            <CopyIconButton
+                ariaLabel="Copy storage folder"
+                disabled={actions.busy}
+                onCopy={() => actions.copy('storage-folder')}
+            />
+        </span>
+    );
+}
+
 function InfoCard({
     video,
     titleEditor,
     editRef,
     editDisabled,
     onEdit,
+    actions,
 }: {
     video: VideoDetail;
+    actions: Actions;
     titleEditor: React.ReactNode;
     editRef: React.RefObject<HTMLButtonElement | null>;
     editDisabled: boolean;
@@ -694,6 +743,8 @@ function InfoCard({
             : null;
     const bitrate = formatBitrate(video.outputBitrateKbps);
     const fps = formatFps(video.outputFps);
+    const rawCodec = (video.outputCodec ?? '').trim();
+    const codec = formatCodec(video.outputCodec);
 
     return (
         <section className="card detail-card" aria-label="Information">
@@ -749,12 +800,7 @@ function InfoCard({
                                     <DimensionsIcon orientation={videoOrientation(width, height)} />
                                 }
                             />
-                            {orientation !== null && (
-                                <span className="spec media-chip" title="Orientation">
-                                    <DimensionsIcon orientation={orientation} />
-                                    {orientation === 'portrait' ? 'Vertical' : 'Horizontal'}
-                                </span>
-                            )}
+                            {orientation !== null && <OrientationChip orientation={orientation} />}
                         </span>
                     </Row>
                 )}
@@ -787,9 +833,20 @@ function InfoCard({
                         />
                     </Row>
                 )}
-                {video.outputCodec !== null && <Row label="Codec">{video.outputCodec}</Row>}
+                {codec !== '' && (
+                    <Row label="Codec">
+                        <span title={codec === rawCodec ? undefined : `Codec: ${rawCodec}`}>
+                            {codec}
+                        </span>
+                    </Row>
+                )}
                 {video.originalFilename !== null && (
                     <Row label="Original file">{video.originalFilename}</Row>
+                )}
+                {video.storageFolder !== null && (
+                    <Row label="Storage folder">
+                        <StorageFolder folder={video.storageFolder} actions={actions} />
+                    </Row>
                 )}
                 {video.originalSizeBytes !== null && (
                     <Row label="Original size">{formatBytes(video.originalSizeBytes)}</Row>
@@ -1247,6 +1304,7 @@ export function VideoDetailPage({
                         <ImagesCard video={load.video} actions={actions} />
                         <InfoCard
                             video={load.video}
+                            actions={actions}
                             editRef={editTitleRef}
                             editDisabled={actions.busy}
                             onEdit={() => {

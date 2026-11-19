@@ -16,6 +16,8 @@ pub struct VideoLinks {
     pub public_id: String,
     pub embed_url: Option<String>,
     pub playlist_url: Option<String>,
+    /// Storage folder (normalised R2 key prefix) of the detail; `None` for a list item or an older site.
+    pub storage_folder: Option<String>,
     /// Generated thumbnail and custom image URLs (public R2 URLs), for the Copy buttons.
     pub thumbnail_url: Option<String>,
     pub custom_image_url: Option<String>,
@@ -35,6 +37,7 @@ impl From<&VideoDetail> for VideoLinks {
             public_id: video.public_id.clone(),
             embed_url: video.embed_url.clone(),
             playlist_url: video.playlist_url.clone(),
+            storage_folder: video.storage_folder.clone(),
             thumbnail_url: video.thumbnail_url.clone(),
             custom_image_url: video.custom_image_url.clone(),
             storyboard_urls: video
@@ -59,6 +62,7 @@ impl VideoLinks {
             playlist_url: r2_base
                 .zip(item.playlist_path.as_deref())
                 .and_then(|(base, path)| build_public_url(base, path)),
+            storage_folder: None,
             thumbnail_url: r2_base
                 .zip(item.thumbnail_path.as_deref())
                 .and_then(|(base, path)| build_public_url(base, path)),
@@ -124,6 +128,7 @@ mod tests {
             public_id: id.into(),
             embed_url: Some(format!("https://site.example.com/embed/{id}")),
             playlist_url: None,
+            storage_folder: None,
             thumbnail_url: None,
             custom_image_url: None,
             storyboard_urls: Vec::new(),

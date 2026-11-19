@@ -257,6 +257,7 @@ const VIDEO_LINK_KINDS: &[&str] = &[
     "thumbnail-url",
     "custom-image-url",
     "storyboard-url",
+    "storage-folder",
 ];
 /// Most storyboards a detail keeps (`MAX_STORYBOARDS` in api/videos.rs), so `index` is 0..=7.
 const MAX_STORYBOARD_INDEX: i64 = 7;
@@ -376,7 +377,7 @@ pub fn parse_logs_get(payload: Option<Value>) -> Result<LogsGetInput> {
     })
 }
 
-/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url` / `shortcode` / `iframe-code` / `thumbnail-url` / `custom-image-url`, or `{ id, kind: 'storyboard-url', index }` with an integer `index` from 0 to 7. `index` is required for `storyboard-url` and rejected for every other kind.
+/// `videos:copy-link`: `{ id, kind }` with a positive integer id and `embed-url` / `playlist-url` / `shortcode` / `iframe-code` / `thumbnail-url` / `custom-image-url` / `storage-folder`, or `{ id, kind: 'storyboard-url', index }` with an integer `index` from 0 to 7. `index` is required for `storyboard-url` and rejected for every other kind.
 pub fn parse_video_link(payload: Option<Value>) -> Result<(i64, VideoLinkKind)> {
     let object = expect_single_object(payload, "video link", &["id", "kind", "index"])?;
     let id = expect_int(object.get("id"), "id", 1, MAX_VIDEO_ID)?;
@@ -398,6 +399,7 @@ pub fn parse_video_link(payload: Option<Value>) -> Result<(i64, VideoLinkKind)> 
         "iframe-code" => VideoLinkKind::IframeCode,
         "thumbnail-url" => VideoLinkKind::ThumbnailUrl,
         "custom-image-url" => VideoLinkKind::CustomImageUrl,
+        "storage-folder" => VideoLinkKind::StorageFolder,
         _ => VideoLinkKind::PlaylistUrl,
     };
 
@@ -844,6 +846,10 @@ mod tests {
             (5, VideoLinkKind::Shortcode)
         );
         assert_eq!(
+            parse_video_link(Some(json!({ "id": 5, "kind": "storage-folder" }))).unwrap(),
+            (5, VideoLinkKind::StorageFolder)
+        );
+        assert_eq!(
             parse_video_link(Some(
                 json!({ "id": 5, "kind": "storyboard-url", "index": 2 })
             ))
@@ -877,6 +883,8 @@ mod tests {
             Some(json!({ "id": 5, "kind": "storyboard-url", "index": "1" })),
             Some(json!({ "id": 5, "kind": "thumbnail-url", "index": 0 })),
             Some(json!({ "id": 5, "kind": "embed-url", "index": 0 })),
+            Some(json!({ "id": 5, "kind": "storage-folder", "index": 0 })),
+            Some(json!({ "id": 5, "kind": "storage-folder", "text": "x" })),
         ] {
             assert!(parse_video_link(bad.clone()).is_err(), "{bad:?}");
         }

@@ -13,6 +13,7 @@ import {
     stageLabel,
     fpsTier,
     videoOrientation,
+    formatCodec,
 } from './format';
 import { STATUS_ICON, statusKind } from './jobState';
 import type { JobState } from '../../../shared/types';
@@ -262,5 +263,50 @@ describe('fpsTier', () => {
         [undefined, null],
     ])('%s fps is tier %s', (fps, expected) => {
         expect(fpsTier(fps)).toBe(expected);
+    });
+});
+
+describe('formatCodec', () => {
+    it.each([
+        ['h264', 'H.264'],
+        ['avc', 'H.264'],
+        ['avc1', 'H.264'],
+        ['libx264', 'H.264'],
+        ['x264', 'H.264'],
+        ['h.264', 'H.264'],
+        ['hevc', 'H.265 (HEVC)'],
+        ['h265', 'H.265 (HEVC)'],
+        ['hvc1', 'H.265 (HEVC)'],
+        ['hev1', 'H.265 (HEVC)'],
+        ['libx265', 'H.265 (HEVC)'],
+        ['x265', 'H.265 (HEVC)'],
+        ['h.265', 'H.265 (HEVC)'],
+        ['av1', 'AV1'],
+        ['libaom-av1', 'AV1'],
+        ['libsvtav1', 'AV1'],
+        ['svtav1', 'AV1'],
+        ['libdav1d', 'AV1'],
+        ['vp9', 'VP9'],
+        ['libvpx-vp9', 'VP9'],
+        ['vp8', 'VP8'],
+        ['libvpx', 'VP8'],
+        ['mpeg4', 'MPEG-4'],
+    ])('maps %s to %s', (raw, name) => {
+        expect(formatCodec(raw)).toBe(name);
+    });
+
+    it('ignores case and surrounding whitespace', () => {
+        expect(formatCodec('  H264 ')).toBe('H.264');
+        expect(formatCodec('HEVC')).toBe('H.265 (HEVC)');
+        expect(formatCodec('LibVPX-VP9')).toBe('VP9');
+    });
+
+    it('returns an unknown value unchanged, and an empty one as an empty string', () => {
+        expect(formatCodec('prores')).toBe('prores');
+        expect(formatCodec('constructor')).toBe('constructor');
+        expect(formatCodec('')).toBe('');
+        expect(formatCodec('   ')).toBe('');
+        expect(formatCodec(null)).toBe('');
+        expect(formatCodec(undefined)).toBe('');
     });
 });

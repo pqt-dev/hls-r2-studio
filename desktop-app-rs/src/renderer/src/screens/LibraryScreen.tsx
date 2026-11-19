@@ -1,4 +1,5 @@
 import {
+    Fragment,
     useCallback,
     useEffect,
     useLayoutEffect,
@@ -16,6 +17,7 @@ import {
     type VideoSort,
 } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
+import { OrientationChip, orientationLabel } from '../components/OrientationChip';
 import { Pagination } from '../components/Pagination';
 import { TierChip } from '../components/TierChip';
 import {
@@ -38,6 +40,7 @@ import { useUploadVideos } from '../components/useUploadVideos';
 import { VideoMenu } from '../components/VideoMenu';
 import {
     QuickShortcodeButton,
+    QuickThumbnailButton,
     useQuickActions,
     type QuickAction,
 } from '../components/VideoQuickActions';
@@ -56,6 +59,7 @@ import {
     resolutionTier,
     videoOrientation,
     type Tier,
+    type VideoOrientation,
 } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
@@ -134,6 +138,62 @@ type Load =
     | { kind: 'error'; message: string }
     | { kind: 'ready'; items: VideoListItem[]; meta: VideoListMeta };
 
+interface TierChipSpec {
+    label: string;
+    tier: Tier;
+    title: string;
+    icon: ReactElement;
+}
+
+/** The tiered media chips (quality, dimensions, bitrate); shared by the grid card and the list row. */
+function TierChips({
+    chips,
+    orientation = null,
+}: {
+    chips: ReadonlyArray<TierChipSpec>;
+    /** List rows: the orientation chip goes right after the dimensions chip. */
+    orientation?: VideoOrientation | null;
+}) {
+    return (
+        <>
+            {chips.map((chip) => (
+                <Fragment key={chip.title}>
+                    <TierChip
+                        label={chip.label}
+                        tier={chip.tier}
+                        title={chip.title}
+                        icon={chip.icon}
+                        decorative
+                    />
+                    {chip.title === 'Dimensions' && orientation !== null && (
+                        <OrientationChip orientation={orientation} decorative />
+                    )}
+                </Fragment>
+            ))}
+        </>
+    );
+}
+
+/** The neutral duration and size chips; shared by the grid card and the list row. */
+function MetaChips({ duration, size }: { duration: string; size: string }) {
+    return (
+        <>
+            {duration !== '' && (
+                <span className="spec spec-duration num" title="Duration" aria-hidden="true">
+                    <ClockIcon />
+                    {duration}
+                </span>
+            )}
+            {size !== '' && (
+                <span className="spec spec-size num" title="File size" aria-hidden="true">
+                    <StorageIcon />
+                    {size}
+                </span>
+            )}
+        </>
+    );
+}
+
 function VideoRow({
     video,
     onOpen,
@@ -172,13 +232,7 @@ function VideoRow({
     const fps = formatFps(video.fps);
     // Row 1: the three tiered media chips. Row 2: duration, size and upload time (neutral group).
     // A missing value has no chip.
-    interface MediaChip {
-        label: string;
-        tier: Tier;
-        title: string;
-        icon: ReactElement;
-    }
-    const tierChips: ReadonlyArray<MediaChip> = [
+    const tierChips: ReadonlyArray<TierChipSpec> = [
         {
             label: quality,
             tier: qualityTier(video.width, video.height),
@@ -197,9 +251,27 @@ function VideoRow({
             title: 'Bitrate',
             icon: <BitrateIcon />,
         },
-    ].filter((chip): chip is MediaChip => chip.label !== '');
+    ].filter((chip): chip is TierChipSpec => chip.label !== '');
+    // List rows only: a neutral Horizontal/Vertical chip after the dimensions chip.
+    const orientation =
+        view === 'list' && resolution !== '' ? videoOrientation(video.width, video.height) : null;
     const hasChips = tierChips.length > 0 || duration !== '' || size !== '' || added !== '';
     const hasSummary = tierChips.length > 0 || duration !== '' || size !== '';
+    const summary = hasSummary ? (
+        <span className="visually-hidden">
+            {[
+                quality,
+                duration !== '' ? `Duration ${duration}` : '',
+                bitrate,
+                fps,
+                resolution,
+                orientation === null ? '' : orientationLabel(orientation),
+                size,
+            ]
+                .filter((part) => part !== '')
+                .join(', ')}
+        </span>
+    ) : null;
     const thumb = <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />;
     // A ready video needs no chip; its state stays available to assistive technology.
     const status =
@@ -224,19 +296,21 @@ function VideoRow({
             <>
                 {check}
                 {thumb}
-                <span className="video-title" title={video.title}>
-                    {video.title}
-                </span>
-                <span className="video-cell video-status">
-                    <StatusBadge status={video.status} />
-                </span>
-                <span className="video-cell video-duration">
-                    {duration !== '' && (
-                        <span className="spec spec-duration num" title="Duration">
-                            <ClockIcon />
-                            {duration}
+                <span className="video-main">
+                    <span className="video-title" title={video.title}>
+                        {video.title}
+                    </span>
+                    {hasSummary && (
+                        <span className="video-chips">
+                            <TierChips chips={tierChips} orientation={orientation} />
+                            <MetaChips duration={duration} size={size} />
                         </span>
                     )}
+                </span>
+                {/* After the title in the DOM; the chips above are aria-hidden duplicates. */}
+                {summary}
+                <span className="video-cell video-status">
+                    <StatusBadge status={video.status} />
                 </span>
                 <span className="video-cell video-created" title={fullDate || undefined}>
                     {added}
@@ -253,40 +327,12 @@ function VideoRow({
                         <span className="video-chips">
                             {tierChips.length > 0 && (
                                 <span className="video-chip-row" data-row="media">
-                                    {tierChips.map((chip) => (
-                                        <TierChip
-                                            key={chip.title}
-                                            label={chip.label}
-                                            tier={chip.tier}
-                                            title={chip.title}
-                                            icon={chip.icon}
-                                            decorative
-                                        />
-                                    ))}
+                                    <TierChips chips={tierChips} />
                                 </span>
                             )}
                             {(duration !== '' || size !== '' || added !== '') && (
                                 <span className="video-chip-row" data-row="meta">
-                                    {duration !== '' && (
-                                        <span
-                                            className="spec spec-duration num"
-                                            title="Duration"
-                                            aria-hidden="true"
-                                        >
-                                            <ClockIcon />
-                                            {duration}
-                                        </span>
-                                    )}
-                                    {size !== '' && (
-                                        <span
-                                            className="spec spec-size num"
-                                            title="File size"
-                                            aria-hidden="true"
-                                        >
-                                            <StorageIcon />
-                                            {size}
-                                        </span>
-                                    )}
+                                    <MetaChips duration={duration} size={size} />
                                     {added !== '' && (
                                         <span
                                             className="spec spec-date video-added"
@@ -302,20 +348,7 @@ function VideoRow({
                     )}
                 </span>
                 {/* After the title in the DOM (the accessible name starts with it); the chips above are aria-hidden duplicates. */}
-                {hasSummary && (
-                    <span className="visually-hidden">
-                        {[
-                            quality,
-                            duration !== '' ? `Duration ${duration}` : '',
-                            bitrate,
-                            fps,
-                            resolution,
-                            size,
-                        ]
-                            .filter((part) => part !== '')
-                            .join(', ')}
-                    </span>
-                )}
+                {summary}
                 {status}
                 {check}
             </>
@@ -341,6 +374,13 @@ function VideoRow({
             <div className="video-tools">
                 {video.status === 'ready' && (
                     <QuickShortcodeButton
+                        title={video.title}
+                        busy={quickBusy}
+                        onQuick={(action) => onQuick(video, action)}
+                    />
+                )}
+                {video.thumbnailUrl !== null && (
+                    <QuickThumbnailButton
                         title={video.title}
                         busy={quickBusy}
                         onQuick={(action) => onQuick(video, action)}
@@ -1014,7 +1054,6 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                                 <span>Preview</span>
                                 <span>Title</span>
                                 <span className="video-status">Status</span>
-                                <span className="video-duration">Duration</span>
                                 <span className="video-created">Created</span>
                             </div>
                         )}

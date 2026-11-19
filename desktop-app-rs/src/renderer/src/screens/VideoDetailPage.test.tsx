@@ -214,7 +214,7 @@ describe('Video detail page', () => {
             '1080p',
             '29.97 fps',
             '4500 kbps',
-            'h264',
+            'H.264',
             'holiday.mp4',
             '150 MB',
             'abcdefghijkl',
@@ -224,6 +224,77 @@ describe('Video detail page', () => {
             ).toBeInTheDocument();
         }
         expect(within(screen.getByLabelText('Information')).getByText('Ready')).toBeInTheDocument();
+    });
+
+    it('shows the standard codec name with the raw value in the tooltip', async () => {
+        const { user } = await openLibrary(detail({ outputCodec: 'libx264' }));
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        const name = within(screen.getByLabelText('Information')).getByText('H.264');
+
+        expect(name).toHaveAttribute('title', 'Codec: libx264');
+    });
+
+    it('shows an unknown codec as reported, without a tooltip', async () => {
+        const { user } = await openLibrary(detail({ outputCodec: 'prores' }));
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        expect(
+            within(screen.getByLabelText('Information')).getByText('prores'),
+        ).not.toHaveAttribute('title');
+    });
+
+    it('shows the storage folder after the original file with the last segment emphasised', async () => {
+        const { user } = await openLibrary(
+            detail({ storageFolder: '2026/11/18/chintai-630-evidence-ios-54a51fhqca77/' }),
+        );
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        const info = within(screen.getByLabelText('Information'));
+        const row = info.getByText('Storage folder').closest('.kv-row') as HTMLElement;
+        const path = row.querySelector('.storage-folder-path')!;
+
+        expect(path).toHaveClass('mono');
+        expect(path.textContent).toBe('2026/11/18/chintai-630-evidence-ios-54a51fhqca77/');
+        expect(path.querySelector('strong')).toHaveTextContent(
+            'chintai-630-evidence-ios-54a51fhqca77',
+        );
+        expect(info.getByText('Original file').closest('.kv-row')!.nextElementSibling).toBe(row);
+        // No separate playlist/R2 path row.
+        expect(info.queryByText('R2 path')).toBeNull();
+    });
+
+    it('has no storage folder row when Rust returns none', async () => {
+        const { user } = await openLibrary(detail({ storageFolder: null }));
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        expect(
+            within(screen.getByLabelText('Information')).queryByText('Storage folder'),
+        ).toBeNull();
+    });
+
+    it('copies the storage folder through Rust (kind only) and shows the copied feedback', async () => {
+        const { user, copyLink } = await openLibrary(detail({}));
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        const button = screen.getByRole('button', { name: 'Copy storage folder' });
+
+        expect(button).toHaveAttribute('title', 'Copy storage folder');
+        await user.click(button);
+
+        expect(copyLink).toHaveBeenLastCalledWith(7, 'storage-folder');
+        expect(await screen.findByText('Storage folder copied.')).toBeInTheDocument();
+        await waitFor(() => expect(button).toHaveAttribute('title', 'Copied'));
     });
 
     it('shows quality, dimensions, bitrate and fps as tier chips', async () => {

@@ -7,21 +7,28 @@ import { enterSelectMode } from '../testing/selectMode';
 
 const KEY = 'hls-r2-studio:library-view';
 
-async function openLibrary(view: 'grid' | 'list') {
+async function openLibrary(
+    view: 'grid' | 'list',
+    data: ReturnType<typeof makeVideo>[] = [
+        makeVideo({
+            id: 1,
+            title: 'Alpha',
+            status: 'ready',
+            thumbnailUrl: 'https://cdn.example.com/a.jpg',
+        }),
+        makeVideo({ id: 2, title: 'Beta', status: 'processing', embedUrl: null }),
+        makeVideo({ id: 3, title: 'Gamma', status: 'failed', embedUrl: null }),
+    ],
+) {
     window.localStorage.setItem(KEY, view);
 
     const rendered = await renderApp();
     const { videos } = rendered.fake.api;
-    const data = [
-        makeVideo({ id: 1, title: 'Alpha', status: 'ready' }),
-        makeVideo({ id: 2, title: 'Beta', status: 'processing', embedUrl: null }),
-        makeVideo({ id: 3, title: 'Gamma', status: 'failed', embedUrl: null }),
-    ];
 
     vi.spyOn(videos, 'list').mockResolvedValue({
         ok: true,
         data,
-        meta: { page: 1, perPage: 24, total: 3, lastPage: 1 },
+        meta: { page: 1, perPage: 24, total: data.length, lastPage: 1 },
     });
     const get = vi
         .spyOn(videos, 'get')
@@ -61,8 +68,8 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
         expect(button).not.toHaveClass('video-quick-ghost');
         expect(button).not.toHaveClass('btn-accent-share');
         expect(button).toHaveAttribute('title', 'Copy shortcode');
-        // Only that one button of the family is visible on a card.
-        expect(screen.getAllByRole('button', { name: /^(Copy|Open in)/ })).toHaveLength(1);
+        // Only these two buttons of the family are visible on a card (shortcode + thumbnail).
+        expect(screen.getAllByRole('button', { name: /^(Copy|Open in)/ })).toHaveLength(2);
         expect(screen.queryByRole('button', { name: /^(Copy|Open in).* for Beta/ })).toBeNull();
         expect(screen.queryByRole('button', { name: /^(Copy|Open in).* for Gamma/ })).toBeNull();
 
@@ -83,6 +90,69 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
                 .getAllByRole('menuitem')
                 .map((item) => item.textContent),
         ).toEqual(['Select', 'Details', 'Delete']);
+    });
+
+    it('puts a neutral Copy thumbnail URL button between the shortcode button and the menu', async () => {
+        const { user } = await openLibrary(view);
+
+        const tools = screen.getByRole('button', { name: 'Copy shortcode for Alpha' })
+            .parentElement as HTMLElement;
+        const buttons = within(tools).getAllByRole('button');
+
+        expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
+            'Copy shortcode for Alpha',
+            'Copy thumbnail URL for Alpha',
+            'More actions for Alpha',
+        ]);
+
+        const thumbnail = buttons[1]!;
+
+        expect(thumbnail).toHaveAttribute('title', 'Copy thumbnail URL');
+        expect(thumbnail).toHaveClass('video-quick');
+        expect(thumbnail).not.toHaveClass('video-quick-primary');
+        // The menu does not repeat it.
+        await user.click(buttons[2]!);
+        expect(
+            within(screen.getByRole('menu'))
+                .getAllByRole('menuitem')
+                .map((item) => item.textContent),
+        ).not.toContain('Copy thumbnail URL');
+    });
+
+    it('has no thumbnail button for a video without a thumbnail, whatever its status', async () => {
+        await openLibrary(view, [
+            makeVideo({ id: 1, title: 'Alpha', status: 'ready', thumbnailUrl: null }),
+            makeVideo({
+                id: 2,
+                title: 'Beta',
+                status: 'processing',
+                embedUrl: null,
+                thumbnailUrl: 'https://cdn.example.com/b.jpg',
+            }),
+        ]);
+
+        expect(screen.queryByRole('button', { name: 'Copy thumbnail URL for Alpha' })).toBeNull();
+        // A video that is not ready still offers it when it has a thumbnail.
+        expect(
+            screen.getByRole('button', { name: 'Copy thumbnail URL for Beta' }),
+        ).toBeInTheDocument();
+    });
+
+    it('copies the thumbnail URL through Rust (id and kind only) with a toast, and reports a failure', async () => {
+        const { user, copyLink } = await openLibrary(view);
+
+        await user.click(screen.getByRole('button', { name: 'Copy thumbnail URL for Alpha' }));
+        expect(copyLink).toHaveBeenLastCalledWith(1, 'thumbnail-url');
+        expect(await screen.findByText('Thumbnail URL copied.')).toBeInTheDocument();
+
+        await waitFor(() =>
+            expect(
+                screen.getByRole('button', { name: 'Copy thumbnail URL for Alpha' }),
+            ).toBeEnabled(),
+        );
+        copyLink.mockResolvedValueOnce({ ok: false, error: 'This video has no thumbnail yet.' });
+        await user.click(screen.getByRole('button', { name: 'Copy thumbnail URL for Alpha' }));
+        expect(await screen.findByText(/This video has no thumbnail yet\./)).toBeInTheDocument();
     });
 
     it('keeps the buttons out of the open button (no nested interactive markup)', async () => {

@@ -284,6 +284,8 @@ pub enum VideoLinkKind {
     ThumbnailUrl,
     /// The custom image URL (the Images card of the detail page).
     CustomImageUrl,
+    /// The storage folder (R2 key prefix) of the video, from the cached detail.
+    StorageFolder,
     /// One storyboard sprite-sheet URL, by position (0-based) among the detail's storyboards that
     /// have a URL, in the order the detail lists them.
     StoryboardUrl(usize),

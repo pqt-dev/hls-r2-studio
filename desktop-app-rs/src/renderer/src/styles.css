@@ -1610,8 +1610,14 @@ progress::-moz-progress-bar {
     cursor: pointer;
 }
 
-.video-open:hover {
-    background: var(--state-hover);
+/*
+ * Hover highlight on the whole row/card (the tools are siblings of .video-open, so a highlight on
+ * .video-open alone left them out). It is an overlay gradient over the raised background, so the
+ * row's own radius covers it as one surface, also while the pointer is over the tools. A picked
+ * row keeps its selected background.
+ */
+.video-row:not(.is-picked):hover {
+    background-image: linear-gradient(var(--state-hover), var(--state-hover));
 }
 
 .video-open:focus-visible {
@@ -2004,7 +2010,7 @@ progress::-moz-progress-bar {
 
 .videos-wrap {
     container: library-list / inline-size;
-    --list-cols: 3.5rem minmax(0, 1fr) 6.5rem 6rem 10rem;
+    --list-cols: 3.5rem minmax(0, 1fr) 6.5rem 10rem;
 }
 
 .videos-head {
@@ -2038,7 +2044,7 @@ progress::-moz-progress-bar {
 
 /* List: the actions sit at the end of the row and are always visible, icon-only at any width. */
 .videos-wrap {
-    --quick-w: calc(2 * 1.75rem + var(--space-1) + var(--space-3));
+    --quick-w: calc(3 * 1.75rem + 2 * var(--space-1) + var(--space-3));
 }
 
 .videos-wrap.is-list:not(.is-selecting) .video-row {
@@ -2087,6 +2093,22 @@ progress::-moz-progress-bar {
     white-space: nowrap;
 }
 
+/* List: the main block is the title with the chips beneath it (wrapping only when narrow). */
+.videos-list .video-main {
+    flex: none;
+    gap: var(--space-1);
+    justify-content: center;
+    padding: 0;
+}
+
+.videos-list .video-chips {
+    flex-flow: row wrap;
+    align-items: center;
+    margin-top: 0;
+    padding-top: 0;
+    gap: var(--space-1);
+}
+
 .videos-list .video-cell {
     min-width: 0;
     justify-self: start;
@@ -2097,20 +2119,10 @@ progress::-moz-progress-bar {
 
 @container library-list (max-width: 43.6875rem) {
     .videos-wrap {
-        --list-cols: 3.5rem minmax(0, 1fr) 6.5rem 6rem;
-    }
-
-    .video-created {
-        display: none;
-    }
-}
-
-@container library-list (max-width: 29.9375rem) {
-    .videos-wrap {
         --list-cols: 3.5rem minmax(0, 1fr) 6.5rem;
     }
 
-    .video-duration {
+    .video-created {
         display: none;
     }
 }
@@ -2452,6 +2464,30 @@ progress::-moz-progress-bar {
 .kv-title-text {
     min-width: 0;
     overflow-wrap: anywhere;
+}
+
+/* Storage folder row: monospace path wrapping anywhere, last segment emphasised, Copy at the end. */
+.storage-folder {
+    display: flex;
+    gap: var(--space-2);
+    align-items: flex-start;
+    min-width: 0;
+}
+
+.storage-folder-path {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: var(--text-caption);
+    overflow-wrap: anywhere;
+    user-select: text;
+}
+
+.storage-folder-path strong {
+    font-weight: 600;
+}
+
+.storage-folder .embed-copy {
+    margin-block: -0.375rem;
 }
 
 /* Negative block margin keeps the row height the same as without the button. */
