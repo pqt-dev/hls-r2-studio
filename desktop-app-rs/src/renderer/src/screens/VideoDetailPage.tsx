@@ -1,18 +1,39 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { VideoDetail, VideoLinkKind } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
+import { ImageZoom } from '../components/ImageZoom';
+import { TierChip } from '../components/TierChip';
 import {
     ArrowLeftIcon,
+    BitrateIcon,
     CheckIcon,
     CopyIcon,
+    DimensionsIcon,
+    GridViewIcon,
+    ImageIcon,
     OpenExternalIcon,
     PencilIcon,
+    QualityIcon,
     RefreshIcon,
     TrashIcon,
     UploadIcon,
 } from '../components/icons';
 import { Thumbnail } from '../components/Thumbnail';
-import { formatBytes, formatDateTime, formatDuration } from '../lib/format';
+import {
+    bitrateTier,
+    formatBitrate,
+    formatBytes,
+    formatDateTime,
+    formatDuration,
+    formatFps,
+    formatQuality,
+    formatResolution,
+    fpsTier,
+    qualityTier,
+    resolutionTier,
+    videoOrientation,
+} from '../lib/format';
+import { splitUrlForMiddleEllipsis } from '../lib/middleEllipsis';
 import { useApp } from '../state/AppProvider';
 import { useToast } from '../state/Toasts';
 import { StatusBadge } from './videoStatus';
@@ -106,8 +127,8 @@ function Poster({ url, video }: { url: string | null; video: VideoDetail }) {
 }
 
 const LINK_LABELS: Record<VideoLinkKind, string> = {
-    'embed-url': 'Embed URL',
-    'playlist-url': 'Playlist URL',
+    'embed-url': 'Direct URL',
+    'playlist-url': 'HLS URL (.m3u8)',
     shortcode: 'Shortcode',
     'iframe-code': 'Iframe code',
     'thumbnail-url': 'Thumbnail URL',
@@ -133,6 +154,20 @@ interface Actions {
     removeImageRef: React.RefObject<HTMLButtonElement | null>;
 }
 
+type ImageKind = 'thumbnail' | 'custom' | 'storyboard';
+
+/** The tile title: a small decorative icon plus the label text (the label span holds text only). */
+function ImageLabel({ label, kind }: { label: string; kind: ImageKind }) {
+    return (
+        <span className="image-card-title">
+            <span className="image-card-title-icon" aria-hidden="true">
+                {kind === 'storyboard' ? <GridViewIcon /> : <ImageIcon />}
+            </span>
+            <span className="image-card-label">{label}</span>
+        </span>
+    );
+}
+
 /**
  * One image tile: a label bar (optional small icon controls at its right end), the image, and a
  * compact Copy box with the image URL. A wide image (a storyboard sprite sheet) is scaled down
@@ -140,6 +175,7 @@ interface Actions {
  */
 function ImageCard({
     label,
+    kind,
     url,
     wide = false,
     controls,
@@ -148,6 +184,7 @@ function ImageCard({
     onCopy,
 }: {
     label: string;
+    kind: ImageKind;
     url: string | null;
     wide?: boolean;
     controls?: React.ReactNode;
@@ -155,25 +192,53 @@ function ImageCard({
     copyDisabled: boolean;
     onCopy: () => Promise<boolean>;
 }) {
+    const [zoomed, setZoomed] = useState(false);
+    const [failedUrl, setFailedUrl] = useState<string | null>(null);
+    // Only a tile whose image loaded can be enlarged (not the "No thumbnail" placeholder).
+    const zoomable = url !== null && failedUrl !== url;
+
     return (
         <figure className={wide ? 'image-card image-card-wide' : 'image-card'}>
             <figcaption className="image-card-bar">
-                <span className="image-card-label">{label}</span>
+                <ImageLabel label={label} kind={kind} />
                 {controls}
             </figcaption>
             <div className="image-card-frame">
                 {wide && url !== null ? (
-                    <img src={url} alt={label} loading="lazy" decoding="async" />
+                    <img
+                        src={url}
+                        alt={label}
+                        loading="lazy"
+                        decoding="async"
+                        onError={() => setFailedUrl(url)}
+                    />
                 ) : (
-                    <Thumbnail key={url ?? ''} url={url} />
+                    <Thumbnail
+                        key={url ?? ''}
+                        url={url}
+                        onFailed={() => url !== null && setFailedUrl(url)}
+                    />
+                )}
+                {zoomable && (
+                    <button
+                        type="button"
+                        className="image-zoom-trigger"
+                        aria-label={`Enlarge ${label}`}
+                        title="Click to enlarge"
+                        onClick={() => setZoomed(true)}
+                    />
                 )}
             </div>
+            {zoomed && url !== null && (
+                <ImageZoom label={label} kind={kind} url={url} onClose={() => setZoomed(false)} />
+            )}
             <div className="image-card-actions">
                 <CopyBox
                     ariaLabel={copyLabel}
                     value={url}
                     disabled={copyDisabled || url === null}
                     onCopy={onCopy}
+                    middle
                 />
             </div>
         </figure>
@@ -200,6 +265,7 @@ function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }
                 <div className="image-grid">
                     <ImageCard
                         label="Thumbnail"
+                        kind="thumbnail"
                         url={video.thumbnailUrl}
                         copyLabel="Copy thumbnail URL"
                         copyDisabled={actions.busy}
@@ -208,6 +274,7 @@ function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }
                     {video.hasCustomImage ? (
                         <ImageCard
                             label="Custom image"
+                            kind="custom"
                             url={video.customImageUrl}
                             copyLabel="Copy custom image URL"
                             copyDisabled={actions.busy}
@@ -240,15 +307,19 @@ function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }
                             }
                         />
                     ) : (
-                        <figure className="image-card">
+                        <figure className="image-card image-upload-tile">
                             <figcaption className="image-card-bar">
-                                <span className="image-card-label">Custom image</span>
+                                <ImageLabel label="Custom image" kind="custom" />
                             </figcaption>
-                            <div className="image-upload-tile">
+                            <div className="image-upload-body">
+                                <span className="image-upload-icon" aria-hidden="true">
+                                    <ImageIcon />
+                                </span>
+                                <p className="image-upload-title">No custom image</p>
                                 <button
                                     ref={actions.chooseRef}
                                     type="button"
-                                    className="image-upload-btn"
+                                    className="btn btn-sm btn-primary image-upload-btn"
                                     disabled={actions.busy}
                                     onClick={actions.chooseImage}
                                 >
@@ -256,10 +327,11 @@ function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }
                                         'Uploading…'
                                     ) : (
                                         <>
-                                            <span aria-hidden="true">+</span> Upload image
+                                            <UploadIcon /> Upload image
                                         </>
                                     )}
                                 </button>
+                                <p className="image-upload-hint">JPG, PNG or WebP · up to 5 MB</p>
                             </div>
                         </figure>
                     )}
@@ -283,6 +355,7 @@ function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }
                                             ? 'Storyboard'
                                             : `Storyboard ${index + 1}`
                                     }
+                                    kind="storyboard"
                                     url={url}
                                     wide
                                     copyLabel={`Copy ${name}`}
@@ -294,7 +367,9 @@ function ImagesCard({ video, actions }: { video: VideoDetail; actions: Actions }
                     </div>
                 </div>
             )}
-            <p className="muted detail-note">JPG, PNG or WebP, up to 5 MB.</p>
+            {video.hasCustomImage && (
+                <p className="muted detail-note">JPG, PNG or WebP, up to 5 MB.</p>
+            )}
         </section>
     );
 }
@@ -379,6 +454,28 @@ function PreviewCard({
 /** How long the Copy button shows its "Copied" state. */
 const COPIED_FEEDBACK_MS = 1500;
 
+/**
+ * Single-line text with an ellipsis in the middle: the head shrinks, the tail stays. The two
+ * visible spans are hidden from assistive tech; one visually-hidden node carries the full text.
+ */
+function MiddleText({ text, title }: { text: string; title: string | null }) {
+    const { head, tail } = splitUrlForMiddleEllipsis(text);
+
+    return (
+        <>
+            <span className="visually-hidden" title={title ?? undefined}>
+                {text}
+            </span>
+            <span className="embed-value-head" aria-hidden="true">
+                {head}
+            </span>
+            <span className="embed-value-tail" aria-hidden="true">
+                {tail}
+            </span>
+        </>
+    );
+}
+
 function CopyBox({
     ariaLabel,
     value,
@@ -386,8 +483,9 @@ function CopyBox({
     disabled,
     onCopy,
     wrap = false,
+    middle = false,
 }: {
-    /** Accessible name and tooltip of the Copy button, e.g. "Copy Embed URL". */
+    /** Accessible name and tooltip of the Copy button, e.g. "Copy Direct URL". */
     ariaLabel: string;
     /** Full value (the tooltip of the text); null when there is none to show. */
     value: string | null;
@@ -398,6 +496,8 @@ function CopyBox({
     onCopy: () => Promise<boolean>;
     /** Long multi-part values (the iframe code) wrap over up to 3 lines instead of one. */
     wrap?: boolean;
+    /** One line with the start and the end of the text visible (ellipsis in the middle). */
+    middle?: boolean;
 }) {
     const [copied, setCopied] = useState(false);
     const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -423,7 +523,11 @@ function CopyBox({
     return (
         <div className={wrap ? 'embed-box embed-box-wrap' : 'embed-box'}>
             <div className="embed-value mono" title={value ?? undefined}>
-                {display ?? 'Copy URL'}
+                {middle ? (
+                    <MiddleText text={display ?? 'Copy URL'} title={value} />
+                ) : (
+                    (display ?? 'Copy URL')
+                )}
             </div>
             <button
                 type="button"
@@ -479,6 +583,9 @@ function EmbedCard({ video, actions }: { video: VideoDetail; actions: Actions })
         <section className="card detail-card" aria-label="Embed">
             <h3>Embed</h3>
             <div className="embed-fields">
+                {video.shortcode !== null && (
+                    <EmbedField kind="shortcode" value={video.shortcode} actions={actions} />
+                )}
                 <EmbedField kind="embed-url" value={video.embedUrl} actions={actions} />
                 {video.iframeCode !== null && (
                     <EmbedField
@@ -487,9 +594,6 @@ function EmbedCard({ video, actions }: { video: VideoDetail; actions: Actions })
                         actions={actions}
                         wrap
                     />
-                )}
-                {video.shortcode !== null && (
-                    <EmbedField kind="shortcode" value={video.shortcode} actions={actions} />
                 )}
                 {video.playlistUrl !== null && (
                     <EmbedField kind="playlist-url" value={video.playlistUrl} actions={actions} />
@@ -565,20 +669,54 @@ function TitleEditor({
     );
 }
 
-function InfoCard({ video, titleEditor }: { video: VideoDetail; titleEditor: React.ReactNode }) {
+function InfoCard({
+    video,
+    titleEditor,
+    editRef,
+    editDisabled,
+    onEdit,
+}: {
+    video: VideoDetail;
+    titleEditor: React.ReactNode;
+    editRef: React.RefObject<HTMLButtonElement | null>;
+    editDisabled: boolean;
+    onEdit: () => void;
+}) {
     const duration = formatDuration(video.duration);
     const created = video.createdAt === null ? '' : formatDateTime(video.createdAt);
     const updated = video.updatedAt === null ? '' : formatDateTime(video.updatedAt);
-    const resolution =
-        video.outputWidth !== null && video.outputHeight !== null
-            ? `${video.outputWidth}x${video.outputHeight}`
-            : '';
+    const { outputWidth: width, outputHeight: height } = video;
+    const quality = formatQuality(width, height);
+    const dimensions = formatResolution(width, height);
+    const orientation =
+        dimensions !== '' && width !== null && height !== null
+            ? videoOrientation(width, height)
+            : null;
+    const bitrate = formatBitrate(video.outputBitrateKbps);
+    const fps = formatFps(video.outputFps);
 
     return (
         <section className="card detail-card" aria-label="Information">
             <h3>Information</h3>
             <dl className="kv">
-                <Row label="Title">{titleEditor ?? video.title}</Row>
+                <Row label="Title">
+                    {titleEditor ?? (
+                        <span className="kv-title">
+                            <span className="kv-title-text">{video.title}</span>
+                            <button
+                                ref={editRef}
+                                type="button"
+                                className="btn btn-sm kv-title-edit"
+                                title="Edit title"
+                                aria-label="Edit title"
+                                disabled={editDisabled}
+                                onClick={onEdit}
+                            >
+                                <PencilIcon />
+                            </button>
+                        </span>
+                    )}
+                </Row>
                 <Row label="Status">
                     <StatusBadge status={video.status} />
                 </Row>
@@ -600,12 +738,54 @@ function InfoCard({ video, titleEditor }: { video: VideoDetail; titleEditor: Rea
                         <span className="num">{duration}</span>
                     </Row>
                 )}
-                {resolution !== '' && <Row label="Resolution">{resolution}</Row>}
-                {video.outputFps !== null && (
-                    <Row label="Frame rate">{`${Math.round(video.outputFps * 100) / 100} fps`}</Row>
+                {dimensions !== '' && (
+                    <Row label="Dimensions">
+                        <span className="kv-chips">
+                            <TierChip
+                                label={dimensions}
+                                tier={resolutionTier(width, height) ?? 5}
+                                title="Dimensions in pixels (width by height)"
+                                icon={
+                                    <DimensionsIcon orientation={videoOrientation(width, height)} />
+                                }
+                            />
+                            {orientation !== null && (
+                                <span className="spec media-chip" title="Orientation">
+                                    <DimensionsIcon orientation={orientation} />
+                                    {orientation === 'portrait' ? 'Vertical' : 'Horizontal'}
+                                </span>
+                            )}
+                        </span>
+                    </Row>
                 )}
-                {video.outputBitrateKbps !== null && (
-                    <Row label="Bitrate">{`${video.outputBitrateKbps} kbps`}</Row>
+                {quality !== '' && (
+                    <Row label="Quality">
+                        <TierChip
+                            label={quality}
+                            tier={qualityTier(width, height) ?? 5}
+                            title="Quality class, from the shorter side of the video"
+                            icon={<QualityIcon />}
+                        />
+                    </Row>
+                )}
+                {fps !== '' && (
+                    <Row label="Frame rate">
+                        <TierChip
+                            label={fps}
+                            tier={fpsTier(video.outputFps) ?? 5}
+                            title="Frame rate"
+                        />
+                    </Row>
+                )}
+                {bitrate !== '' && (
+                    <Row label="Bitrate">
+                        <TierChip
+                            label={bitrate}
+                            tier={bitrateTier(video.outputBitrateKbps) ?? 5}
+                            title="Bitrate"
+                            icon={<BitrateIcon />}
+                        />
+                    </Row>
                 )}
                 {video.outputCodec !== null && <Row label="Codec">{video.outputCodec}</Row>}
                 {video.originalFilename !== null && (
@@ -711,6 +891,9 @@ export function VideoDetailPage({
     const latest = useRef(0);
     const backRef = useRef<HTMLButtonElement>(null);
     const renameRef = useRef<HTMLButtonElement>(null);
+    const editTitleRef = useRef<HTMLButtonElement>(null);
+    // Which control opened the title editor, so closing it can return the focus there.
+    const renameOpener = useRef<'header' | 'info'>('header');
     const deleteRef = useRef<HTMLButtonElement>(null);
     const [editing, setEditing] = useState<Editing | null>(null);
     const [confirmDelete, setConfirmDelete] = useState(false);
@@ -769,7 +952,7 @@ export function VideoDetailPage({
     useEffect(() => {
         if (pendingFocus.current === 'rename' && editing === null) {
             pendingFocus.current = null;
-            renameRef.current?.focus();
+            (renameOpener.current === 'info' ? editTitleRef : renameRef).current?.focus();
         } else if (pendingFocus.current === 'delete' && !busy && !confirmDelete) {
             pendingFocus.current = null;
             deleteRef.current?.focus();
@@ -973,6 +1156,7 @@ export function VideoDetailPage({
         deleteRef,
         rename: () => {
             if (load.kind === 'ready') {
+                renameOpener.current = 'header';
                 setEditing({ draft: load.video.title, error: null, saving: false });
             }
         },
@@ -1063,6 +1247,16 @@ export function VideoDetailPage({
                         <ImagesCard video={load.video} actions={actions} />
                         <InfoCard
                             video={load.video}
+                            editRef={editTitleRef}
+                            editDisabled={actions.busy}
+                            onEdit={() => {
+                                renameOpener.current = 'info';
+                                setEditing({
+                                    draft: load.video.title,
+                                    error: null,
+                                    saving: false,
+                                });
+                            }}
                             titleEditor={
                                 editing === null ? null : (
                                     <TitleEditor

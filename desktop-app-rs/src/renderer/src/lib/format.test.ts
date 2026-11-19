@@ -11,6 +11,7 @@ import {
     siteHost,
     STAGE_LABELS,
     stageLabel,
+    fpsTier,
     videoOrientation,
 } from './format';
 import { STATUS_ICON, statusKind } from './jobState';
@@ -239,5 +240,27 @@ describe('videoOrientation', () => {
         expect(videoOrientation(1080, null)).toBe('landscape');
         expect(videoOrientation(0, 1080)).toBe('landscape');
         expect(videoOrientation(Number.NaN, 1080)).toBe('landscape');
+    });
+});
+
+describe('fpsTier', () => {
+    it.each<[number | null | undefined, number | null]>([
+        [120, 1],
+        [60, 1],
+        [59.94, 2],
+        [48, 2],
+        [47, 3],
+        [30, 3],
+        [29.97, 4],
+        [24, 4],
+        [23, 5],
+        [1, 5],
+        [0, null],
+        [-1, null],
+        [Number.NaN, null],
+        [null, null],
+        [undefined, null],
+    ])('%s fps is tier %s', (fps, expected) => {
+        expect(fpsTier(fps)).toBe(expected);
     });
 });

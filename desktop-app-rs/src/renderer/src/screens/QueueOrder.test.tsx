@@ -249,7 +249,7 @@ describe('Queue order', () => {
         await check(
             'd',
             ['Remove: done.mp4'],
-            ['Copy embed URL: done.mp4', 'Open on site: done.mp4'],
+            ['Copy direct URL: done.mp4', 'Open on site: done.mp4'],
         );
 
         expect(screen.getByRole('button', { name: 'Clear finished' }).className).toContain(

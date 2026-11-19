@@ -240,6 +240,18 @@ export function bitrateTier(kbps: number | null | undefined): Tier | null {
     return 5;
 }
 
+/** Tier of a frame rate: >= 60 1, >= 48 2, >= 30 3, >= 24 4, else 5; null when unknown. */
+export function fpsTier(fps: number | null | undefined): Tier | null {
+    if (!validSide(fps)) return null;
+
+    if (fps >= 60) return 1;
+    if (fps >= 48) return 2;
+    if (fps >= 30) return 3;
+    if (fps >= 24) return 4;
+
+    return 5;
+}
+
 /** A frame may be this much smaller than a reference size and still land in its tier. */
 const PIXEL_TOLERANCE = 0.9;
 

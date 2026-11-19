@@ -22,6 +22,9 @@ pub struct VideoLinks {
     /// Storyboard URLs of the detail that have one, in the order the detail lists them (by grid
     /// key). The Copy buttons address them by position. Empty for a list item.
     pub storyboard_urls: Vec<String>,
+    /// True when built from a detail response (the image URLs then carry their current `?v=`
+    /// cache-buster and the storyboards are known); false for a list item.
+    pub detail_loaded: bool,
     pub width: Option<u32>,
     pub height: Option<u32>,
 }
@@ -39,6 +42,7 @@ impl From<&VideoDetail> for VideoLinks {
                 .values()
                 .filter_map(|board| board.url.clone())
                 .collect(),
+            detail_loaded: true,
             width: video.output_width,
             height: video.output_height,
         }
@@ -62,6 +66,7 @@ impl VideoLinks {
                 .zip(item.custom_image_path.as_deref())
                 .and_then(|(base, path)| build_public_url(base, path)),
             storyboard_urls: Vec::new(),
+            detail_loaded: false,
             width: item.output_width,
             height: item.output_height,
         }
@@ -92,6 +97,11 @@ impl VideoLinkCache {
         self.lock().get(&id).cloned()
     }
 
+    /// Forgets one video (its image changed, so the remembered image URLs are stale).
+    pub fn remove(&self, id: i64) {
+        self.lock().remove(&id);
+    }
+
     pub fn clear(&self) {
         self.lock().clear();
     }
@@ -117,6 +127,7 @@ mod tests {
             thumbnail_url: None,
             custom_image_url: None,
             storyboard_urls: Vec::new(),
+            detail_loaded: false,
             width: Some(1280),
             height: Some(720),
         }

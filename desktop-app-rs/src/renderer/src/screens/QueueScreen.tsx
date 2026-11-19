@@ -174,7 +174,7 @@ export function QueueScreen() {
 
                 break;
             case 'copy-url':
-                void run(job.id, () => api.jobs.copy(job.id, 'embed-url'), 'Embed URL copied.');
+                void run(job.id, () => api.jobs.copy(job.id, 'embed-url'), 'Direct URL copied.');
                 break;
             case 'copy-shortcode':
                 void run(job.id, () => api.jobs.copy(job.id, 'shortcode'), 'Shortcode copied.');

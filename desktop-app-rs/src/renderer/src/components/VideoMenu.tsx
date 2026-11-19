@@ -4,7 +4,7 @@ import { CheckboxIcon, InfoIcon, LinkIcon, OpenExternalIcon, TrashIcon } from '.
 import type { QuickAction } from './VideoQuickActions';
 
 /**
- * Kebab menu of one video card. A ready video offers Copy embed URL and Open in browser first;
+ * Kebab menu of one video card. A ready video offers Copy direct URL and Open in browser first;
  * then Details (opens the detail page, where renaming and the thumbnail are managed) and Delete (the
  * caller asks for confirmation first). Select (first) starts multi-select with this video picked. Built on the shared ActionMenu.
  */
@@ -19,7 +19,7 @@ export function VideoMenu({
 }: {
     title: string;
     busy: boolean;
-    /** Only a ready video has an embed URL to copy or open. */
+    /** Only a ready video has a direct URL to copy or open. */
     ready: boolean;
     onQuick: (action: QuickAction) => void;
     onOpen: (opener: HTMLButtonElement) => void;
@@ -39,8 +39,8 @@ export function VideoMenu({
             ? [
                   {
                       key: 'embed-url',
-                      label: 'Copy embed URL',
-                      ariaLabel: `Copy embed URL for ${title}`,
+                      label: 'Copy direct URL',
+                      ariaLabel: `Copy direct URL for ${title}`,
                       icon: <LinkIcon />,
                       onSelect: () => onQuick('embed-url'),
                   },

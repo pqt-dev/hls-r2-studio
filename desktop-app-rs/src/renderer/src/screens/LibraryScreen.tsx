@@ -17,6 +17,7 @@ import {
 } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { Pagination } from '../components/Pagination';
+import { TierChip } from '../components/TierChip';
 import {
     BitrateIcon,
     ClockIcon,
@@ -171,13 +172,13 @@ function VideoRow({
     const fps = formatFps(video.fps);
     // Row 1: the three tiered media chips. Row 2: duration, size and upload time (neutral group).
     // A missing value has no chip.
-    interface TierChip {
+    interface MediaChip {
         label: string;
         tier: Tier;
         title: string;
         icon: ReactElement;
     }
-    const tierChips: ReadonlyArray<TierChip> = [
+    const tierChips: ReadonlyArray<MediaChip> = [
         {
             label: quality,
             tier: qualityTier(video.width, video.height),
@@ -196,7 +197,7 @@ function VideoRow({
             title: 'Bitrate',
             icon: <BitrateIcon />,
         },
-    ].filter((chip): chip is TierChip => chip.label !== '');
+    ].filter((chip): chip is MediaChip => chip.label !== '');
     const hasChips = tierChips.length > 0 || duration !== '' || size !== '' || added !== '';
     const hasSummary = tierChips.length > 0 || duration !== '' || size !== '';
     const thumb = <Thumbnail key={video.thumbnailUrl ?? ''} url={video.thumbnailUrl} />;
@@ -253,15 +254,14 @@ function VideoRow({
                             {tierChips.length > 0 && (
                                 <span className="video-chip-row" data-row="media">
                                     {tierChips.map((chip) => (
-                                        <span
+                                        <TierChip
                                             key={chip.title}
-                                            className={`spec media-chip num chip-tier-${chip.tier}`}
+                                            label={chip.label}
+                                            tier={chip.tier}
                                             title={chip.title}
-                                            aria-hidden="true"
-                                        >
-                                            {chip.icon}
-                                            {chip.label}
-                                        </span>
+                                            icon={chip.icon}
+                                            decorative
+                                        />
                                     ))}
                                 </span>
                             )}

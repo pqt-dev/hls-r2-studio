@@ -28,7 +28,7 @@ use crate::dto::{ActionResult, VideoLinkKind};
 use crate::logger::Log;
 use crate::state::AppState;
 
-pub const NO_PLAYLIST_URL: &str = "This video has no playlist URL yet.";
+pub const NO_PLAYLIST_URL: &str = "This video has no HLS URL (.m3u8) yet.";
 pub const NO_THUMBNAIL_URL: &str = "This video has no thumbnail yet.";
 pub const NO_CUSTOM_IMAGE_URL: &str = "This video has no custom image.";
 pub const NO_STORYBOARD_URL: &str = "This video has no such storyboard.";
@@ -319,6 +319,7 @@ impl VideosSetImageResult {
 /// path or bytes; neither the path nor the bytes are logged or put into an error.
 pub(crate) async fn set_video_image(
     client: &SiteClient,
+    cache: &VideoLinkCache,
     id: i64,
     desktop: &dyn JobsDesktop,
 ) -> VideosSetImageResult {
@@ -338,7 +339,13 @@ pub(crate) async fn set_video_image(
         Err(_) => return VideosSetImageResult::err(IMAGE_UNREADABLE),
     };
 
-    match client.set_video_image(id, &bytes, kind).await {
+    let uploaded = client.set_video_image(id, &bytes, kind).await;
+
+    // The image URLs (with their `?v=`) remembered for this video are stale from now on, whatever
+    // the outcome of the upload was.
+    cache.remove(id);
+
+    match uploaded {
         Ok(image_url) => VideosSetImageResult::Ok {
             ok: true,
             canceled: false,
@@ -348,8 +355,16 @@ pub(crate) async fn set_video_image(
     }
 }
 
-pub(crate) async fn remove_video_image(client: &SiteClient, id: i64) -> ActionResult {
-    match client.delete_video_image(id).await {
+pub(crate) async fn remove_video_image(
+    client: &SiteClient,
+    cache: &VideoLinkCache,
+    id: i64,
+) -> ActionResult {
+    let removed = client.delete_video_image(id).await;
+
+    cache.remove(id);
+
+    match removed {
         Ok(()) => ActionResult::Ok,
         Err(error) => ActionResult::err(error.message),
     }
@@ -363,7 +378,13 @@ pub async fn videos_set_image<R: Runtime>(
 ) -> Result<VideosSetImageResult, IpcError> {
     let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:set-image", e))?;
 
-    Ok(set_video_image(&state.site_client, id, &TauriJobsDesktop { window }).await)
+    Ok(set_video_image(
+        &state.site_client,
+        &state.video_links,
+        id,
+        &TauriJobsDesktop { window },
+    )
+    .await)
 }
 
 #[tauri::command]
@@ -373,7 +394,7 @@ pub async fn videos_remove_image(
 ) -> Result<ActionResult, IpcError> {
     let id = parse_video_id(payload).map_err(|e| rejected(&state, "videos:remove-image", e))?;
 
-    Ok(remove_video_image(&state.site_client, id).await)
+    Ok(remove_video_image(&state.site_client, &state.video_links, id).await)
 }
 
 #[tauri::command]
@@ -554,7 +575,7 @@ pub(crate) fn open_video_embed(
         Ok(false) => ActionResult::err(OPEN_FAILED),
         Err(error) => {
             logger.warn(
-                "Could not open the embed URL",
+                "Could not open the direct URL",
                 Some(json!({ "error": error })),
             );
             ActionResult::err(OPEN_FAILED)
@@ -585,6 +606,19 @@ pub(crate) async fn stored_links(
     Ok(links)
 }
 
+/// The links for the image Copy buttons: the remembered entry only when it came from a detail
+/// (current `?v=` URLs, storyboards known); a list entry or a miss fetches the detail once.
+async fn image_links(
+    client: &SiteClient,
+    cache: &VideoLinkCache,
+    id: i64,
+) -> Result<VideoLinks, SiteApiError> {
+    match cache.get(id) {
+        Some(links) if links.detail_loaded => Ok(links),
+        _ => fresh_links(client, cache, id).await,
+    }
+}
+
 /// The links of a video from a new detail request, remembered for later Copy / Open.
 async fn fresh_links(
     client: &SiteClient,
@@ -608,15 +642,15 @@ pub async fn videos_copy_link<R: Runtime>(
 ) -> Result<ActionResult, IpcError> {
     let (id, kind) =
         parse_video_link(payload).map_err(|e| rejected(&state, "videos:copy-link", e))?;
-    // Image URLs change when an image is replaced or removed (and carry a cache-buster), so they
-    // always come from a fresh detail instead of the remembered entry.
+    // Image URLs change when an image is replaced or removed (and carry a cache-buster): they come
+    // from the remembered detail, which set/remove image and every detail load keep current.
     let links = match if matches!(
         kind,
         VideoLinkKind::ThumbnailUrl
             | VideoLinkKind::CustomImageUrl
             | VideoLinkKind::StoryboardUrl(_)
     ) {
-        fresh_links(&state.site_client, &state.video_links, id).await
+        image_links(&state.site_client, &state.video_links, id).await
     } else {
         stored_links(
             &state.site_client,
@@ -705,6 +739,7 @@ mod tests {
             thumbnail_url: None,
             custom_image_url: None,
             storyboard_urls: Vec::new(),
+            detail_loaded: false,
             width: Some(1920),
             height: Some(1080),
         };
@@ -1251,6 +1286,7 @@ mod tests {
             thumbnail_url: Some("https://cdn.example.com/t.jpg?v=1".into()),
             custom_image_url: None,
             storyboard_urls: Vec::new(),
+            detail_loaded: false,
             width: None,
             height: None,
         };
@@ -1293,6 +1329,7 @@ mod tests {
                 "https://cdn.example.com/a.jpg".into(),
                 "http://cdn.example.com/b.jpg".into(),
             ],
+            detail_loaded: true,
             width: None,
             height: None,
         };
@@ -1449,6 +1486,108 @@ mod tests {
             )
         }
 
+        fn detail_with_image_reply(version: u32) -> Reply {
+            Reply::json(
+                200,
+                json!({
+                    "id": 7,
+                    "public_id": "abcdefghijkl",
+                    "title": "T",
+                    "status": "ready",
+                    "embed_url": "https://site.example.com/embed/abcdefghijkl",
+                    "thumbnail_url": format!("https://cdn.example.com/t.jpg?v={version}"),
+                    "custom_image_url": format!("https://cdn.example.com/c.jpg?v={version}")
+                }),
+            )
+        }
+
+        #[tokio::test]
+        async fn image_links_from_a_loaded_detail_need_no_request() {
+            let server = TestServer::start(|_| detail_with_image_reply(1)).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            remember_and_fill(get_video(&client, 7).await, &cache, SITE);
+            assert_eq!(server.requests().len(), 1);
+
+            let links = image_links(&client, &cache, 7).await.unwrap();
+
+            assert_eq!(
+                links.custom_image_url.as_deref(),
+                Some("https://cdn.example.com/c.jpg?v=1")
+            );
+            assert_eq!(server.requests().len(), 1);
+        }
+
+        #[tokio::test]
+        async fn image_links_fall_back_to_one_fetch_when_empty_or_from_the_list() {
+            let server = TestServer::start(|_| detail_with_image_reply(1)).await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+
+            image_links(&client, &cache, 7).await.unwrap();
+            assert_eq!(server.requests().len(), 1);
+            image_links(&client, &cache, 7).await.unwrap();
+            assert_eq!(server.requests().len(), 1);
+
+            // A list entry has no cache-busted image URLs, so it is not trusted for images.
+            cache.put(
+                7,
+                VideoLinks {
+                    detail_loaded: false,
+                    ..cache.get(7).unwrap()
+                },
+            );
+            image_links(&client, &cache, 7).await.unwrap();
+            assert_eq!(server.requests().len(), 2);
+            assert!(cache.get(7).unwrap().detail_loaded);
+        }
+
+        #[tokio::test]
+        async fn set_and_remove_image_drop_the_stale_entry_so_the_next_copy_refetches() {
+            let dir = tempfile::tempdir().unwrap();
+            let path = png_file(&dir, "p.png", 32);
+            let server = TestServer::start(|request| {
+                if request.path.ends_with("/image") || request.path.contains("/image") {
+                    Reply::json(
+                        200,
+                        json!({ "ok": true, "image_url": "https://cdn.example.com/c.jpg?v=2" }),
+                    )
+                } else {
+                    detail_with_image_reply(2)
+                }
+            })
+            .await;
+            let client = client_for(&server);
+            let cache = VideoLinkCache::default();
+            let stale = VideoLinks {
+                custom_image_url: Some("https://cdn.example.com/c.jpg?v=1".into()),
+                detail_loaded: true,
+                ..VideoLinks::from_list_item(
+                    &serde_json::from_value(json!({
+                        "id": 7, "public_id": "abcdefghijkl", "title": "T", "status": "ready"
+                    }))
+                    .unwrap(),
+                    None,
+                )
+            };
+
+            cache.put(7, stale.clone());
+            set_video_image(&client, &cache, 7, &desktop_with(Some(path))).await;
+            assert!(cache.get(7).is_none());
+
+            cache.put(7, stale);
+            remove_video_image(&client, &cache, 7).await;
+            assert!(cache.get(7).is_none());
+
+            let links = image_links(&client, &cache, 7).await.unwrap();
+
+            assert_eq!(
+                links.custom_image_url.as_deref(),
+                Some("https://cdn.example.com/c.jpg?v=2")
+            );
+        }
+
         fn list_input() -> VideosListInput {
             parse_videos_list(None).unwrap()
         }
@@ -1514,6 +1653,7 @@ mod tests {
                     thumbnail_url: None,
                     custom_image_url: None,
                     storyboard_urls: Vec::new(),
+                    detail_loaded: false,
                     width: None,
                     height: None,
                 },
@@ -1662,7 +1802,13 @@ mod tests {
         #[tokio::test]
         async fn set_image_cancel_sends_nothing() {
             let server = TestServer::start(|_| Reply::json(200, json!({}))).await;
-            let result = set_video_image(&client_for(&server), 5, &desktop_with(None)).await;
+            let result = set_video_image(
+                &client_for(&server),
+                &VideoLinkCache::default(),
+                5,
+                &desktop_with(None),
+            )
+            .await;
 
             assert_eq!(
                 serde_json::to_value(result).unwrap(),
@@ -1683,7 +1829,13 @@ mod tests {
                 )
             })
             .await;
-            let result = set_video_image(&client_for(&server), 5, &desktop_with(Some(path))).await;
+            let result = set_video_image(
+                &client_for(&server),
+                &VideoLinkCache::default(),
+                5,
+                &desktop_with(Some(path)),
+            )
+            .await;
 
             assert_eq!(
                 serde_json::to_value(result).unwrap(),
@@ -1709,6 +1861,7 @@ mod tests {
 
             let ok = set_video_image(
                 &client,
+                &VideoLinkCache::default(),
                 5,
                 &desktop_with(Some(png_file(&dir, "ok.png", max))),
             )
@@ -1719,6 +1872,7 @@ mod tests {
 
             let over = set_video_image(
                 &client,
+                &VideoLinkCache::default(),
                 5,
                 &desktop_with(Some(png_file(&dir, "big.png", max + 1))),
             )
@@ -1766,7 +1920,13 @@ mod tests {
             }
 
             for (path, message) in inputs {
-                let result = set_video_image(&client, 5, &desktop_with(Some(path.clone()))).await;
+                let result = set_video_image(
+                    &client,
+                    &VideoLinkCache::default(),
+                    5,
+                    &desktop_with(Some(path.clone())),
+                )
+                .await;
                 let value = serde_json::to_value(result).unwrap();
 
                 assert_eq!(value, json!({ "ok": false, "error": message }));
@@ -1787,10 +1947,19 @@ mod tests {
             let client = client_for(&server);
             let results = [
                 serde_json::to_value(
-                    set_video_image(&client, 5, &desktop_with(Some(path.clone()))).await,
+                    set_video_image(
+                        &client,
+                        &VideoLinkCache::default(),
+                        5,
+                        &desktop_with(Some(path.clone())),
+                    )
+                    .await,
                 )
                 .unwrap(),
-                serde_json::to_value(remove_video_image(&client, 5).await).unwrap(),
+                serde_json::to_value(
+                    remove_video_image(&client, &VideoLinkCache::default(), 5).await,
+                )
+                .unwrap(),
             ];
 
             assert_eq!(results[0]["error"], "Could not save the image.");
@@ -1824,9 +1993,12 @@ mod tests {
             .await;
             let client = client_for(&server);
 
-            assert_eq!(remove_video_image(&client, 1).await, ActionResult::Ok);
             assert_eq!(
-                remove_video_image(&client, 2).await,
+                remove_video_image(&client, &VideoLinkCache::default(), 1).await,
+                ActionResult::Ok
+            );
+            assert_eq!(
+                remove_video_image(&client, &VideoLinkCache::default(), 2).await,
                 ActionResult::err("No custom thumbnail to remove.")
             );
         }

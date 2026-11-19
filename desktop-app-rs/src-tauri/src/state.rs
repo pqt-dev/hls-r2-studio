@@ -319,6 +319,7 @@ mod tests {
                 thumbnail_url: None,
                 custom_image_url: None,
                 storyboard_urls: Vec::new(),
+                detail_loaded: false,
                 width: None,
                 height: None,
             },

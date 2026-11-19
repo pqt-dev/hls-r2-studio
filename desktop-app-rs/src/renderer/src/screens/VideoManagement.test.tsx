@@ -524,3 +524,68 @@ describe('Select mode (library)', () => {
         expect(screen.getByRole('toolbar', { name: 'Selection' })).toBeInTheDocument();
     });
 });
+
+describe('Edit title button (Information card)', () => {
+    it('sits next to the title, opens the editor and returns focus on Cancel and Escape', async () => {
+        const { user, updateTitle } = await openLibrary();
+
+        await openDetail(user);
+
+        const card = screen.getByRole('region', { name: 'Information' });
+        const edit = within(card).getByRole('button', { name: 'Edit title' });
+
+        expect(edit).toHaveAttribute('title', 'Edit title');
+        expect(edit.previousElementSibling).toHaveTextContent('Holiday');
+
+        await user.click(edit);
+
+        const field = screen.getByRole('textbox', { name: 'Title' });
+
+        expect(field).toHaveFocus();
+        expect(field).toHaveValue('Holiday');
+        expect(screen.getByRole('button', { name: 'Save' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Edit title' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled();
+
+        await user.click(screen.getByRole('button', { name: 'Cancel' }));
+        expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Edit title' })).toHaveFocus();
+
+        await user.click(screen.getByRole('button', { name: 'Edit title' }));
+        await user.keyboard('{Escape}');
+        expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull();
+        expect(screen.getByRole('button', { name: 'Edit title' })).toHaveFocus();
+        expect(updateTitle).not.toHaveBeenCalled();
+    });
+
+    it('saves and returns focus to Edit title; the header Rename still returns focus to Rename', async () => {
+        const { user, updateTitle } = await openLibrary();
+
+        await openDetail(user);
+        await user.click(screen.getByRole('button', { name: 'Edit title' }));
+        await user.type(screen.getByRole('textbox', { name: 'Title' }), ' 2{Enter}');
+
+        expect(updateTitle).toHaveBeenCalledWith(7, 'Holiday 2');
+        await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Title' })).toBeNull());
+        expect(screen.getByRole('button', { name: 'Edit title' })).toHaveFocus();
+
+        await user.click(screen.getByRole('button', { name: 'Rename' }));
+        expect(screen.getByRole('textbox', { name: 'Title' })).toHaveFocus();
+        await user.keyboard('{Escape}');
+        expect(screen.getByRole('button', { name: 'Rename' })).toHaveFocus();
+    });
+
+    it('is absent when the video failed to load (renaming is not available)', async () => {
+        const { user, fake } = await openLibrary();
+
+        vi.spyOn(fake.api.videos, 'get').mockResolvedValue({
+            ok: false,
+            error: 'Video not found.',
+        });
+        await user.click(await screen.findByRole('button', { name: /^Holiday/ }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Video not found.');
+        expect(screen.queryByRole('button', { name: 'Edit title' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull();
+    });
+});

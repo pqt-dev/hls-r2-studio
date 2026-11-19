@@ -327,7 +327,7 @@ describe('Home screen cards', () => {
 
         for (const name of [
             'Copy shortcode for Alpha',
-            'Copy embed URL for Alpha',
+            'Copy direct URL for Alpha',
             'Open in browser for Alpha',
         ]) {
             // Quiet ghost icon buttons in this dense list (not the teal accent used on cards).
@@ -353,9 +353,9 @@ describe('Home screen cards', () => {
         expect(copyLink).toHaveBeenLastCalledWith(1, 'shortcode');
         expect(await screen.findByText('Shortcode copied.')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'Copy embed URL for Alpha' }));
+        await user.click(screen.getByRole('button', { name: 'Copy direct URL for Alpha' }));
         expect(copyLink).toHaveBeenLastCalledWith(1, 'embed-url');
-        expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
+        expect(await screen.findByText('Direct URL copied.')).toBeInTheDocument();
 
         await user.click(screen.getByRole('button', { name: 'Open in browser for Alpha' }));
         expect(openEmbed).toHaveBeenCalledWith(1);

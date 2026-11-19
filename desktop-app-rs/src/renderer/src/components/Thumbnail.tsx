@@ -8,11 +8,14 @@ import { useState } from 'react';
  */
 export function Thumbnail({
     url,
+    onFailed,
 }: {
     url: string | null;
     /** Ignored: kept so older call sites that still pass the video size keep compiling. */
     width?: number | null;
     height?: number | null;
+    /** Called once when the image fails to load. */
+    onFailed?: () => void;
 }) {
     const [failed, setFailed] = useState(false);
 
@@ -32,7 +35,10 @@ export function Thumbnail({
                 alt=""
                 loading="lazy"
                 decoding="async"
-                onError={() => setFailed(true)}
+                onError={() => {
+                    setFailed(true);
+                    onFailed?.();
+                }}
             />
         </div>
     );

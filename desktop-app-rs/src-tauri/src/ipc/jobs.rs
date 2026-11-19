@@ -23,8 +23,8 @@ use crate::queue::{JobQueue, VIDEO_EXTENSIONS};
 use crate::state::AppState;
 use crate::window::MAIN_WINDOW_LABEL;
 
-pub const NO_EMBED_URL: &str = "This video has no embed URL yet.";
-pub const FOREIGN_EMBED_URL: &str = "The embed URL does not belong to the signed-in site.";
+pub const NO_EMBED_URL: &str = "This video has no direct URL yet.";
+pub const FOREIGN_EMBED_URL: &str = "The direct URL does not belong to the signed-in site.";
 pub const OPEN_FAILED: &str = "Could not open the link.";
 pub const NOT_REGISTERED: &str = "This video is not registered yet.";
 pub const INVALID_VIDEO_ID: &str = "The video ID is not valid.";
@@ -118,7 +118,7 @@ pub fn open_embed(
         Ok(false) => ActionResult::err(OPEN_FAILED),
         Err(error) => {
             logger.warn(
-                "Could not open the embed URL",
+                "Could not open the direct URL",
                 Some(json!({ "error": error })),
             );
             ActionResult::err(OPEN_FAILED)

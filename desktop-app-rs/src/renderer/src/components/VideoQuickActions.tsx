@@ -37,7 +37,7 @@ export function useQuickActions(): {
                 else
                     toast.show(
                         'success',
-                        action === 'shortcode' ? 'Shortcode copied.' : 'Embed URL copied.',
+                        action === 'shortcode' ? 'Shortcode copied.' : 'Direct URL copied.',
                     );
             })
             .catch(() => toast.show('error', GENERIC_ERROR))
@@ -75,7 +75,7 @@ export function QuickShortcodeButton({
     );
 }
 
-/** The three icon buttons (copy shortcode, copy embed URL, open) of one ready video. */
+/** The three icon buttons (copy shortcode, copy direct URL, open) of one ready video. */
 export function QuickActionButtons({
     title,
     busy,
@@ -110,7 +110,7 @@ export function QuickActionButtons({
     return (
         <div className="video-actions" role="group" aria-label={`Quick actions for ${title}`}>
             {button('shortcode', 'Copy shortcode', <ShortcodeIcon />)}
-            {button('embed-url', 'Copy embed URL', <LinkIcon />)}
+            {button('embed-url', 'Copy direct URL', <LinkIcon />)}
             {button('open', 'Open in browser', <OpenExternalIcon />)}
         </div>
     );

@@ -2377,6 +2377,25 @@ progress::-moz-progress-bar {
     user-select: text;
 }
 
+/* Middle ellipsis (image tiles): the head shrinks with an ellipsis, the tail always stays. */
+.embed-value:has(.embed-value-head) {
+    display: flex;
+    position: relative;
+}
+
+.embed-value-head {
+    flex: 0 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.embed-value-tail {
+    flex: none;
+    white-space: nowrap;
+}
+
 /* Iframe code: up to 3 wrapped lines, the full value stays in the tooltip. */
 .embed-box-wrap .embed-value {
     display: -webkit-box;
@@ -2421,6 +2440,24 @@ progress::-moz-progress-bar {
     min-width: 0;
     margin: 0;
     overflow-wrap: anywhere;
+}
+
+.kv-title {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-width: 0;
+}
+
+.kv-title-text {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+/* Negative block margin keeps the row height the same as without the button. */
+.kv-title-edit {
+    flex: none;
+    margin-block: -0.375rem;
 }
 
 .mono {
@@ -3294,13 +3331,13 @@ button.stat-card:hover {
 .image-grid {
     display: grid;
     gap: var(--space-3);
-    grid-template-columns: repeat(auto-fill, 9.5rem);
+    grid-template-columns: repeat(auto-fill, min(15rem, 100%));
     justify-content: start;
 }
 
 @container detail (max-width: 22rem) {
     .image-grid {
-        grid-template-columns: repeat(auto-fill, minmax(0, 9.5rem));
+        grid-template-columns: repeat(auto-fill, minmax(0, min(15rem, 100%)));
     }
 }
 
@@ -3330,18 +3367,36 @@ button.stat-card:hover {
     gap: var(--space-1);
     align-items: center;
     justify-content: space-between;
-    min-height: 1.5rem;
+    min-height: 2rem;
     padding: 0 var(--space-1) 0 var(--space-2);
     border-bottom: 1px solid var(--border);
-    background: var(--surface-raised);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.image-card-title {
+    display: flex;
+    gap: var(--space-1);
+    align-items: center;
+    min-width: 0;
+}
+
+.image-card-title-icon {
+    display: inline-flex;
+    flex: none;
+}
+
+.image-card-title-icon .icon {
+    width: 1rem;
+    height: 1rem;
 }
 
 .image-card-label {
     min-width: 0;
     overflow: hidden;
-    color: var(--on-surface-muted);
-    font-size: var(--text-caption);
-    font-weight: var(--weight-bold);
+    color: inherit;
+    font-size: 0.8125rem;
+    font-weight: var(--weight-semibold);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
@@ -3352,18 +3407,21 @@ button.stat-card:hover {
     gap: var(--space-1);
 }
 
-/* Small, light preview box: 16:9, never cropped or stretched, on a sunken background. */
+/* Square preview box: never cropped or stretched (contain), centered on a sunken background. */
 .image-card-frame {
+    position: relative;
     display: grid;
     place-items: center;
-    max-height: 6rem;
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
     background: var(--surface-sunken);
 }
 
 .image-card-frame .thumb-frame {
     width: 100%;
-    max-height: 6rem;
-    aspect-ratio: 16 / 9;
+    height: 100%;
+    aspect-ratio: 1 / 1;
     border-radius: 0;
 }
 
@@ -3374,8 +3432,8 @@ button.stat-card:hover {
 .image-card-frame > img {
     display: block;
     width: 100%;
-    max-height: 6rem;
-    aspect-ratio: 16 / 9;
+    height: 100%;
+    aspect-ratio: 1 / 1;
     object-fit: contain;
 }
 
@@ -3384,8 +3442,10 @@ button.stat-card:hover {
     border-top: 1px solid var(--border);
 }
 
-/* Compact value box under an image: one line, ~1.75rem high. */
+/* Value box under an image: one compact line (~1.75rem), the URL ellipsised (full URL in the
+   tooltip), Copy at the right end inside the box. */
 .image-card-actions .embed-box {
+    min-height: 1.75rem;
     padding: 0 0 0 var(--space-2);
 }
 
@@ -3396,10 +3456,31 @@ button.stat-card:hover {
 }
 
 .image-card-bar .image-card-icon-btn {
-    width: 1.375rem;
-    height: 1.375rem;
-    min-height: 1.375rem;
+    width: 1.5rem;
+    height: 1.5rem;
+    min-height: 1.5rem;
     padding: 0;
+    border-color: currentcolor;
+    background: transparent;
+    color: inherit;
+}
+
+.image-card-bar .image-card-icon-btn:hover:not(:disabled) {
+    background: color-mix(in srgb, currentcolor 14%, transparent);
+}
+
+.image-card-bar .image-card-icon-btn:focus-visible {
+    outline: 2px solid currentcolor;
+    outline-offset: 1px;
+}
+
+.image-card-bar .image-card-icon-btn.btn-accent-danger {
+    color: inherit;
+}
+
+.image-card-bar .image-card-icon-btn:disabled {
+    border-color: currentcolor;
+    color: inherit;
 }
 
 .image-card-bar .image-card-icon-btn .icon {
@@ -3407,36 +3488,237 @@ button.stat-card:hover {
     height: 0.875rem;
 }
 
+/* Empty custom slot: ONE dashed rounded box around the whole tile (the card itself, label bar
+   inside). It stretches with the grid row to the Thumbnail tile's height; the body fills the rest
+   and centers its content. */
 .image-upload-tile {
+    align-self: stretch;
+    border: 1px dashed var(--border-strong);
+    transition:
+        border-color var(--dur-fast) var(--ease),
+        background-color var(--dur-fast) var(--ease);
+}
+
+.image-upload-body {
     display: flex;
-    flex: 1;
+    flex: 1 1 auto;
+    flex-direction: column;
+    gap: var(--space-2);
     align-items: center;
     justify-content: center;
-    min-height: 4.5rem;
-    margin: var(--space-1);
-    border: 1px dashed var(--border-strong);
-    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    text-align: center;
+}
+
+.image-upload-tile:hover,
+.image-upload-tile:focus-within {
+    border-color: var(--primary);
+    background: var(--primary-container);
+}
+
+.image-upload-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 50%;
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.image-upload-tile:hover .image-upload-icon,
+.image-upload-tile:focus-within .image-upload-icon {
+    background: var(--surface);
+}
+
+.image-upload-icon .icon {
+    width: 1.5rem;
+    height: 1.5rem;
+}
+
+.image-upload-title,
+.image-upload-hint {
+    margin: 0;
+    color: var(--on-surface-muted);
+}
+
+.image-upload-title {
+    font-size: var(--text-body);
+}
+
+.image-upload-hint {
+    font-size: var(--text-caption);
 }
 
 .image-upload-btn {
-    display: inline-flex;
-    gap: var(--space-1);
-    align-items: center;
-    padding: var(--space-1) var(--space-2);
-    border: 0;
-    background: transparent;
-    color: var(--on-surface-muted);
-    font: inherit;
-    font-size: var(--text-caption);
     white-space: nowrap;
-    cursor: pointer;
 }
 
-.image-upload-btn:hover:not(:disabled) {
+@media (forced-colors: active) {
+    .image-card-bar,
+    .image-upload-icon {
+        background: Canvas;
+        color: CanvasText;
+    }
+
+    .image-upload-tile:hover,
+    .image-upload-tile:focus-within {
+        border-color: Highlight;
+        background: Canvas;
+    }
+}
+
+/* ---- image zoom (lightbox) ---------------------------------------------------------------- */
+
+/* The frame stays as is; the trigger is an invisible button over it. */
+.image-zoom-trigger {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: zoom-in;
+}
+
+.image-zoom-trigger:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+}
+
+/* One card: a header row above the square image frame. */
+.image-zoom {
+    display: flex;
+    flex-direction: column;
+    width: min(90vw, 90vh, 42rem);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-3);
     color: var(--on-surface);
 }
 
-.image-upload-btn:disabled {
-    cursor: default;
-    opacity: 0.6;
+.image-zoom-bar {
+    display: flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-height: 2.75rem;
+    padding: var(--space-2) var(--space-3);
+    border-bottom: 1px solid var(--border);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.image-zoom-icon {
+    display: inline-flex;
+    flex: none;
+}
+
+.image-zoom-icon .icon {
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
+.image-zoom-title {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    color: inherit;
+    font-size: var(--text-body);
+    font-weight: var(--weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.image-zoom-title-sub {
+    font-weight: normal;
+    opacity: 0.7;
+}
+
+/* Red (danger) icon button; hover fills it. */
+.image-zoom-close {
+    flex: none;
+    width: 2rem;
+    height: 2rem;
+    min-height: 2rem;
+    margin-left: auto;
+    padding: 0;
+    transition:
+        background-color 0.12s ease,
+        color 0.12s ease;
+}
+
+.image-zoom-close:hover:not(:disabled) {
+    border-color: var(--accent-danger);
+    background: var(--accent-danger);
+    color: var(--surface);
+}
+
+.image-zoom-close:focus-visible {
+    outline: 2px solid var(--accent-danger);
+    outline-offset: 2px;
+}
+
+.image-zoom-close .icon {
+    width: 1rem;
+    height: 1rem;
+}
+
+.image-zoom-frame {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    overflow: hidden;
+    background: var(--surface-sunken);
+}
+
+.image-zoom-frame > img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .image-zoom-close {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .image-zoom,
+    .image-zoom-bar,
+    .image-zoom-frame {
+        border-color: CanvasText;
+        background: Canvas;
+        color: CanvasText;
+    }
+
+    .image-zoom-close {
+        border-color: ButtonText;
+        background: ButtonFace;
+        color: ButtonText;
+    }
+
+    .image-zoom-close:hover:not(:disabled) {
+        border-color: Highlight;
+        background: Highlight;
+        color: HighlightText;
+    }
+
+    .image-zoom-close:focus-visible {
+        outline-color: Highlight;
+    }
+
+    .image-zoom-trigger:focus-visible {
+        outline-color: Highlight;
+    }
+}
+
+/* Information card: the tier chips of one row sit side by side. */
+.kv-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: var(--space-1);
 }

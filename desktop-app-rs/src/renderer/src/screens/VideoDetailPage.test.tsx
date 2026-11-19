@@ -210,7 +210,8 @@ describe('Video detail page', () => {
 
         for (const text of [
             '1:02:05',
-            '1920x1080',
+            '1920\u00d71080',
+            '1080p',
             '29.97 fps',
             '4500 kbps',
             'h264',
@@ -218,9 +219,78 @@ describe('Video detail page', () => {
             '150 MB',
             'abcdefghijkl',
         ]) {
-            expect(screen.getByText(text)).toBeInTheDocument();
+            expect(
+                within(screen.getByLabelText('Information')).getByText(text),
+            ).toBeInTheDocument();
         }
         expect(within(screen.getByLabelText('Information')).getByText('Ready')).toBeInTheDocument();
+    });
+
+    it('shows quality, dimensions, bitrate and fps as tier chips', async () => {
+        const { user } = await openLibrary(detail({ outputBitrateKbps: 4000, outputFps: 60 }));
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        const info = within(screen.getByLabelText('Information'));
+        const chip = (text: string) => info.getByText(text).closest('.media-chip');
+
+        expect(chip('1080p')).toHaveClass('chip-tier-3');
+        expect(chip('1920\u00d71080')).toHaveClass('chip-tier-3');
+        expect(chip('4000 kbps')).toHaveClass('chip-tier-2');
+        expect(chip('60 fps')).toHaveClass('chip-tier-1');
+        expect(chip('60 fps')).not.toHaveAttribute('aria-hidden');
+
+        // Dimensions and Quality are separate rows; "Resolution" is gone.
+        const rowOf = (label: string) => info.getByText(label).closest('div') as HTMLElement;
+        expect(info.queryByText('Resolution')).toBeNull();
+        const dims = within(rowOf('Dimensions'));
+        expect(dims.getByText('1920\u00d71080')).toBeInTheDocument();
+        expect(dims.getByText('Horizontal')).toBeInTheDocument();
+        expect(dims.queryByText('1080p')).toBeNull();
+        expect(within(rowOf('Quality')).getByText('1080p')).toBeInTheDocument();
+    });
+
+    it('shows a neutral Horizontal badge for a landscape video', async () => {
+        const { user } = await openLibrary(detail({ outputWidth: 1920, outputHeight: 1080 }));
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        const badge = within(screen.getByLabelText('Information')).getByText('Horizontal');
+        expect(badge.closest('.media-chip')).not.toHaveClass('chip-tier-3');
+        expect(badge.closest('.media-chip')).not.toHaveAttribute('aria-hidden');
+    });
+
+    it('shows a Vertical badge for a portrait video', async () => {
+        const { user } = await openLibrary(detail({ outputWidth: 1280, outputHeight: 2770 }));
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        const info = within(screen.getByLabelText('Information'));
+        expect(info.getByText('Vertical')).toBeInTheDocument();
+        expect(info.queryByText('Horizontal')).toBeNull();
+    });
+
+    it('has no tier chips when the values are unknown', async () => {
+        const { user } = await openLibrary(
+            detail({
+                outputWidth: null,
+                outputHeight: null,
+                outputBitrateKbps: null,
+                outputFps: null,
+            }),
+        );
+
+        await openFirst(user);
+        await screen.findByText('Information');
+
+        expect(screen.getByLabelText('Information').querySelector('.media-chip')).toBeNull();
+        expect(screen.queryByText('Dimensions')).toBeNull();
+        expect(screen.queryByText('Quality')).toBeNull();
+        expect(screen.queryByText('Horizontal')).toBeNull();
+        expect(screen.queryByText('Vertical')).toBeNull();
     });
 
     it('loads the preview right away, without a click, only for a same-host https embed URL', async () => {
@@ -317,13 +387,13 @@ describe('Video detail page', () => {
         await openFirst(user);
         await screen.findByText('Information');
 
-        await user.click(screen.getByRole('button', { name: 'Copy Embed URL' }));
+        await user.click(screen.getByRole('button', { name: 'Copy Direct URL' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'embed-url');
-        expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
+        expect(await screen.findByText('Direct URL copied.')).toBeInTheDocument();
 
-        await user.click(screen.getByRole('button', { name: 'Copy Playlist URL' }));
+        await user.click(screen.getByRole('button', { name: 'Copy HLS URL (.m3u8)' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'playlist-url');
-        expect(await screen.findByText('Playlist URL copied.')).toBeInTheDocument();
+        expect(await screen.findByText('HLS URL (.m3u8) copied.')).toBeInTheDocument();
 
         await user.click(screen.getByRole('button', { name: 'Open in browser' }));
         expect(openEmbed).toHaveBeenCalledWith(7);
@@ -345,14 +415,14 @@ describe('Video detail page', () => {
         const card = within(await screen.findByLabelText('Embed'));
 
         // The strings are shown exactly as the main process built them (nothing is built here).
-        expect(card.getByRole('heading', { name: 'Embed URL' })).toBeInTheDocument();
+        expect(card.getByRole('heading', { name: 'Direct URL' })).toBeInTheDocument();
         expect(card.getByText(SITE_EMBED)).toBeInTheDocument();
         expect(card.getByText(iframeCode)).toBeInTheDocument();
         expect(card.getByText(shortcode)).toBeInTheDocument();
 
-        await user.click(card.getByRole('button', { name: 'Copy Embed URL' }));
+        await user.click(card.getByRole('button', { name: 'Copy Direct URL' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'embed-url');
-        expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
+        expect(await screen.findByText('Direct URL copied.')).toBeInTheDocument();
 
         await user.click(card.getByRole('button', { name: 'Copy Iframe code' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'iframe-code');
@@ -387,16 +457,16 @@ describe('Video detail page', () => {
         await openFirst(user);
 
         const card = within(await screen.findByLabelText('Embed'));
-        const copy = card.getByRole('button', { name: 'Copy Embed URL' });
+        const copy = card.getByRole('button', { name: 'Copy Direct URL' });
 
         await user.click(copy);
         await waitFor(() => expect(copy).toHaveAttribute('title', 'Copied'));
         expect(copy).toHaveClass('is-copied');
-        expect(copy).toHaveAccessibleName('Copy Embed URL');
+        expect(copy).toHaveAccessibleName('Copy Direct URL');
         // The announcement is the existing toast only.
-        expect(screen.getAllByText('Embed URL copied.')).toHaveLength(1);
+        expect(screen.getAllByText('Direct URL copied.')).toHaveLength(1);
 
-        await waitFor(() => expect(copy).toHaveAttribute('title', 'Copy Embed URL'), {
+        await waitFor(() => expect(copy).toHaveAttribute('title', 'Copy Direct URL'), {
             timeout: 3000,
         });
         expect(copy).not.toHaveClass('is-copied');
@@ -409,12 +479,12 @@ describe('Video detail page', () => {
         await openFirst(user);
 
         const card = within(await screen.findByLabelText('Embed'));
-        const copy = card.getByRole('button', { name: 'Copy Embed URL' });
+        const copy = card.getByRole('button', { name: 'Copy Direct URL' });
 
         await user.click(copy);
         expect(await screen.findByText(/Could not copy to the clipboard\./)).toBeInTheDocument();
         expect(copy).not.toHaveClass('is-copied');
-        expect(copy).toHaveAttribute('title', 'Copy Embed URL');
+        expect(copy).toHaveAttribute('title', 'Copy Direct URL');
     });
 
     it('hides the blocks the main process could not build', async () => {
@@ -439,11 +509,11 @@ describe('Video detail page', () => {
 
         const card = within(await screen.findByLabelText('Embed'));
 
-        expect(card.getByRole('heading', { name: 'Playlist URL' })).toBeInTheDocument();
+        expect(card.getByRole('heading', { name: 'HLS URL (.m3u8)' })).toBeInTheDocument();
         expect(card.getByText(playlistUrl)).toBeInTheDocument();
-        await user.click(card.getByRole('button', { name: 'Copy Playlist URL' }));
+        await user.click(card.getByRole('button', { name: 'Copy HLS URL (.m3u8)' }));
         expect(copyLink).toHaveBeenLastCalledWith(7, 'playlist-url');
-        expect(await screen.findByText('Playlist URL copied.')).toBeInTheDocument();
+        expect(await screen.findByText('HLS URL (.m3u8) copied.')).toBeInTheDocument();
     });
 
     it('omits the playlist URL field without a playlistUrl', async () => {
@@ -453,7 +523,26 @@ describe('Video detail page', () => {
 
         const card = within(await screen.findByLabelText('Embed'));
 
-        expect(card.queryByRole('heading', { name: 'Playlist URL' })).toBeNull();
+        expect(card.queryByRole('heading', { name: 'HLS URL (.m3u8)' })).toBeNull();
+    });
+
+    it('keeps the Embed card title and orders its fields Shortcode, Direct URL, Iframe code, HLS URL (.m3u8)', async () => {
+        const playlistUrl = 'https://cdn.example.com/p/abcdefghijkl/master.m3u8';
+        const { user } = await openLibrary(detail({ embedUrl: SITE_EMBED, playlistUrl }));
+
+        await openFirst(user);
+
+        const region = await screen.findByLabelText('Embed');
+        const card = within(region);
+
+        expect(card.getByRole('heading', { level: 3, name: 'Embed' })).toBeInTheDocument();
+        expect(screen.queryByLabelText('Share')).toBeNull();
+        expect(card.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)).toEqual([
+            'Shortcode',
+            'Direct URL',
+            'Iframe code',
+            'HLS URL (.m3u8)',
+        ]);
     });
 
     it('shows a failure toast when an action fails', async () => {
@@ -468,7 +557,7 @@ describe('Video detail page', () => {
         await openFirst(user);
         await screen.findByText('Information');
 
-        await user.click(screen.getByRole('button', { name: 'Copy Embed URL' }));
+        await user.click(screen.getByRole('button', { name: 'Copy Direct URL' }));
         expect(await screen.findByText(/Could not copy to the clipboard\./)).toBeInTheDocument();
 
         await user.click(screen.getByRole('button', { name: 'Open in browser' }));
@@ -483,8 +572,8 @@ describe('Video detail page', () => {
         await openFirst(user);
         await screen.findByText('Information');
 
-        expect(screen.queryByRole('button', { name: 'Copy Playlist URL' })).toBeNull();
-        expect(screen.queryByRole('button', { name: 'Copy Embed URL' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Copy HLS URL (.m3u8)' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Copy Direct URL' })).toBeNull();
         expect(screen.queryByRole('button', { name: 'Open in browser' })).toBeNull();
     });
 

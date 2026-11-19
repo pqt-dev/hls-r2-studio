@@ -114,7 +114,7 @@ export function JobRow({
         ...item('resume', 'Resume', job.canResume),
         ...item('retry', paused ? 'Start over' : 'Retry', job.canRetry),
         ...item('retry-register', 'Retry register', job.canRetryRegister),
-        ...item('copy-url', 'Copy embed URL', done && job.embedUrl !== null),
+        ...item('copy-url', 'Copy direct URL', done && job.embedUrl !== null),
         ...item('open', 'Open on site', done && job.embedUrl !== null),
         ...item('view-library', 'View in Library', done),
         ...item('details', 'View details', hasDetailsView(job.state)),

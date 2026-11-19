@@ -71,7 +71,7 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
             within(screen.getByRole('menu'))
                 .getAllByRole('menuitem')
                 .map((item) => item.textContent),
-        ).toEqual(['Select', 'Copy embed URL', 'Open in browser', 'Details', 'Delete']);
+        ).toEqual(['Select', 'Copy direct URL', 'Open in browser', 'Details', 'Delete']);
     });
 
     it('offers only Select, Details and Delete in the menu of a video that is not ready', async () => {
@@ -112,7 +112,7 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
         ).toBeInTheDocument();
     });
 
-    it('copies the shortcode and the embed URL and opens the embed page, with toasts', async () => {
+    it('copies the shortcode and the direct URL and opens the embed page, with toasts', async () => {
         const { user, copyLink, openEmbed } = await openLibrary(view);
 
         // The renderer only sends the id and the kind; the main process builds the text.
@@ -120,9 +120,9 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
         expect(copyLink).toHaveBeenLastCalledWith(1, 'shortcode');
         expect(await screen.findByText('Shortcode copied.')).toBeInTheDocument();
 
-        await fromMenu(user, 'Alpha', 'Copy embed URL');
+        await fromMenu(user, 'Alpha', 'Copy direct URL');
         expect(copyLink).toHaveBeenLastCalledWith(1, 'embed-url');
-        expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
+        expect(await screen.findByText('Direct URL copied.')).toBeInTheDocument();
 
         await fromMenu(user, 'Alpha', 'Open in browser');
         expect(openEmbed).toHaveBeenLastCalledWith(1);
@@ -176,14 +176,14 @@ describe.each(['grid', 'list'] as const)('Library quick actions (%s)', (view) =>
     it('shows the error the main process returns as a toast', async () => {
         const { user, copyLink } = await openLibrary(view);
 
-        copyLink.mockResolvedValue({ ok: false, error: 'This video has no embed URL yet.' });
+        copyLink.mockResolvedValue({ ok: false, error: 'This video has no direct URL yet.' });
         await user.click(screen.getByRole('button', { name: 'Copy shortcode for Alpha' }));
-        expect(await screen.findByText(/This video has no embed URL yet\./)).toBeInTheDocument();
+        expect(await screen.findByText(/This video has no direct URL yet\./)).toBeInTheDocument();
 
         copyLink.mockResolvedValue({ ok: false, error: 'Could not copy to the clipboard.' });
-        await fromMenu(user, 'Alpha', 'Copy embed URL');
+        await fromMenu(user, 'Alpha', 'Copy direct URL');
         expect(await screen.findByText(/Could not copy to the clipboard\./)).toBeInTheDocument();
-        expect(screen.queryByText('Embed URL copied.')).toBeNull();
+        expect(screen.queryByText('Direct URL copied.')).toBeNull();
     });
 
     it('opening the embed page stays with the main process and reports a failure safely', async () => {

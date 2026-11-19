@@ -89,6 +89,28 @@ describe('Images card (video detail)', () => {
         expect(card().queryByRole('button', { name: 'Replace' })).toBeNull();
         expect(card().queryByRole('button', { name: 'Delete' })).toBeNull();
         expect(card().getByRole('button', { name: 'Copy thumbnail URL' })).toBeEnabled();
+        // One compact line: the URL is the text (CSS ellipsises it), also in the tooltip, and the
+        // Copy button sits in the same single-row box.
+        const urlText = card().getByText(GENERATED_URL);
+
+        expect(urlText).toHaveAttribute('title', GENERATED_URL);
+        const urlBox = urlText.closest('.embed-box') as HTMLElement;
+
+        expect(urlBox).toBeInTheDocument();
+        expect(urlBox).not.toHaveClass('embed-box-full');
+        expect(urlBox).not.toHaveClass('embed-box-wrap');
+        // Middle ellipsis: head + tail spans are aria-hidden, the full URL is read once.
+        expect(urlBox.querySelector('.embed-value-head')).toHaveAttribute('aria-hidden', 'true');
+        expect(urlBox.querySelector('.embed-value-tail')).toHaveAttribute('aria-hidden', 'true');
+        expect(urlBox).toContainElement(card().getByRole('button', { name: 'Copy thumbnail URL' }));
+        // The empty tile carries the limits hint itself, so the block-level one is not repeated.
+        expect(
+            within(document.querySelector('.image-upload-tile') as HTMLElement).getByText(
+                'JPG, PNG or WebP · up to 5 MB',
+            ),
+        ).toBeInTheDocument();
+        expect(card().queryByText('JPG, PNG or WebP, up to 5 MB.')).toBeNull();
+        expect(card().getByText('No custom image')).toBeInTheDocument();
         expect(screen.getByRole('region', { name: 'Images' }).querySelector('img')).toHaveAttribute(
             'src',
             GENERATED_URL,
@@ -110,6 +132,9 @@ describe('Images card (video detail)', () => {
         expect(card().getByRole('button', { name: 'Delete' })).toBeEnabled();
         expect(card().getByRole('button', { name: 'Copy custom image URL' })).toBeEnabled();
         expect(card().queryByRole('button', { name: 'Upload image' })).toBeNull();
+        expect(card().getByText(CUSTOM_URL)).toHaveAttribute('title', CUSTOM_URL);
+        expect(card().getByText('JPG, PNG or WebP, up to 5 MB.')).toBeInTheDocument();
+        expect(card().queryByText('No custom image')).toBeNull();
     });
 
     it('puts the storyboards after the other tiles in the one Images gallery, labelled and in order', async () => {
@@ -387,5 +412,97 @@ describe('Images card (video detail)', () => {
         expect(await screen.findByText(/No custom thumbnail to remove\./)).toBeInTheDocument();
         await waitFor(() => expect(card().queryByRole('button', { name: 'Replace' })).toBeNull());
         expect(get.mock.calls.length).toBe(loads + 1);
+    });
+
+    describe('click to zoom', () => {
+        const SB3 = 'https://cdn.example.com/sb3.jpg';
+        const SB5 = 'https://cdn.example.com/sb5.jpg';
+        const storyboards = {
+            '3x3': { url: SB3, columns: 3, count: 9 },
+            '5x5': { url: SB5, columns: 5, count: 25 },
+        };
+
+        it('opens the same image in a square dialog; Close returns focus to the trigger', async () => {
+            const { user } = await openDetail();
+            const trigger = card().getByRole('button', { name: 'Enlarge Thumbnail' });
+
+            expect(trigger).toHaveAttribute('title', 'Click to enlarge');
+            await user.click(trigger);
+
+            const dialog = screen.getByRole('dialog', { name: 'Thumbnail preview' });
+
+            expect(dialog).toHaveAttribute('aria-modal', 'true');
+            expect(dialog.querySelector('img')).toHaveAttribute('src', GENERATED_URL);
+            expect(dialog.querySelector('img')).toHaveAttribute('loading', 'eager');
+            expect(dialog.querySelector('.image-zoom-frame img')).not.toBeNull();
+            const close = within(dialog).getByRole('button', { name: 'Close' });
+
+            expect(close).toHaveFocus();
+            await user.tab();
+            expect(close).toHaveFocus();
+            await user.click(close);
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(trigger).toHaveFocus();
+        });
+
+        it('Escape closes only the zoom; a backdrop click closes it too', async () => {
+            const { user } = await openDetail();
+            const trigger = card().getByRole('button', { name: 'Enlarge Thumbnail' });
+
+            await user.click(trigger);
+            await user.keyboard('{Escape}');
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(trigger).toHaveFocus();
+            // The detail page itself is still open.
+            expect(screen.getByText('Information')).toBeInTheDocument();
+
+            await user.click(trigger);
+            await user.click(document.querySelector('.image-zoom-backdrop') as HTMLElement);
+            expect(screen.queryByRole('dialog')).toBeNull();
+        });
+
+        it('custom image and every storyboard open their own image', async () => {
+            const { user } = await openDetail({ details: [{ ...withCustom, storyboards }] });
+
+            for (const [name, src] of [
+                ['Custom image', CUSTOM_URL],
+                ['Storyboard 1', SB3],
+                ['Storyboard 2', SB5],
+            ] as const) {
+                await user.click(card().getByRole('button', { name: `Enlarge ${name}` }));
+                expect(
+                    within(screen.getByRole('dialog', { name: `${name} preview` }))
+                        .getByRole('img')
+                        .getAttribute('src'),
+                ).toBe(src);
+                await user.keyboard('{Escape}');
+                expect(screen.queryByRole('dialog')).toBeNull();
+            }
+        });
+
+        it('has no trigger on the empty upload tile or the No thumbnail placeholder', async () => {
+            await openDetail({ details: [{ thumbnailUrl: null }] });
+
+            expect(card().getByText('No thumbnail')).toBeInTheDocument();
+            expect(card().queryByRole('button', { name: /^Enlarge/ })).toBeNull();
+            expect(document.querySelector('.image-upload-tile .image-zoom-trigger')).toBeNull();
+        });
+
+        it('keeps Copy, Replace and Delete outside the trigger and working', async () => {
+            const { user, fake } = await openDetail({ details: [withCustom] });
+            const copyLink = vi.spyOn(fake.api.videos, 'copyLink');
+            const triggers = Array.from(document.querySelectorAll('.image-zoom-trigger'));
+
+            expect(triggers).toHaveLength(2);
+            for (const name of ['Replace', 'Delete', 'Copy custom image URL']) {
+                const button = card().getByRole('button', { name });
+
+                expect(triggers.some((t) => t.contains(button))).toBe(false);
+            }
+            await user.click(card().getByRole('button', { name: 'Copy custom image URL' }));
+            expect(copyLink).toHaveBeenCalled();
+            await user.click(card().getByRole('button', { name: 'Delete' }));
+            expect(screen.getByText(CONFIRM_TEXT)).toBeInTheDocument();
+        });
     });
 });

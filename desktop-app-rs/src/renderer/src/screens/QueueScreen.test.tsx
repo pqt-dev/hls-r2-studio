@@ -55,7 +55,7 @@ const CASES: ReadonlyArray<{
     {
         state: 'done',
         stage: 'Done',
-        buttons: ['Copy embed URL', 'Copy shortcode', 'Open on site', 'View in Library', 'Remove'],
+        buttons: ['Copy direct URL', 'Copy shortcode', 'Open on site', 'View in Library', 'Remove'],
         job: { canRemove: true, progress: 100, embedUrl: EMBED, publicId: 'abc123' },
     },
     {
@@ -113,7 +113,7 @@ const ALL_ACTIONS = [
     'Retry',
     'Retry register',
     'Remove',
-    'Copy embed URL',
+    'Copy direct URL',
     'Copy shortcode',
     'Open on site',
     'View in Library',
@@ -550,15 +550,15 @@ describe('Queue screen', () => {
     });
 
     describe('actions, toasts and confirmations', () => {
-        it('copies the embed URL and shortcode and confirms with a toast', async () => {
+        it('copies the direct URL and shortcode and confirms with a toast', async () => {
             const { fake, user } = await renderQueue({
                 jobs: [makeJob({ id: 'j', state: 'done', embedUrl: EMBED, canRemove: true })],
             });
             const copy = vi.spyOn(fake.api.jobs, 'copy');
 
-            await clickJobAction(user, /^Copy embed URL/);
+            await clickJobAction(user, /^Copy direct URL/);
             expect(copy).toHaveBeenCalledWith('j', 'embed-url');
-            expect(await screen.findByText('Embed URL copied.')).toBeInTheDocument();
+            expect(await screen.findByText('Direct URL copied.')).toBeInTheDocument();
 
             await clickJobAction(user, /^Copy shortcode/);
             expect(copy).toHaveBeenCalledWith('j', 'shortcode');
