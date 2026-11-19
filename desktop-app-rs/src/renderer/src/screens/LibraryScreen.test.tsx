@@ -205,4 +205,42 @@ describe('Library screen', () => {
         expect(screen.getByText('Latest upload')).toBeInTheDocument();
         expect(screen.queryByText('Stale')).toBeNull();
     });
+
+    it('refreshes quietly: items stay, the button spins, no skeleton; a query change shows it', async () => {
+        const resolvers: Array<(result: VideosListResult) => void> = [];
+        const { user } = await openLibrary(
+            () => new Promise<VideosListResult>((resolve) => resolvers.push(resolve)),
+        );
+
+        // First load: skeleton.
+        expect(document.querySelector('.videos-skeleton')).not.toBeNull();
+        await act(async () => {
+            resolvers[0]!(ok([makeVideo({ title: 'Alpha' })]));
+        });
+        await screen.findByText('Alpha');
+
+        await user.click(screen.getByRole('button', { name: 'Refresh' }));
+
+        const refresh = screen.getByRole('button', { name: 'Refresh' });
+
+        expect(refresh).toHaveAttribute('aria-busy', 'true');
+        expect(refresh).toHaveClass('is-spinning');
+        expect(document.querySelector('.videos-skeleton')).toBeNull();
+        expect(screen.getByText('Alpha')).toBeInTheDocument();
+
+        await act(async () => {
+            resolvers[1]!(ok([makeVideo({ title: 'Beta' })]));
+        });
+
+        expect(await screen.findByText('Beta')).toBeInTheDocument();
+        expect(screen.queryByText('Alpha')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Refresh' })).toHaveAttribute(
+            'aria-busy',
+            'false',
+        );
+
+        // A different query (search) is different content: skeleton again.
+        await user.type(screen.getByLabelText('Search videos'), 'x{Enter}');
+        await waitFor(() => expect(document.querySelector('.videos-skeleton')).not.toBeNull());
+    });
 });

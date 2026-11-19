@@ -15,10 +15,10 @@ import {
     OpenExternalIcon,
     PencilIcon,
     QualityIcon,
-    RefreshIcon,
     TrashIcon,
     UploadIcon,
 } from '../components/icons';
+import { RefreshButton } from '../components/RefreshButton';
 import { Thumbnail } from '../components/Thumbnail';
 import {
     bitrateTier,
@@ -894,17 +894,7 @@ function ActionBar({ video, actions }: { video: VideoDetail; actions: Actions })
 
     return (
         <div className="detail-actionbar" role="toolbar" aria-label="Video actions">
-            {video.status !== 'ready' && (
-                <button
-                    type="button"
-                    className="btn btn-sm"
-                    title="Refresh"
-                    aria-label="Refresh"
-                    onClick={actions.refresh}
-                >
-                    <RefreshIcon />
-                </button>
-            )}
+            {video.status !== 'ready' && <RefreshButton onClick={actions.refresh} />}
             <button
                 ref={actions.deleteRef}
                 type="button"

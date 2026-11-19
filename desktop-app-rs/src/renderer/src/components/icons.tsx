@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useId, useLayoutEffect, useRef } from 'react';
 import type { VideoOrientation } from '../lib/format';
 import { STATUS_ICON, type StatusKind } from '../lib/jobState';
 import { FLUENT, type FluentName } from './fluentIcons';
@@ -6,21 +6,24 @@ import { FLUENT, type FluentName } from './fluentIcons';
 /**
  * 20px Fluent System Icons (MIT, see LICENSES/fluent-system-icons) drawn with currentColor so they
  * follow the theme and forced-colors. `duo` also renders the filled style: CSS shows it instead
- * of the regular one while a `.tab` parent is selected (active sidebar item).
+ * of the regular one while a `.tab` parent is selected (active sidebar item). `filled` renders only
+ * the filled style as a normal `.icon` (never hidden by the sidebar CSS), for solid accent icons.
  */
 function Glyph({
     name,
     duo = false,
+    filled = false,
     orientation,
 }: {
     name: FluentName;
     duo?: boolean;
+    filled?: boolean;
     orientation?: VideoOrientation;
 }) {
     const glyph = FLUENT[name];
-    const svg = (style: 'regular' | 'filled') => (
+    const svg = (style: 'regular' | 'filled', className = `icon icon-${style}`) => (
         <svg
-            className={`icon icon-${style}`}
+            className={className}
             viewBox="0 0 20 20"
             fill="currentColor"
             aria-hidden="true"
@@ -32,6 +35,8 @@ function Glyph({
             ))}
         </svg>
     );
+
+    if (filled) return svg('filled', 'icon');
 
     return duo ? (
         <>
@@ -76,6 +81,11 @@ export const InfoIcon = () => <Glyph name="about" />;
 export const ArrowLeftIcon = () => <Glyph name="arrowLeft" />;
 /** Icon of a queue status kind (shown next to the status text). */
 export const StatusIcon = ({ kind }: { kind: StatusKind }) => <Glyph name={STATUS_ICON[kind]} />;
+/** Solid (filled) icons of the Home stat tiles; distinct silhouettes: rectangle, badge, circle, triangle. */
+export const StatTotalIcon = () => <Glyph name="statTotal" filled />;
+export const StatReadyIcon = () => <Glyph name="statReady" filled />;
+export const StatProcessingIcon = () => <Glyph name="statProcessing" filled />;
+export const StatFailedIcon = () => <Glyph name="statFailed" filled />;
 export const ClockIcon = () => <Glyph name="clock" />;
 export const StorageIcon = () => <Glyph name="drive" />;
 export const RulerIcon = () => <Glyph name="ruler" />;
@@ -100,18 +110,14 @@ export const CheckboxIcon = ({ state }: { state: 'none' | 'some' | 'all' }) => (
 );
 
 /**
- * Path of the gear in the app mark: a cog with 8 trapezoid teeth (outer radius 10.4, root radius
- * 7.9 on a 32 grid) and a round centre hole, cut out with the even-odd rule.
- */
-const GEAR_PATH =
-    'M13.80 8.41 L14.37 5.73 L17.63 5.73 L18.20 8.41 L19.81 9.08 L22.11 7.59 L24.41 9.89 L22.92 12.19 L23.59 13.80 L26.27 14.37 L26.27 17.63 L23.59 18.20 L22.92 19.81 L24.41 22.11 L22.11 24.41 L19.81 22.92 L18.20 23.59 L17.63 26.27 L14.37 26.27 L13.80 23.59 L12.19 22.92 L9.89 24.41 L7.59 22.11 L9.08 19.81 L8.41 18.20 L5.73 17.63 L5.73 14.37 L8.41 13.80 L9.08 12.19 L7.59 9.89 L9.89 7.59 L12.19 9.08 Z M19.30 16 A3.3 3.3 0 1 0 12.70 16 A3.3 3.3 0 1 0 19.30 16 Z';
-
-/**
- * App mark: a brand-blue rounded tile with a white gear. A gear says "tool / processing" (this app
- * builds and uploads videos), not "player": there is no play triangle anywhere. `size` is in rem.
+ * App mark: a rounded tile with a brand-blue to cyan gradient, a white play triangle and two
+ * convert arrows (white and warm amber) that say "transcode", not just "tool". Gradient ids come
+ * from `useId` so several instances never clash. Keep in sync with
+ * `src-tauri/icons/source/logo.svg`. `size` is in rem.
  */
 export function BrandMark({ size = 1.75 }: { size?: number }) {
     const ref = useRef<SVGSVGElement>(null);
+    const gradientId = `brand-grad-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
 
     useLayoutEffect(() => {
         ref.current?.style.setProperty('--brand-size', `${size}rem`);
@@ -121,12 +127,38 @@ export function BrandMark({ size = 1.75 }: { size?: number }) {
         <svg
             ref={ref}
             className="brand-mark"
-            viewBox="0 0 32 32"
+            viewBox="0 0 64 64"
             aria-hidden="true"
             focusable="false"
         >
-            <rect className="brand-tile" width="32" height="32" rx="8" />
-            <path className="brand-gear" d={GEAR_PATH} fillRule="evenodd" />
+            <defs>
+                <linearGradient
+                    id={gradientId}
+                    x1="6"
+                    y1="2"
+                    x2="58"
+                    y2="62"
+                    gradientUnits="userSpaceOnUse"
+                >
+                    <stop offset="0" stopColor="#0f6cbd" />
+                    <stop offset="1" stopColor="#12b5cb" />
+                </linearGradient>
+            </defs>
+            <rect
+                className="brand-tile"
+                width="64"
+                height="64"
+                rx="14"
+                fill={`url(#${gradientId})`}
+            />
+            <path
+                className="brand-ink"
+                d="M14.5 18h13a6.5 6.5 0 0 1 6.5 6.5v15a6.5 6.5 0 0 1 -6.5 6.5h-13a6.5 6.5 0 0 1 -6.5 -6.5v-15a6.5 6.5 0 0 1 6.5 -6.5zM16.95 26.12L27.29 32L16.95 37.88z"
+                fill="#fff"
+                fillRule="evenodd"
+            />
+            <rect className="brand-ink" x="38" y="23" width="9" height="18" rx="3" fill="#fff" />
+            <rect className="brand-ink" x="50" y="28" width="6" height="8" rx="3" fill="#ffb324" />
         </svg>
     );
 }

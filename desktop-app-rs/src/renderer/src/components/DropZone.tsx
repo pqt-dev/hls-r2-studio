@@ -1,54 +1,39 @@
-import { useState, type DragEvent } from 'react';
-import { useApp } from '../state/AppProvider';
-import { useAddFiles } from './useAddFiles';
+import { forwardRef } from 'react';
+import { UploadIcon } from './icons';
+import { UploadVideosButton } from './UploadVideosButton';
 
-export function DropZone({ compact }: { compact: boolean }) {
-    const { api } = useApp();
-    const [dragging, setDragging] = useState(false);
-    const { busy, add } = useAddFiles();
-
-    function onDrop(event: DragEvent<HTMLDivElement>): void {
-        event.preventDefault();
-        setDragging(false);
-
-        const files = Array.from(event.dataTransfer.files);
-
-        if (files.length > 0) void add(() => api.jobs.addDroppedFiles(files));
+/**
+ * The Queue's upload card: drop target look plus the Upload videos button (the keyboard path).
+ * It is the ONLY drop target: the Queue's `useFileDrop` gets its `ref` and passes `dragging` here.
+ * Compact (one line) when the queue has jobs; roomier and stacked when it is empty.
+ */
+export const DropZone = forwardRef<
+    HTMLDivElement,
+    {
+        compact: boolean;
+        dragging: boolean;
+        /** A drop is being processed: the button is disabled. */
+        busy: boolean;
     }
-
+>(function DropZone({ compact, dragging, busy }, ref) {
     return (
         <div
+            ref={ref}
             className={`dropzone${dragging ? ' is-dragging' : ''}${compact ? ' is-compact' : ''}`}
-            onDragEnter={(event) => {
-                event.preventDefault();
-                setDragging(true);
-            }}
-            onDragOver={(event) => {
-                event.preventDefault();
-                event.dataTransfer.dropEffect = 'copy';
-            }}
-            onDragLeave={(event) => {
-                if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                    setDragging(false);
-                }
-            }}
-            onDrop={onDrop}
+            role="group"
+            aria-label="Upload videos"
             data-testid="dropzone"
         >
-            <p className="dropzone-text">
-                {dragging
-                    ? 'Release to upload the videos'
-                    : 'Drop videos here to upload, or click Upload videos'}
-            </p>
-            <button
-                type="button"
-                className="btn btn-primary"
-                disabled={busy}
-                onClick={() => void add(() => api.jobs.addFiles())}
-            >
-                Upload videos
-            </button>
-            {!compact && <p className="muted small">MP4, MOV, MKV, AVI and WebM files.</p>}
+            <span className="dropzone-icon" aria-hidden="true">
+                <UploadIcon />
+            </span>
+            <div className="dropzone-body">
+                <p className="dropzone-text">
+                    {dragging ? 'Release to upload the videos' : 'Drop videos here to upload'}
+                </p>
+                <p className="dropzone-hint">MP4, MOV, MKV, AVI or WebM · or click Upload</p>
+            </div>
+            <UploadVideosButton navigate={false} disabled={busy} />
         </div>
     );
-}
+});

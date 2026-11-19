@@ -11,11 +11,19 @@ import type { ActionResult, JobDto } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { DetailsDialog } from '../components/DetailsDialog';
 import { DropZone } from '../components/DropZone';
-import { ChevronDownIcon, ChevronRightIcon } from '../components/icons';
+import { EmptyState } from '../components/EmptyState';
+import { GroupHeader } from '../components/GroupHeader';
+import { QueueIcon } from '../components/icons';
 import { JobRow, useNow, type JobAction } from '../components/JobRow';
+import { Pagination } from '../components/Pagination';
+import { PerPageSelect } from '../components/PerPageSelect';
 import { QueueBanners } from '../components/QueueBanners';
+import { StatusCountChips } from '../components/StatusCountChips';
+import { useAddFiles } from '../components/useAddFiles';
+import { useFileDrop } from '../components/useFileDrop';
 import { plural } from '../lib/format';
 import { isRunning } from '../lib/jobState';
+import { PREF_KEYS, readPreference, writePreference } from '../lib/preferences';
 import {
     FINISHED_COLLAPSE_THRESHOLD,
     QUEUE_GROUP_ATTENTION,
@@ -28,6 +36,10 @@ import {
 import { finishedCount, useApp } from '../state/AppProvider';
 import { useNavigation } from '../state/Navigation';
 import { useToast } from '../state/Toasts';
+
+/** Page sizes of the Finished group (the live groups are never paginated). */
+export const QUEUE_PAGE_SIZES = [10, 20, 50, 100] as const;
+const DEFAULT_QUEUE_PAGE_SIZE = 20;
 
 type Confirm =
     | { kind: 'cancel'; job: JobDto }
@@ -44,8 +56,38 @@ export function QueueScreen() {
     const [pending, setPending] = useState<ReadonlySet<string>>(new Set());
     const [confirm, setConfirm] = useState<Confirm>(null);
     const [detailsId, setDetailsId] = useState<string | null>(null);
+    const [pageSize, setPageSize] = useState<number>(() =>
+        readPreference(PREF_KEYS.queuePerPage, QUEUE_PAGE_SIZES, DEFAULT_QUEUE_PAGE_SIZE),
+    );
+    const [page, setPage] = useState(1);
+    // Only files dropped on the drop card are added; the card shows the drag state.
+    const { busy: adding, add } = useAddFiles();
+    const drop = useFileDrop((files) => void add(() => api.jobs.addDroppedFiles(files)));
 
     const listRef = useRef<HTMLUListElement>(null);
+    const stickyRef = useRef<HTMLDivElement>(null);
+
+    // Publish the sticky band's height as `--queue-sticky-h` so `scroll-padding-top` /
+    // `scroll-margin-top` (styles.css) keep scrolled-to elements clear of the band.
+    useEffect(() => {
+        const band = stickyRef.current;
+        const root = band?.closest<HTMLElement>('.panel') ?? band?.parentElement ?? null;
+
+        if (!band || !root || typeof ResizeObserver === 'undefined') return;
+
+        const publish = (): void => {
+            root.style.setProperty('--queue-sticky-h', `${Math.ceil(band.offsetHeight)}px`);
+        };
+        const observer = new ResizeObserver(publish);
+
+        publish();
+        observer.observe(band);
+
+        return () => {
+            observer.disconnect();
+            root.style.removeProperty('--queue-sticky-h');
+        };
+    }, []);
     // The job button that has the focus, so the focus survives a job moving to another group.
     const focusTarget = useRef<{ id: string; label: string } | null>(null);
 
@@ -61,13 +103,41 @@ export function QueueScreen() {
         [ordered],
     );
     const finishedOpen = finishedChoice ?? finishedTotal <= FINISHED_COLLAPSE_THRESHOLD;
-    const visible = useMemo(
-        () =>
-            finishedOpen
-                ? ordered
-                : ordered.filter((job) => queueGroup(job.state) !== QUEUE_GROUP_FINISHED),
-        [ordered, finishedOpen],
-    );
+    // Only the Finished group is paged (newest first). The page follows the list: when the list
+    // shrinks the page is clamped; new finished jobs do not move the user to another page.
+    const lastPage = Math.max(1, Math.ceil(finishedTotal / pageSize));
+    const currentPage = Math.min(page, lastPage);
+    const visible = useMemo(() => {
+        const first = (currentPage - 1) * pageSize;
+        let seen = 0;
+
+        return ordered.filter((job) => {
+            if (queueGroup(job.state) !== QUEUE_GROUP_FINISHED) return true;
+
+            const index = seen++;
+
+            return finishedOpen && index >= first && index < first + pageSize;
+        });
+    }, [ordered, finishedOpen, currentPage, pageSize]);
+
+    // Keep the stored page in range too, so a list that grows again does not jump back.
+    useEffect(() => {
+        if (page !== currentPage) setPage(currentPage);
+    }, [page, currentPage]);
+
+    function choosePageSize(next: number): void {
+        setPageSize(next);
+        setPage(1);
+        writePreference(PREF_KEYS.queuePerPage, next);
+    }
+
+    /** The bottom pager returns to the Finished heading, so the new page starts in view. */
+    function changePageFromBottom(next: number): void {
+        setPage(next);
+        listRef.current
+            ?.querySelector<HTMLElement>(`[data-group="${QUEUE_GROUP_FINISHED}"]`)
+            ?.scrollIntoView?.({ block: 'start' });
+    }
 
     // Rows are keyed by job id, so a job that changes group is moved, not recreated. Moving a DOM
     // node can drop its focus: give it back when it vanished with the reorder (not when the user
@@ -179,6 +249,18 @@ export function QueueScreen() {
             case 'copy-shortcode':
                 void run(job.id, () => api.jobs.copy(job.id, 'shortcode'), 'Shortcode copied.');
                 break;
+            case 'copy-thumbnail':
+                if (job.videoId !== undefined) {
+                    const videoId = job.videoId;
+
+                    void run(
+                        job.id,
+                        () => api.videos.copyLink(videoId, 'thumbnail-url'),
+                        'Thumbnail URL copied.',
+                    );
+                }
+
+                break;
             case 'open':
                 void run(job.id, () => api.jobs.openEmbed(job.id));
                 break;
@@ -198,30 +280,48 @@ export function QueueScreen() {
         [QUEUE_GROUP_FINISHED]: 'Finished',
     };
 
-    /** Heading of a group; the finished one is a button that collapses/expands its jobs. */
+    /** Heading of a group; the finished one collapses its jobs and holds "Clear finished". */
     function groupHeading(group: number, counts: Map<number, number>): ReactNode {
         const count = counts.get(group) ?? 0;
+        const isFinished = group === QUEUE_GROUP_FINISHED;
 
         return (
-            <li key={`group-${group}`} className="job-group" role="presentation" data-group={group}>
-                {group === QUEUE_GROUP_FINISHED ? (
-                    <button
-                        type="button"
-                        className="job-group-toggle"
-                        aria-expanded={finishedOpen}
-                        onClick={() => setFinishedChoice(!finishedOpen)}
-                    >
-                        {finishedOpen ? <ChevronDownIcon /> : <ChevronRightIcon />}
-                        <span className="job-group-title">{GROUP_TITLE[group]}</span>
-                        <span className="num job-group-count">{count}</span>
-                    </button>
-                ) : (
-                    <>
-                        <span className="job-group-title">{GROUP_TITLE[group]}</span>
-                        <span className="num job-group-count">{count}</span>
-                    </>
-                )}
+            <li key={`group-${group}`} role="presentation" data-group={group}>
+                <GroupHeader
+                    title={GROUP_TITLE[group] ?? ''}
+                    count={count}
+                    open={isFinished ? finishedOpen : undefined}
+                    onToggle={isFinished ? () => setFinishedChoice(!finishedOpen) : undefined}
+                    action={
+                        isFinished ? (
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-accent-danger"
+                                disabled={finished === 0}
+                                onClick={clearFinished}
+                            >
+                                Clear finished
+                            </button>
+                        ) : undefined
+                    }
+                />
             </li>
+        );
+    }
+
+    const smallestPage = Math.min(...QUEUE_PAGE_SIZES);
+
+    /** Pager of the Finished group; `label` names it (two pagers on one screen). */
+    function finishedPager(label: string, onChange: (page: number) => void): ReactNode {
+        return (
+            <Pagination
+                label={label}
+                page={currentPage}
+                lastPage={lastPage}
+                total={finishedTotal}
+                noun="job"
+                onPageChange={onChange}
+            />
         );
     }
 
@@ -244,6 +344,23 @@ export function QueueScreen() {
             if (group !== previous) {
                 previous = group;
                 nodes.push(groupHeading(group, counts));
+
+                // Under the Finished heading: Per page on the left, the pager on the right.
+                // Hidden for a short list (nothing to page or size).
+                if (group === QUEUE_GROUP_FINISHED && finishedTotal > smallestPage) {
+                    nodes.push(
+                        <li key="finished-pager-top" role="presentation">
+                            <div className="pager-row">
+                                <PerPageSelect
+                                    value={pageSize}
+                                    options={QUEUE_PAGE_SIZES}
+                                    onChange={choosePageSize}
+                                />
+                                {finishedPager('Finished pagination, top', setPage)}
+                            </div>
+                        </li>,
+                    );
+                }
             }
 
             nodes.push(
@@ -254,6 +371,14 @@ export function QueueScreen() {
                     pending={pending.has(job.id)}
                     onAction={onAction}
                 />,
+            );
+        }
+
+        if (finishedOpen && lastPage > 1) {
+            nodes.push(
+                <li key="finished-pager-bottom" role="presentation">
+                    {finishedPager('Finished pagination, bottom', changePageFromBottom)}
+                </li>,
             );
         }
 
@@ -271,23 +396,22 @@ export function QueueScreen() {
     return (
         <div className="queue">
             <QueueBanners />
-            <DropZone compact={jobs.length > 0} />
+            <div className="queue-sticky" ref={stickyRef}>
+                <DropZone
+                    ref={drop.ref}
+                    compact={jobs.length > 0}
+                    dragging={drop.dragging}
+                    busy={adding}
+                />
+            </div>
 
-            <section className="queue-list" aria-labelledby="queue-heading">
-                <div className="section-head">
-                    <h2 id="queue-heading">Queue</h2>
-                    <button
-                        type="button"
-                        className="btn btn-sm btn-accent-danger"
-                        disabled={finished === 0}
-                        onClick={clearFinished}
-                    >
-                        Clear finished
-                    </button>
-                </div>
-
+            <section className="queue-list" aria-label="Queue">
                 {jobs.length === 0 ? (
-                    <p className="empty">Drop videos here to upload, or click Upload videos</p>
+                    <EmptyState
+                        icon={<QueueIcon />}
+                        title="No videos in the queue"
+                        description="Videos you upload are processed here, one after another."
+                    />
                 ) : (
                     <ul
                         ref={listRef}
@@ -302,13 +426,7 @@ export function QueueScreen() {
             </section>
 
             <footer className="queue-footer" role="status" aria-live="polite">
-                <span className="num">{summary.running} running</span>
-                <span className="num">{summary.waiting} waiting</span>
-                <span className="num">{summary.done} done</span>
-                <span className="num">{summary.failed} failed</span>
-                {summary.attention > 0 && (
-                    <span className="num">{summary.attention} need attention</span>
-                )}
+                <StatusCountChips counts={summary} />
             </footer>
 
             {confirm?.kind === 'cancel' && (

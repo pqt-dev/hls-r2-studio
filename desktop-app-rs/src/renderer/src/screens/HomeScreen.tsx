@@ -1,41 +1,65 @@
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import type { LogCounts, LogItem, Overview, RendererApi, VideoListItem } from '../../../shared/ipc';
+import type {
+    JobDto,
+    LogCounts,
+    LogItem,
+    Overview,
+    RendererApi,
+    VideoListItem,
+} from '../../../shared/ipc';
 import { useNow } from '../components/JobRow';
+import { EmptyState } from '../components/EmptyState';
+import { SectionCard } from '../components/SectionCard';
+import { JobProgress } from '../components/JobProgress';
+import { JobStateChip } from '../components/JobStateChip';
+import { useToast } from '../state/Toasts';
+import { RefreshButton } from '../components/RefreshButton';
+import { StatTile, type StatTone } from '../components/StatTile';
+import { StatusCountChips } from '../components/StatusCountChips';
 import { Thumbnail } from '../components/Thumbnail';
-import { useUploadVideos } from '../components/useUploadVideos';
+import { TierChip } from '../components/TierChip';
+import { UploadVideosButton } from '../components/UploadVideosButton';
+import { VideoMenu } from '../components/VideoMenu';
 import {
     ChevronRightIcon,
     ClockIcon,
-    ErrorIcon,
-    LibraryIcon,
-    RefreshIcon,
+    QualityIcon,
+    StatFailedIcon,
+    StatProcessingIcon,
+    StatReadyIcon,
+    StatTotalIcon,
     StorageIcon,
     SuccessIcon,
+    VideoFileIcon,
 } from '../components/icons';
 import {
-    QuickActionButtons,
+    VideoQuickActions,
     useQuickActions,
     type QuickAction,
 } from '../components/VideoQuickActions';
 import {
     formatBytes,
-    formatDate,
     formatDateTime,
     formatDuration,
+    formatQuality,
     formatRelativeTime,
     plural,
+    qualityTier,
     siteHost,
     stageLabel,
 } from '../lib/format';
-import { needsAttention, queueGroup } from '../lib/queueOrder';
+import { needsAttention, queueGroup, sortJobsForQueue } from '../lib/queueOrder';
 import { useApp } from '../state/AppProvider';
-import { useNavigation } from '../state/Navigation';
+import { useNavigation, type Tab } from '../state/Navigation';
 import { useJobFinished } from '../state/useJobFinished';
 import { StatusBadge } from './videoStatus';
 
 const GENERIC_ERROR = 'Something went wrong. Please try again.';
-const RECENT_COUNT = 5;
+const RECENT_COUNT = 8;
 const ATTENTION_COUNT = 5;
+/** Local jobs listed in "Needs your attention" and the running ones under the queue chips. */
+const LOCAL_ATTENTION_COUNT = 3;
+const RUNNING_SHOWN = 2;
 
 /** Local-time greeting: before 12:00 morning, before 18:00 afternoon, otherwise evening. */
 export function greetingFor(hour: number): string {
@@ -88,16 +112,10 @@ function CardShell({
     action?: ReactNode;
     children: ReactNode;
 }) {
-    const id = useId();
-
     return (
-        <section className="card home-card" aria-labelledby={id}>
-            <div className="home-card-head">
-                <h3 id={id}>{title}</h3>
-                {action}
-            </div>
+        <SectionCard title={title} level={3} action={action} className="home-card">
             {children}
-        </section>
+        </SectionCard>
     );
 }
 
@@ -133,30 +151,95 @@ function CardBody<T>({
     return <>{children(state.value)}</>;
 }
 
-const STATS = [
-    { key: 'total', label: 'Total', caption: 'Total videos', color: 'blue', icon: <LibraryIcon /> },
-    { key: 'ready', label: 'Ready', caption: 'Ready', color: 'green', icon: <SuccessIcon /> },
+interface StatSpec {
+    key: 'total' | 'ready' | 'processing' | 'failed';
+    /** Visible caption and the start of the accessible name. */
+    label: string;
+    tone: StatTone;
+    icon: ReactNode;
+    /** Where the card leads. */
+    to: Tab;
+    toLabel: string;
+}
+
+const STATS: readonly StatSpec[] = [
+    {
+        key: 'total',
+        label: 'Total videos',
+        tone: 'primary',
+        icon: <StatTotalIcon />,
+        to: 'library',
+        toLabel: 'Library',
+    },
+    {
+        key: 'ready',
+        label: 'Ready',
+        tone: 'success',
+        icon: <StatReadyIcon />,
+        to: 'library',
+        toLabel: 'Library',
+    },
     {
         key: 'processing',
-        label: 'Processing on server',
-        caption: 'Processing',
-        sub: 'on server',
-        color: 'amber',
-        icon: <ClockIcon />,
+        label: 'Processing',
+        tone: 'warning',
+        icon: <StatProcessingIcon />,
+        to: 'library',
+        toLabel: 'Library',
     },
-    { key: 'failed', label: 'Failed', caption: 'Failed', color: 'red', icon: <ErrorIcon /> },
-] as const;
+    {
+        key: 'failed',
+        label: 'Failed',
+        tone: 'danger',
+        icon: <StatFailedIcon />,
+        to: 'logs',
+        toLabel: 'Logs',
+    },
+];
+
+/**
+ * Live line under the greeting: the running jobs with their average percent, else when the newest
+ * recent video was uploaded, else nothing.
+ */
+function activityLine(
+    running: readonly JobDto[],
+    newestUpload: string | null,
+    now: number,
+): ReactNode {
+    if (running.length > 0) {
+        const percent = Math.round(
+            running.reduce((sum, job) => sum + job.progress, 0) / running.length,
+        );
+
+        return `${running.length} uploading \u00b7 ${percent}%`;
+    }
+
+    if (newestUpload === null) return null;
+
+    const relative = formatRelativeTime(newestUpload, now);
+
+    if (relative === '') return null;
+
+    return (
+        <>
+            {'Last upload '}
+            <time dateTime={newestUpload} title={formatDateTime(newestUpload)}>
+                {relative}
+            </time>
+        </>
+    );
+}
 
 function eventTime(item: LogItem): string | null {
     return item.failedAt ?? item.updatedAt ?? item.createdAt;
 }
 
 export function HomeScreen() {
-    const { api, auth, settings, jobs } = useApp();
+    const { api, auth, settings, jobs, summary } = useApp();
     const { openTab, openLibraryVideo } = useNavigation();
-    const { busy: adding, upload: addVideos } = useUploadVideos();
     const quick = useQuickActions();
     const now = useNow();
+    const toast = useToast();
     const [overview, setOverview] = useState<Card<Overview>>(LOADING);
     const [recent, setRecent] = useState<Card<VideoListItem[]>>(LOADING);
     const [logs, setLogs] = useState<Card<LogsSlice>>(LOADING);
@@ -165,7 +248,10 @@ export function HomeScreen() {
     const latest = useRef({ overview: 0, recent: 0, logs: 0 });
 
     const load = useCallback(
-        (which: { overview?: boolean; recent?: boolean; logs?: boolean }, silent: boolean) => {
+        (
+            which: { overview?: boolean; recent?: boolean; logs?: boolean },
+            silent: boolean,
+        ): Promise<string | null> => {
             const token = {
                 overview: which.overview === true ? ++latest.current.overview : 0,
                 recent: which.recent === true ? ++latest.current.recent : 0,
@@ -186,25 +272,32 @@ export function HomeScreen() {
                 key: 'overview' | 'recent' | 'logs',
                 request: Promise<Outcome<T>>,
                 set: (card: Card<T>) => void,
-            ): Promise<void> {
+            ): Promise<string | null> {
                 return request
                     .catch((): Outcome<T> => ({ ok: false, error: GENERIC_ERROR }))
                     .then((outcome) => {
-                        if (token[key] !== latest.current[key]) return;
+                        if (token[key] !== latest.current[key]) return null;
 
-                        if (outcome.ok) set({ kind: 'ready', value: outcome.value });
-                        // A failed quiet refresh keeps what is on screen.
-                        else if (!silent) set({ kind: 'error', message: outcome.error });
+                        if (outcome.ok) {
+                            set({ kind: 'ready', value: outcome.value });
+
+                            return null;
+                        }
+
+                        // A failed quiet refresh keeps what is on screen (the caller reports it).
+                        if (!silent) set({ kind: 'error', message: outcome.error });
+
+                        return outcome.error;
                     });
             }
 
-            void Promise.allSettled([
+            return Promise.all([
                 which.overview === true
                     ? settle('overview', fetchOverview(api), setOverview)
-                    : undefined,
-                which.recent === true ? settle('recent', fetchRecent(api), setRecent) : undefined,
-                which.logs === true ? settle('logs', fetchLogs(api), setLogs) : undefined,
-            ]);
+                    : null,
+                which.recent === true ? settle('recent', fetchRecent(api), setRecent) : null,
+                which.logs === true ? settle('logs', fetchLogs(api), setLogs) : null,
+            ]).then((errors) => errors.find((error) => error !== null) ?? null);
         },
         [api],
     );
@@ -214,10 +307,40 @@ export function HomeScreen() {
         [load],
     );
 
+    // Explicit Refresh: quiet (stale-while-revalidate). The data stays, only the button spins;
+    // clicks while busy are ignored and a failure shows one error toast.
+    const [refreshing, setRefreshing] = useState(false);
+    const refreshBusy = useRef(false);
+    const mounted = useRef(true);
+
+    useEffect(() => {
+        mounted.current = true;
+
+        return () => {
+            mounted.current = false;
+        };
+    }, []);
+
+    const refresh = useCallback(() => {
+        if (refreshBusy.current) return;
+
+        refreshBusy.current = true;
+        setRefreshing(true);
+        void loadAll(true).then((error) => {
+            refreshBusy.current = false;
+
+            if (!mounted.current) return;
+
+            setRefreshing(false);
+
+            if (error !== null) toast.show('error', error);
+        });
+    }, [loadAll, toast]);
+
     useEffect(() => {
         const counters = latest.current;
 
-        loadAll(false);
+        void loadAll(false);
 
         return () => {
             counters.overview += 1;
@@ -227,116 +350,105 @@ export function HomeScreen() {
     }, [loadAll]);
 
     // A finished upload adds a video: refresh quietly (no loading states).
-    useJobFinished(() => loadAll(true));
+    useJobFinished(() => void loadAll(true));
 
     const host = siteHost(auth.siteUrl ?? settings?.siteUrl);
     const greeting = greetingFor(new Date().getHours());
-    const running = jobs.filter((job) => queueGroup(job.state) === 1).length;
-    const waiting = jobs.filter((job) => queueGroup(job.state) === 3).length;
+    const runningJobs = sortJobsForQueue(jobs).filter((job) => queueGroup(job.state) === 1);
     const attention = jobs.filter((job) => needsAttention(job.state)).length;
-    const done = jobs.filter((job) => job.state === 'done').length;
+    const newestUpload =
+        recent.kind === 'ready'
+            ? (recent.value
+                  .map((video) => video.createdAt)
+                  .filter((value): value is string => value !== null && value !== '')
+                  .sort((x, y) => Date.parse(y) - Date.parse(x))[0] ?? null)
+            : null;
+    const activity = activityLine(runningJobs, newestUpload, now);
 
     const statsId = useId();
     const retryOverview = () => load({ overview: true }, false);
 
     return (
         <section className="home" aria-labelledby="home-heading">
-            <div className="home-hero card">
-                <button
-                    type="button"
-                    className="btn btn-sm btn-text home-refresh"
-                    aria-label="Refresh"
-                    title="Refresh"
-                    onClick={() => loadAll(false)}
-                >
-                    <RefreshIcon />
-                </button>
-                <div className="home-hero-text">
-                    <h2 id="home-heading">
-                        {auth.username === undefined ? greeting : `${greeting}, ${auth.username}`}
-                    </h2>
-                    <p className="home-hero-sub">
-                        {host === '' ? 'Signed in' : `${host} · Signed in`}
-                    </p>
-                    <div className="row home-hero-actions">
-                        <button
-                            type="button"
-                            className="btn btn-primary"
-                            disabled={adding}
-                            onClick={() => void addVideos()}
-                        >
-                            Upload videos
-                        </button>
-                        <button type="button" className="btn" onClick={() => openTab('library')}>
-                            Open Library
-                        </button>
-                    </div>
-                </div>
-                <HeroArt />
-            </div>
-
-            <section className="home-stats" aria-labelledby={statsId}>
-                <h3 id={statsId} className="visually-hidden">
-                    Videos
-                </h3>
-                {overview.kind === 'error' ? (
-                    <div className="card home-error">
-                        <p role="alert">{overview.message}</p>
-                        <button type="button" className="btn btn-sm" onClick={retryOverview}>
-                            Retry
-                        </button>
-                    </div>
-                ) : (
+            <SectionCard
+                title={auth.username === undefined ? greeting : `${greeting}, ${auth.username}`}
+                size="lg"
+                className="home-overview"
+                description={
                     <>
-                        {overview.kind === 'loading' && (
-                            <p className="visually-hidden" role="status" aria-busy="true">
-                                {'Loading…'}
+                        <p className="home-overview-sub">
+                            {host === '' ? 'Signed in' : `${host} · Signed in`}
+                        </p>
+                        {activity !== null && (
+                            <p className="home-overview-activity" data-testid="home-activity">
+                                {activity}
                             </p>
                         )}
-                        <ul className="stat-cards">
-                            {STATS.map((stat) => {
-                                const body = (
-                                    <>
-                                        <span className={`icon-tile icon-tile-${stat.color}`}>
-                                            {stat.icon}
-                                        </span>
-                                        <span className="stat-text">
-                                            <span className="stat-value num">
-                                                {overview.kind === 'ready'
-                                                    ? overview.value.videos[stat.key]
-                                                    : '\u2014'}
-                                            </span>
-                                            <span className="stat-label">{stat.caption}</span>
-                                            {'sub' in stat && (
-                                                <span className="stat-sub">{stat.sub}</span>
-                                            )}
-                                        </span>
-                                    </>
-                                );
-
-                                return (
-                                    <li key={stat.key}>
-                                        {overview.kind === 'ready' ? (
-                                            <button
-                                                type="button"
-                                                className={`stat-card stat-${stat.key}`}
-                                                aria-label={`${stat.label}: ${overview.value.videos[stat.key]}`}
-                                                onClick={() => openTab('library')}
-                                            >
-                                                {body}
-                                            </button>
-                                        ) : (
-                                            <div className={`stat-card stat-${stat.key}`}>
-                                                {body}
-                                            </div>
-                                        )}
-                                    </li>
-                                );
-                            })}
-                        </ul>
                     </>
-                )}
-            </section>
+                }
+                action={
+                    <div className="home-actions">
+                        <UploadVideosButton variant="primary" />
+                        <button
+                            type="button"
+                            className="btn btn-control"
+                            onClick={() => openTab('library')}
+                        >
+                            Open Library
+                        </button>
+                        <RefreshButton size="control" busy={refreshing} onClick={refresh} />
+                    </div>
+                }
+            >
+                <div className="home-stats">
+                    <p id={statsId} className="home-caption">
+                        On server
+                    </p>
+                    {overview.kind === 'error' ? (
+                        <div className="home-error">
+                            <p role="alert">{overview.message}</p>
+                            <button type="button" className="btn btn-sm" onClick={retryOverview}>
+                                Retry
+                            </button>
+                        </div>
+                    ) : (
+                        <>
+                            {overview.kind === 'loading' && (
+                                <p className="visually-hidden" role="status" aria-busy="true">
+                                    {'Loading…'}
+                                </p>
+                            )}
+                            <ul className="stat-tiles" aria-labelledby={statsId}>
+                                {STATS.map((stat) => {
+                                    const value =
+                                        overview.kind === 'ready'
+                                            ? overview.value.videos[stat.key]
+                                            : null;
+
+                                    return (
+                                        <li key={stat.key}>
+                                            <StatTile
+                                                className={`stat-${stat.key}`}
+                                                icon={stat.icon}
+                                                value={value}
+                                                label={stat.label}
+                                                tone={stat.tone}
+                                                alert={
+                                                    stat.key === 'failed' &&
+                                                    value !== null &&
+                                                    value > 0
+                                                }
+                                                actionLabel={`open ${stat.toLabel}`}
+                                                onClick={() => openTab(stat.to)}
+                                            />
+                                        </li>
+                                    );
+                                })}
+                            </ul>
+                        </>
+                    )}
+                </div>
+            </SectionCard>
 
             <div className="home-grid">
                 <div className="home-main">
@@ -356,13 +468,17 @@ export function HomeScreen() {
                         <CardBody state={recent} onRetry={() => load({ recent: true }, false)}>
                             {(items) =>
                                 items.length === 0 ? (
-                                    <p className="muted">No videos yet</p>
+                                    <EmptyState
+                                        compact
+                                        icon={<VideoFileIcon />}
+                                        title="No videos yet"
+                                    />
                                 ) : (
                                     <div className="recent-table">
                                         <div className="recent-grid recent-head" aria-hidden="true">
                                             <span />
                                             <span>Title</span>
-                                            <span className="recent-center">Status</span>
+                                            <span className="recent-center">Quality</span>
                                             <span className="recent-center recent-col-duration">
                                                 Duration
                                             </span>
@@ -376,6 +492,7 @@ export function HomeScreen() {
                                                 <RecentRow
                                                     key={video.id}
                                                     video={video}
+                                                    now={now}
                                                     busy={quick.busyIds.has(video.id)}
                                                     onOpen={() => openLibraryVideo(video.id)}
                                                     onQuick={(action) =>
@@ -404,29 +521,28 @@ export function HomeScreen() {
                             </button>
                         }
                     >
-                        <dl className="stat-rows">
-                            {(
-                                [
-                                    ['Running', running, 'blue'],
-                                    ['Waiting', waiting, 'amber'],
-                                    ['Needs attention', attention, 'red'],
-                                    ['Done', done, 'green'],
-                                ] as const
-                            ).map(([label, count, color]) => (
-                                <div key={label} className={`stat-row tint-${color}`}>
-                                    <dt>
-                                        <button
-                                            type="button"
-                                            className="stat-link"
-                                            onClick={() => openTab('queue')}
-                                        >
-                                            {label}
-                                        </button>
-                                    </dt>
-                                    <dd className="num">{count}</dd>
-                                </div>
-                            ))}
-                        </dl>
+                        <p className="home-caption">This device</p>
+                        <StatusCountChips counts={summary} onSelect={() => openTab('queue')} />
+                        {runningJobs.length > 0 && (
+                            <ul className="home-running" aria-label="Running uploads">
+                                {runningJobs.slice(0, RUNNING_SHOWN).map((job) => (
+                                    <li key={job.id} className="home-running-row">
+                                        <span className="home-running-name" title={job.fileName}>
+                                            {job.fileName}
+                                        </span>
+                                        <JobProgress
+                                            fileName={job.fileName}
+                                            progress={job.progress}
+                                        />
+                                        <span className="muted small">
+                                            {job.waitingForNetwork
+                                                ? 'Waiting for network…'
+                                                : stageLabel(job.state)}
+                                        </span>
+                                    </li>
+                                ))}
+                            </ul>
+                        )}
                     </CardShell>
 
                     <CardShell
@@ -446,14 +562,16 @@ export function HomeScreen() {
                                 const failed = slice.errors.slice(0, ATTENTION_COUNT);
                                 const local = jobs
                                     .filter((job) => needsAttention(job.state))
-                                    .slice(0, ATTENTION_COUNT);
+                                    .slice(0, LOCAL_ATTENTION_COUNT);
 
                                 if (failed.length === 0 && attention === 0) {
                                     return (
-                                        <div className="all-clear">
-                                            <p className="all-clear-title">All caught up</p>
-                                            <p className="muted">Nothing needs attention.</p>
-                                        </div>
+                                        <EmptyState
+                                            compact
+                                            icon={<SuccessIcon />}
+                                            title="All caught up"
+                                            description="Nothing needs attention."
+                                        />
                                     );
                                 }
 
@@ -509,9 +627,7 @@ export function HomeScreen() {
                                                             >
                                                                 {job.fileName}
                                                             </span>
-                                                            <span className="muted small">
-                                                                {stageLabel(job.state)}
-                                                            </span>
+                                                            <JobStateChip job={job} />
                                                         </li>
                                                     ))}
                                                 </ul>
@@ -543,53 +659,30 @@ export function HomeScreen() {
     );
 }
 
-/** Decorative inline illustration of the hero card (cloud, video and document shapes). */
-function HeroArt() {
-    return (
-        <svg className="home-hero-art" viewBox="0 0 220 140" aria-hidden="true" focusable="false">
-            <rect x="52" y="22" width="112" height="84" rx="12" className="art-card" />
-            <rect x="64" y="34" width="60" height="8" rx="4" className="art-line" />
-            <rect x="64" y="50" width="88" height="6" rx="3" className="art-line-soft" />
-            <rect x="64" y="62" width="76" height="6" rx="3" className="art-line-soft" />
-            <rect x="64" y="78" width="40" height="18" rx="6" className="art-accent" />
-            <path d="M80 82.5v9l8-4.5z" className="art-play" />
-            <path
-                d="M150 118h-60a22 22 0 0 1-3-43.8A28 28 0 0 1 140 66a20 20 0 0 1 10 52z"
-                className="art-cloud"
-            />
-            <path
-                d="M118 108V88m0 0-8 8m8-8 8 8"
-                className="art-arrow"
-                fill="none"
-                strokeWidth="5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-            />
-            <circle cx="184" cy="36" r="8" className="art-dot-a" />
-            <circle cx="36" cy="92" r="6" className="art-dot-b" />
-        </svg>
-    );
-}
-
 function RecentRow({
     video,
+    now,
     busy,
     onOpen,
     onQuick,
 }: {
     video: VideoListItem;
+    now: number;
     busy: boolean;
     onOpen: () => void;
     onQuick: (action: QuickAction) => void;
 }) {
     const duration = formatDuration(video.duration);
-    const added = formatDate(video.createdAt);
+    const ready = video.status === 'ready';
+    const quality = formatQuality(video.width, video.height);
+    const tier = qualityTier(video.width, video.height);
+    const relative = video.createdAt === null ? '' : formatRelativeTime(video.createdAt, now);
 
     return (
         // The whole row opens the video; the title is the keyboard-reachable button and the
         // quick actions keep their own behavior.
         <li
-            className="recent-grid recent-row"
+            className="recent-grid recent-row row-surface"
             onClick={(event) => {
                 if (!(event.target as HTMLElement).closest('button')) onOpen();
             }}
@@ -599,10 +692,31 @@ function RecentRow({
                 <button type="button" className="recent-title" title={video.title} onClick={onOpen}>
                     {video.title}
                 </button>
-                {added !== '' && <span className="recent-date">{added}</span>}
+                {video.createdAt !== null && relative !== '' && (
+                    <time
+                        className="recent-date"
+                        dateTime={video.createdAt}
+                        title={formatDateTime(video.createdAt)}
+                    >
+                        {relative}
+                    </time>
+                )}
             </div>
+            {/* The quality chip; a video that is not ready shows its status in its place. */}
             <span className="recent-cell recent-status">
-                <StatusBadge status={video.status} />
+                {!ready ? (
+                    <StatusBadge status={video.status} />
+                ) : (
+                    quality !== '' &&
+                    tier !== null && (
+                        <TierChip
+                            label={quality}
+                            tier={tier}
+                            title="Quality"
+                            icon={<QualityIcon />}
+                        />
+                    )
+                )}
             </span>
             <span className="recent-cell recent-col-duration">
                 {duration !== '' && (
@@ -620,16 +734,25 @@ function RecentRow({
                     </span>
                 )}
             </span>
-            {video.status === 'ready' ? (
-                <QuickActionButtons
-                    variant="ghost"
-                    title={video.title}
-                    busy={busy}
-                    onQuick={onQuick}
-                />
-            ) : (
-                <span />
-            )}
+            <VideoQuickActions
+                variant="ghost"
+                title={video.title}
+                busy={busy}
+                actions={[
+                    ...(ready ? (['shortcode'] as const) : []),
+                    ...(video.thumbnailUrl !== null ? (['thumbnail-url'] as const) : []),
+                ]}
+                onQuick={onQuick}
+                menu={
+                    <VideoMenu
+                        title={video.title}
+                        busy={busy}
+                        ready={ready}
+                        onQuick={onQuick}
+                        onOpen={onOpen}
+                    />
+                }
+            />
         </li>
     );
 }

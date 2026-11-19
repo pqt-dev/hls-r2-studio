@@ -1,8 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { JobDto } from '../../../shared/ipc';
-import { formatBytes, formatDateTime, formatRelativeTime, stageLabel } from '../lib/format';
+import { formatBytes, formatDateTime, formatRelativeTime } from '../lib/format';
 import { ActionMenu, type ActionMenuItem } from './ActionMenu';
-import { StatusIcon, VideoFileIcon } from './icons';
+import { JobProgress } from './JobProgress';
+import { JobStateChip } from './JobStateChip';
+import { MediaTile } from './MediaTile';
+import { VideoQuickActions, type QuickAction } from './VideoQuickActions';
 import { hasDetailsView, isRunning, statusKind } from '../lib/jobState';
 
 export type JobAction =
@@ -13,6 +16,7 @@ export type JobAction =
     | 'remove'
     | 'copy-url'
     | 'copy-shortcode'
+    | 'copy-thumbnail'
     | 'open'
     | 'view-library'
     | 'details';
@@ -88,7 +92,6 @@ export function JobRow({
     const time = timeInfo(job, now);
     const note = noteOf(job);
     const paused = job.state === 'upload_interrupted';
-    const stage = job.waitingForNetwork ? 'Waiting for network…' : stageLabel(job.state);
 
     const name = job.fileName;
     const item = (
@@ -122,16 +125,24 @@ export function JobRow({
         ...item('remove', 'Remove', job.canRemove, true),
     ];
 
+    // The thumbnail copy goes by video id through Rust, so it needs a registered video that
+    // already has a thumbnail.
+    const quickActions: QuickAction[] = [
+        ...(done && job.embedUrl !== null ? (['shortcode'] as const) : []),
+        ...(done && job.videoId !== undefined && (job.thumbnailUrl ?? null) !== null
+            ? (['thumbnail-url'] as const)
+            : []),
+    ];
+
     return (
         <li
-            className={`job job-${kind}`}
+            className={`job job-${kind} row-surface`}
             data-state={job.state}
             data-job-id={job.id}
             data-network-wait={job.waitingForNetwork ? 'true' : undefined}
         >
-            <span className="job-icon" aria-hidden="true">
-                <VideoFileIcon />
-            </span>
+            {/* Rust supplies the thumbnail URL when it knows it; else the neutral media tile. */}
+            <MediaTile thumbnailUrl={job.thumbnailUrl ?? null} />
             <div className="job-main">
                 <p className="job-name" title={job.fileName}>
                     {job.fileName}
@@ -146,22 +157,8 @@ export function JobRow({
             </div>
 
             <div className="job-status">
-                <span className={`chip chip-${kind}`}>
-                    <span className="chip-icon" aria-hidden="true">
-                        <StatusIcon kind={kind} />
-                    </span>
-                    {stage}
-                </span>
-                {running && (
-                    <div className="job-progress">
-                        <progress
-                            max={100}
-                            value={job.progress}
-                            aria-label={`Progress of ${job.fileName}`}
-                        />
-                        <span className="num job-percent">{job.progress}%</span>
-                    </div>
-                )}
+                <JobStateChip job={job} />
+                {running && <JobProgress fileName={job.fileName} progress={job.progress} />}
                 {running && job.waitingForNetwork && (
                     <p className="job-note">Retrying automatically</p>
                 )}
@@ -178,24 +175,24 @@ export function JobRow({
             </div>
 
             <div className="job-actions">
-                {done && job.embedUrl !== null && (
-                    <button
-                        type="button"
-                        className="btn btn-sm btn-accent-share"
-                        disabled={pending}
-                        aria-label={`Copy shortcode: ${name}`}
-                        onClick={() => onAction('copy-shortcode', job)}
-                    >
-                        Copy shortcode
-                    </button>
-                )}
-                {items.length > 0 && (
-                    <ActionMenu
-                        label={`More actions for ${name}`}
-                        items={items}
-                        disabled={pending}
-                    />
-                )}
+                <VideoQuickActions
+                    title={name}
+                    busy={pending}
+                    actions={quickActions}
+                    onQuick={(action) => {
+                        if (action === 'shortcode') onAction('copy-shortcode', job);
+                        else if (action === 'thumbnail-url') onAction('copy-thumbnail', job);
+                    }}
+                    menu={
+                        items.length > 0 ? (
+                            <ActionMenu
+                                label={`More actions for ${name}`}
+                                items={items}
+                                disabled={pending}
+                            />
+                        ) : undefined
+                    }
+                />
             </div>
         </li>
     );

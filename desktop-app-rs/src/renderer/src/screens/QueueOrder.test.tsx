@@ -79,7 +79,8 @@ describe('Queue order', () => {
         expect(toggle).toHaveTextContent('25');
 
         await user.click(toggle);
-        expect(names()).toHaveLength(26);
+        // The first page of the Finished group (20 per page by default) plus the live job.
+        expect(names()).toHaveLength(21);
         // Newest finished job first.
         expect(names()[1]).toBe('done-24.mp4');
         expect(screen.getByRole('button', { name: /Finished/ })).toHaveAttribute(
@@ -219,10 +220,10 @@ describe('Queue order', () => {
         const row = (file: string) =>
             document.querySelector<HTMLElement>(`li[data-job-id="${file}"]`) as HTMLElement;
 
-        // The only visible action of a done row is the shortcode button.
+        // The only visible action of a done row is the shared accented shortcode icon button.
         expect(
-            screen.getByRole('button', { name: 'Copy shortcode: done.mp4' }).className,
-        ).toContain('btn-accent-share');
+            screen.getByRole('button', { name: 'Copy shortcode for done.mp4' }).className,
+        ).toContain('video-quick-primary');
         expect(screen.queryByRole('button', { name: /^Remove:/ })).toBeNull();
         expect(screen.queryByRole('button', { name: /^Cancel:/ })).toBeNull();
 
@@ -255,9 +256,9 @@ describe('Queue order', () => {
         expect(screen.getByRole('button', { name: 'Clear finished' }).className).toContain(
             'btn-accent-danger',
         );
-        // Upload videos stays the solid primary action.
+        // Upload videos is the shared accented create button (the Home hero keeps the primary).
         expect(screen.getByRole('button', { name: 'Upload videos' }).className).toContain(
-            'btn-primary',
+            'btn-accent-create',
         );
     });
 });

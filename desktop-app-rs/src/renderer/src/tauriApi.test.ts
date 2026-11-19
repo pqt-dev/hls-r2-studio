@@ -1,14 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
 import { IpcChannels, IpcEvents } from '../../shared/ipc';
+import { setPendingDrop, PENDING_DROP_TTL_MS } from './lib/dropBridge';
 import { commandName, createTauriApi, eventName } from './tauriApi';
 import type { InvokeFn, ListenFn } from './tauriApi';
 
-function setup() {
+function setup(response: unknown = { ok: true }) {
     const calls: Array<[string, Record<string, unknown> | undefined]> = [];
     const call: InvokeFn = vi.fn((command, args) => {
         calls.push([command, args]);
 
-        return Promise.resolve({ ok: true });
+        return Promise.resolve(response);
     });
     const handlers = new Map<string, (event: { payload: unknown }) => void>();
     const unlisten = vi.fn();
@@ -111,5 +112,56 @@ describe('createTauriApi', () => {
             canceled: false,
         });
         expect(calls).toEqual([]);
+    });
+
+    describe('pending drop fallback', () => {
+        const paths = ['/v/a.mp4', '/v/b.mov'];
+
+        const added = { added: 2, rejected: [], canceled: false };
+
+        it('uses the paths of the Tauri drop when the files are unregistered, once', async () => {
+            const { api, calls } = setup(added);
+
+            setPendingDrop(paths);
+            await api.jobs.addDroppedFiles([{ name: 'a.mp4' }, { name: 'b.mov' }]);
+            expect(calls).toHaveLength(1);
+            expect(calls[0]?.[1]).toEqual({ payload: { paths } });
+
+            // Consumed: a later drop without paths adds nothing.
+            const again = await api.jobs.addDroppedFiles([]);
+
+            expect(again).toEqual({ added: 0, rejected: [], canceled: false });
+            expect(calls).toHaveLength(1);
+        });
+
+        it('uses them for an empty file list', async () => {
+            const { api, calls } = setup(added);
+
+            setPendingDrop(paths);
+            await api.jobs.addDroppedFiles([]);
+            expect(calls).toHaveLength(1);
+        });
+
+        it('ignores them when older than 5 seconds', async () => {
+            const { api, calls } = setup();
+
+            setPendingDrop(paths, Date.now() - PENDING_DROP_TTL_MS - 1);
+
+            const result = await api.jobs.addDroppedFiles([]);
+
+            expect(result).toEqual({ added: 0, rejected: [], canceled: false });
+            expect(calls).toEqual([]);
+        });
+
+        it('returns an empty result (nothing to toast) for an empty list without a pending drop', async () => {
+            const { api, calls } = setup();
+
+            expect(await api.jobs.addDroppedFiles([])).toEqual({
+                added: 0,
+                rejected: [],
+                canceled: false,
+            });
+            expect(calls).toEqual([]);
+        });
     });
 });

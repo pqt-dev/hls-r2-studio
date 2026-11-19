@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from '@testing-library/react';
+import { cleanup, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { VideoListItem, VideosListResult } from '../../../shared/ipc';
 import { makeVideo, makeVideoDetail } from '../testing/fakeApi';
@@ -258,10 +258,12 @@ describe('Library card details', () => {
         const tools = card!.querySelector('.video-tools')!;
         const children = Array.from(tools.children);
 
-        expect(children).toHaveLength(4);
+        // The caption, then the shared quick actions cluster (shortcode, thumbnail, menu).
+        expect(children).toHaveLength(2);
         expect(children[0]).toHaveClass('video-added');
         expect(children[0]!.tagName).toBe('SPAN');
-        expect(children.slice(1).every((node) => node !== children[0])).toBe(true);
+        expect(children[1]).toHaveClass('video-actions');
+        expect(within(children[1] as HTMLElement).getAllByRole('button')).toHaveLength(3);
         expect(card!.querySelector('.spec-date')).toBeNull();
         expect(card!.querySelector('.video-chips .video-added')).toBeNull();
         // The date text appears once.
@@ -356,17 +358,24 @@ describe('Library sort and page size', () => {
         await user.selectOptions(select!, '36');
         await waitFor(() => expect(list).toHaveBeenLastCalledWith({ page: 1, perPage: 36 }));
         expect(select).toHaveValue('36');
-        // Not persisted: only the session keeps the choice.
-        expect(window.localStorage.getItem('hls-r2-studio:library-page-size')).toBeNull();
+        // Saved as a UI preference.
+        expect(window.localStorage.getItem('hls.library.perPage')).toBe('36');
     });
 
-    it('always starts with 24 per page, whatever an old saved value says', async () => {
-        window.localStorage.setItem('hls-r2-studio:library-page-size', '12');
+    it('starts with the saved page size, and with 24 when the saved value is not an option', async () => {
+        window.localStorage.setItem('hls.library.perPage', '12');
 
-        const { list } = await openLibrary([makeVideo({ title: 'Alpha' })]);
+        const first = await openLibrary([makeVideo({ title: 'Alpha' })]);
 
-        expect(list).toHaveBeenCalledWith({ page: 1, perPage: 24 });
-        expect(screen.getByRole('combobox', { name: 'Items per page' })).toHaveValue('24');
+        expect(first.list).toHaveBeenCalledWith({ page: 1, perPage: 12 });
+        expect(screen.getByRole('combobox', { name: 'Items per page' })).toHaveValue('12');
+        cleanup();
+
+        window.localStorage.setItem('hls.library.perPage', '7');
+
+        const second = await openLibrary([makeVideo({ title: 'Alpha' })]);
+
+        expect(second.list).toHaveBeenCalledWith({ page: 1, perPage: 24 });
     });
 });
 
@@ -764,7 +773,7 @@ describe('Library search box and count', () => {
     it('places Upload videos at the start of the top pager row, before the pager', async () => {
         await openLibrary([makeVideo({ title: 'Alpha' })]);
 
-        const row = document.querySelector<HTMLElement>('.library-pager-row')!;
+        const row = document.querySelector<HTMLElement>('.pager-row')!;
         const upload = within(row).getByRole('button', { name: 'Upload videos' });
         const pagerTop = within(row).getByRole('navigation', { name: 'Pagination, top' });
 
@@ -782,7 +791,7 @@ describe('Library search box and count', () => {
     it('keeps Upload videos available in an empty library', async () => {
         await openLibrary([], 1, false);
 
-        const row = document.querySelector<HTMLElement>('.library-pager-row')!;
+        const row = document.querySelector<HTMLElement>('.pager-row')!;
 
         expect(within(row).getByRole('button', { name: 'Upload videos' })).toBeEnabled();
     });

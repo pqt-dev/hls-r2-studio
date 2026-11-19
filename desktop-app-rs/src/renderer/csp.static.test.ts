@@ -21,8 +21,9 @@ const files = walk(ROOT).filter(
         !path.endsWith('env.d.ts'),
 );
 
-// A placeholder shown as plain text (nothing is ever loaded from it).
-const ALLOWED = ['https://your-site.example.com'];
+// A placeholder shown as plain text, and the SVG XML namespace of the inline favicon (nothing is
+// ever loaded from either).
+const ALLOWED = ['https://your-site.example.com', 'http://www.w3.org/2000/svg'];
 
 function read(path: string): string {
     let text = readFileSync(path, 'utf8');
@@ -54,8 +55,10 @@ describe('renderer sources respect the strict CSP', () => {
             const text = read(file);
 
             expect(text, file).not.toMatch(/https?:\/\/[A-Za-z0-9]/);
-            expect(text, file).not.toMatch(/@import|url\(/);
-            expect(text, file).not.toMatch(/<link[^>]+(src|href)=/i);
+            // `url(#id)` is a same-document reference (SVG gradient), not a resource load.
+            expect(text, file).not.toMatch(/@import|url\((?!#)/);
+            // The only allowed <link> target is the inline SVG data-URI favicon.
+            expect(text, file).not.toMatch(/<link[^>]+(src|href)=(?!["']data:image\/svg\+xml,)/i);
             // An <iframe> may only load a URL held in a variable (the site embed page, checked
             // against the signed-in site host), never a literal.
             expect(text, file).not.toMatch(/<iframe[^>]+src=["']/i);

@@ -57,6 +57,13 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { IpcChannels, IpcEvents, RENDERER_API_KEY } from '../../shared/ipc';
+import {
+    clearPendingDrop,
+    dropPositionToCss,
+    isMacPlatform,
+    setPendingDrop,
+    takePendingDrop,
+} from './lib/dropBridge';
 import type {
     ActionResult,
     AddFilesResult,
@@ -173,6 +180,16 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
                     }
                 }
 
+                // The DOM may hand back other File objects than the placeholders: the paths the
+                // bridge kept for this very drop (fresh, used once) are the fallback.
+                if (paths.length === 0) {
+                    paths.push(...takePendingDrop());
+
+                    // Placeholders that did not resolve are the same files as the pending paths.
+                    if (paths.length > 0) unresolved.length = 0;
+                } else clearPendingDrop();
+
+                // Nothing to add and nothing rejected: an empty result (no toast).
                 if (paths.length === 0) return { added: 0, rejected: unresolved, canceled: false };
 
                 const result = await send<AddFilesResult>(IpcChannels.jobsAddPaths, { paths });
@@ -240,27 +257,56 @@ function dispatchDrag(kind: DragKind, x: number, y: number, paths: readonly stri
     );
 }
 
-/** Re-dispatches Tauri's drag-drop events as DOM drag events (see the note at the top). */
+let dragDropInstalled = false;
+let stopDragDrop: (() => void) | null = null;
+
+/**
+ * Re-dispatches Tauri's drag-drop events as DOM drag events (see the note at the top).
+ * Idempotent; the listener is disposed on hot reload so it is never registered twice.
+ */
 async function installDragDrop(): Promise<void> {
-    await getCurrentWebview().onDragDropEvent((event) => {
-        const payload = event.payload;
-        // Tauri reports physical pixels; the DOM wants CSS pixels.
-        const scale = window.devicePixelRatio || 1;
+    if (dragDropInstalled) return;
 
-        if (payload.type === 'leave') {
-            dispatchDrag('dragleave', -1, -1, []);
+    dragDropInstalled = true;
 
-            return;
-        }
+    try {
+        stopDragDrop = await getCurrentWebview().onDragDropEvent((event) => {
+            const payload = event.payload;
 
-        const x = payload.position.x / scale;
-        const y = payload.position.y / scale;
+            if (payload.type === 'leave') {
+                clearPendingDrop();
+                dispatchDrag('dragleave', -1, -1, []);
 
-        if (payload.type === 'enter') dispatchDrag('dragenter', x, y, payload.paths);
-        else if (payload.type === 'over') dispatchDrag('dragover', x, y, []);
-        else dispatchDrag('drop', x, y, payload.paths);
-    });
+                return;
+            }
+
+            // wry reports CSS pixels on macOS and physical pixels elsewhere.
+            const { x, y } = dropPositionToCss(
+                payload.position,
+                window.devicePixelRatio,
+                isMacPlatform(),
+            );
+
+            if (payload.type === 'enter') {
+                clearPendingDrop();
+                dispatchDrag('dragenter', x, y, payload.paths);
+            } else if (payload.type === 'over') dispatchDrag('dragover', x, y, []);
+            else {
+                setPendingDrop(payload.paths);
+                dispatchDrag('drop', x, y, payload.paths);
+            }
+        });
+    } catch {
+        dragDropInstalled = false;
+        console.warn('Drag and drop is unavailable; use the Upload videos button.');
+    }
 }
+
+import.meta.hot?.dispose(() => {
+    stopDragDrop?.();
+    stopDragDrop = null;
+    dragDropInstalled = false;
+});
 
 /** Installs the API only inside Tauri; a plain browser keeps the dev `?mock=1` path working. */
 export function installTauriApi(): void {
@@ -271,9 +317,7 @@ export function installTauriApi(): void {
         configurable: true,
     });
 
-    installDragDrop().catch(() => {
-        // Without drag and drop the "Upload videos" button still works.
-    });
+    void installDragDrop();
 }
 
 installTauriApi();

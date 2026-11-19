@@ -159,14 +159,6 @@
     --chip-neutral-fg: var(--on-surface-muted);
     --chip-neutral-bd: var(--border);
     --chip-bd: transparent;
-    --hero-from: #deecf9;
-    --hero-to: #f6fafe;
-    --art-card: #ffffff;
-    --art-soft: #c7e0f4;
-    --art-accent: #0f6cbd;
-    --art-cloud: #92c5f9;
-    --art-dot-a: #ffb900;
-    --art-dot-b: #92c353;
 
     /* Semantic status chips (bg / text / dot). Ready is a fresh vivid green. */
     --chip-ready-bg: #dff6dd;
@@ -276,14 +268,6 @@
         --chip-tier-4-fg: #fbd38d;
         --chip-tier-5-bg: #2e2e2e;
         --chip-tier-5-fg: #c8c8c8;
-        --hero-from: #0c2a46;
-        --hero-to: #1c2430;
-        --art-card: #2e3a4a;
-        --art-soft: #3f5169;
-        --art-accent: #479ef5;
-        --art-cloud: #2b5a8a;
-        --art-dot-a: #d9a441;
-        --art-dot-b: #4fae78;
 
         --chip-ready-bg: #0e2a0e;
         --chip-ready-fg: #9ee092;
@@ -395,14 +379,6 @@
         --chip-neutral-fg: CanvasText;
         --chip-neutral-bd: ButtonText;
         --chip-bd: ButtonText;
-        --hero-from: Canvas;
-        --hero-to: Canvas;
-        --art-card: Canvas;
-        --art-soft: GrayText;
-        --art-accent: ButtonText;
-        --art-cloud: GrayText;
-        --art-dot-a: ButtonText;
-        --art-dot-b: ButtonText;
 
         --chip-ready-bg: Canvas;
         --chip-ready-fg: CanvasText;

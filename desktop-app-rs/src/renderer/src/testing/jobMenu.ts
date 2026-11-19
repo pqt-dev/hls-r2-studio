@@ -46,8 +46,9 @@ export async function clickJobAction(user: UserEvent, name: string | RegExp): Pr
 
 /** Names (before the colon) of every action of a row: visible buttons plus the menu items. */
 export async function actionsOfRow(user: UserEvent, row: HTMLElement): Promise<string[]> {
+    // "Remove: a.mp4" (menu items) and "Copy shortcode for a.mp4" (quick action buttons).
     const label = (node: HTMLElement) =>
-        (node.getAttribute('aria-label') ?? '').split(':')[0] ?? '';
+        (node.getAttribute('aria-label') ?? '').split(/: | for /)[0] ?? '';
     const names = within(row)
         .queryAllByRole('button')
         .filter((button) => !KEBAB.test(button.getAttribute('aria-label') ?? ''))

@@ -3,6 +3,7 @@ import type { SettingsPatch } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { Feedback, type FeedbackMessage } from '../components/Feedback';
 import { ReloadConfigButton } from '../components/QueueBanners';
+import { SectionCard } from '../components/SectionCard';
 import { SelectBox } from '../components/SelectBox';
 import { plural, siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
@@ -92,8 +93,7 @@ export function SettingsScreen() {
 
     return (
         <div className="settings">
-            <section className="card" aria-labelledby={`${ids.url}-h`}>
-                <h2 id={`${ids.url}-h`}>Site</h2>
+            <SectionCard title="Site">
                 <div className="field">
                     <label htmlFor={ids.url}>Site URL</label>
                     <input
@@ -107,10 +107,9 @@ export function SettingsScreen() {
                         This app is built for one site and cannot be pointed at another.
                     </p>
                 </div>
-            </section>
+            </SectionCard>
 
-            <section className="card" aria-labelledby={`${ids.tmp}-h`}>
-                <h2 id={`${ids.tmp}-h`}>Processing</h2>
+            <SectionCard title="Processing">
                 <div className="field">
                     <label htmlFor={ids.tmp}>Temporary folder</label>
                     <div className="row">
@@ -162,10 +161,9 @@ export function SettingsScreen() {
                     </p>
                     <Feedback message={feedback.parallel} />
                 </div>
-            </section>
+            </SectionCard>
 
-            <section className="card" aria-labelledby="account-heading">
-                <h2 id="account-heading">Account</h2>
+            <SectionCard title="Account">
                 <p className="muted">
                     {auth.username !== undefined
                         ? `Signed in as ${auth.username} on ${siteHost(auth.siteUrl ?? settings.siteUrl)}.`
@@ -185,7 +183,7 @@ export function SettingsScreen() {
                         Sign out
                     </button>
                 </div>
-            </section>
+            </SectionCard>
 
             {confirm === 'signout' && (
                 <ConfirmDialog

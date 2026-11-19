@@ -126,6 +126,8 @@ export interface JobDto {
     embedUrl: string | null;
     /** Numeric id of the video on the site; set only once the job is registered. */
     videoId?: number;
+    /** Public thumbnail URL of the registered video when Rust already knows it; absent otherwise. */
+    thumbnailUrl?: string | null;
     createdAt: string;
     updatedAt: string;
     startedAt: string | null;

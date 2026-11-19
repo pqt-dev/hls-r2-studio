@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { LogCounts, LogItem, LogType, VideoListMeta } from '../../../shared/ipc';
+import { EmptyState } from '../components/EmptyState';
+import { GroupHeader } from '../components/GroupHeader';
+import { LogsIcon } from '../components/icons';
 import { useNow } from '../components/JobRow';
 import { Pagination } from '../components/Pagination';
 import { formatDateTime, formatRelativeTime } from '../lib/format';
@@ -51,7 +54,7 @@ function LogRow({
     const hasDetail = item.errorDetail !== null && item.errorDetail !== '';
 
     return (
-        <li className="log-row">
+        <li className="log-row row-surface">
             <div className="log-main">
                 <StatusBadge status={item.status} />
                 <button
@@ -148,9 +151,9 @@ function Section({
 
     return (
         <section className="log-section" aria-labelledby={id}>
-            <h3 id={id}>{title}</h3>
+            <GroupHeader title={title} count={items.length} headingLevel={3} titleId={id} />
             {items.length === 0 ? (
-                <p className="muted small">Nothing here.</p>
+                <EmptyState compact title="Nothing here." />
             ) : (
                 <LogList label={title} items={items} now={now} onOpen={onOpen} />
             )}
@@ -288,7 +291,7 @@ export function LogsScreen() {
                 </div>
             )}
 
-            {emptySummary && <p className="empty">No logs yet</p>}
+            {emptySummary && <EmptyState icon={<LogsIcon />} title="No logs yet" />}
 
             {load.kind === 'summary' && !emptySummary && (
                 <div className="log-sections">
@@ -314,7 +317,7 @@ export function LogsScreen() {
             )}
 
             {load.kind === 'page' && load.items.length === 0 && (
-                <p className="empty">No logs yet</p>
+                <EmptyState icon={<LogsIcon />} title="No logs yet" />
             )}
 
             {load.kind === 'page' && load.items.length > 0 && (

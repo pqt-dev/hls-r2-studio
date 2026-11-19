@@ -6,11 +6,14 @@ import type { QuickAction } from './VideoQuickActions';
 /**
  * Kebab menu of one video card. A ready video offers Copy direct URL and Open in browser first;
  * then Details (opens the detail page, where renaming and the thumbnail are managed) and Delete (the
- * caller asks for confirmation first). Select (first) starts multi-select with this video picked. Built on the shared ActionMenu.
+ * caller asks for confirmation first). Select (first) starts multi-select with this video picked.
+ * Select and Delete are optional: the caller omits them where they do not apply (Home). Built on
+ * the shared ActionMenu.
  */
 export function VideoMenu({
     title,
     busy,
+    disabled = false,
     ready,
     onQuick,
     onOpen,
@@ -19,22 +22,29 @@ export function VideoMenu({
 }: {
     title: string;
     busy: boolean;
+    /** The row is inert (being deleted): the trigger is disabled. */
+    disabled?: boolean;
     /** Only a ready video has a direct URL to copy or open. */
     ready: boolean;
     onQuick: (action: QuickAction) => void;
     onOpen: (opener: HTMLButtonElement) => void;
-    onDelete: () => void;
-    /** Enters the Library's select mode with this video picked. */
-    onSelect: () => void;
+    /** Without it there is no Delete item (Home). */
+    onDelete?: () => void;
+    /** Enters the Library's select mode with this video picked; without it there is no Select item. */
+    onSelect?: () => void;
 }) {
     const trigger = useRef<HTMLButtonElement>(null);
     const items: ActionMenuItem[] = [
-        {
-            key: 'select',
-            label: 'Select',
-            icon: <CheckboxIcon state="none" />,
-            onSelect,
-        },
+        ...(onSelect === undefined
+            ? []
+            : [
+                  {
+                      key: 'select',
+                      label: 'Select',
+                      icon: <CheckboxIcon state="none" />,
+                      onSelect,
+                  },
+              ]),
         ...(ready
             ? [
                   {
@@ -61,19 +71,23 @@ export function VideoMenu({
                 if (trigger.current !== null) onOpen(trigger.current);
             },
         },
-        {
-            key: 'delete',
-            label: 'Delete',
-            icon: <TrashIcon />,
-            danger: true,
-            onSelect: onDelete,
-        },
+        ...(onDelete === undefined
+            ? []
+            : [
+                  {
+                      key: 'delete',
+                      label: 'Delete',
+                      icon: <TrashIcon />,
+                      danger: true,
+                      onSelect: onDelete,
+                  },
+              ]),
     ];
 
     return (
         <ActionMenu
             label={`More actions for ${title}`}
-            disabled={busy}
+            disabled={busy || disabled}
             triggerRef={trigger}
             items={items}
         />

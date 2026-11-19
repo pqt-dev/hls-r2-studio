@@ -4,4 +4,6 @@ import { afterEach } from 'vitest';
 
 afterEach(() => {
     cleanup();
+    // UI preferences live in localStorage: every test starts from the defaults.
+    window.localStorage.clear();
 });

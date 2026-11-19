@@ -18,7 +18,9 @@ import {
 } from '../../../shared/ipc';
 import { ConfirmDialog } from '../components/Dialog';
 import { OrientationChip, orientationLabel } from '../components/OrientationChip';
+import { EmptyState } from '../components/EmptyState';
 import { Pagination } from '../components/Pagination';
+import { PerPageSelect } from '../components/PerPageSelect';
 import { TierChip } from '../components/TierChip';
 import {
     BitrateIcon,
@@ -27,19 +29,17 @@ import {
     QualityIcon,
     GridViewIcon,
     ListViewIcon,
-    RefreshIcon,
     SearchIcon,
+    VideoFileIcon,
     CloseIcon,
     StorageIcon,
-    UploadIcon,
 } from '../components/icons';
 import { SelectBox } from '../components/SelectBox';
 import { Thumbnail } from '../components/Thumbnail';
-import { useUploadVideos } from '../components/useUploadVideos';
+import { UploadVideosButton } from '../components/UploadVideosButton';
 import { VideoMenu } from '../components/VideoMenu';
 import {
-    QuickShortcodeButton,
-    QuickThumbnailButton,
+    VideoQuickActions,
     useQuickActions,
     type QuickAction,
 } from '../components/VideoQuickActions';
@@ -59,7 +59,9 @@ import {
     type Tier,
     type VideoOrientation,
 } from '../lib/format';
+import { PREF_KEYS, readPreference, writePreference } from '../lib/preferences';
 import { useApp } from '../state/AppProvider';
+import { RefreshButton } from '../components/RefreshButton';
 import { useToast } from '../state/Toasts';
 import { useJobFinished } from '../state/useJobFinished';
 import { StatusBadge } from './videoStatus';
@@ -80,23 +82,26 @@ const GENERIC_ERROR = 'Something went wrong. Please try again.';
 
 type ViewMode = 'grid' | 'list';
 
-const VIEW_STORAGE_KEY = 'hls-r2-studio:library-view';
+const VIEW_MODES: readonly ViewMode[] = ['grid', 'list'];
 
 /** The saved view; anything missing, invalid or unreadable means the grid. */
 function readView(): ViewMode {
-    try {
-        return window.localStorage.getItem(VIEW_STORAGE_KEY) === 'list' ? 'list' : 'grid';
-    } catch {
-        return 'grid';
-    }
+    return readPreference(PREF_KEYS.libraryViewMode, VIEW_MODES, 'grid');
 }
 
-function saveView(view: ViewMode): void {
-    try {
-        window.localStorage.setItem(VIEW_STORAGE_KEY, view);
-    } catch {
-        // Storage can be blocked: the choice then only lasts until the app closes.
-    }
+/** True while the user types in a field (shortcuts must not hijack those keys). */
+function isTypingTarget(target: EventTarget | null): boolean {
+    return (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+            target.tagName === 'INPUT' ||
+            target.tagName === 'TEXTAREA' ||
+            target.tagName === 'SELECT')
+    );
+}
+
+function isDialogOpen(): boolean {
+    return document.querySelector('[role="dialog"], [role="alertdialog"], dialog[open]') !== null;
 }
 
 /** Query of one list request; `q` and `sort` are sent only when they are not the default. */
@@ -136,7 +141,10 @@ function SkeletonGrid({ count }: { count: number }) {
     return (
         <ul className="videos videos-skeleton videos-skeleton-grid" aria-hidden="true">
             {Array.from({ length: count }, (_, index) => (
-                <li key={index} className="video-row video-skeleton video-skeleton-card">
+                <li
+                    key={index}
+                    className="video-row row-surface video-skeleton video-skeleton-card"
+                >
                     <div className="video-open">
                         <div className="video-media">
                             <div className="thumb-frame skeleton-block" />
@@ -166,7 +174,10 @@ function SkeletonList({ count }: { count: number }) {
             </div>
             <ul className="videos videos-list videos-skeleton videos-skeleton-list">
                 {Array.from({ length: count }, (_, index) => (
-                    <li key={index} className="video-row video-skeleton video-skeleton-row">
+                    <li
+                        key={index}
+                        className="video-row row-surface video-skeleton video-skeleton-row"
+                    >
                         <div className="video-open">
                             <div className="thumb-frame skeleton-block" />
                             <div className="video-main">
@@ -249,6 +260,26 @@ function MetaChips({ duration, size }: { duration: string; size: string }) {
     );
 }
 
+/** "Deleting…" status pill of a row waiting for the server (decorative: the live region announces it). */
+function DeletingPill() {
+    return (
+        <span className="deleting-pill" aria-hidden="true">
+            <span className="deleting-spinner" />
+            Deleting…
+        </span>
+    );
+}
+
+/** Fade-out of a deleted row (ms); kept in sync with `.is-leaving` in styles.css. */
+const LEAVE_MS = 180;
+
+function prefersReducedMotion(): boolean {
+    return (
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    );
+}
+
 function VideoRow({
     video,
     onOpen,
@@ -261,7 +292,13 @@ function VideoRow({
     onQuick,
     onDelete,
     onSelect,
+    deleting,
+    leaving,
 }: {
+    /** The server is deleting this video: the row is inert and shows the "Deleting…" state. */
+    deleting: boolean;
+    /** The server confirmed the deletion: the row fades out right before it is removed. */
+    leaving: boolean;
     onDelete: (video: VideoListItem) => void;
     /** Enters select mode with this video already picked (offered in the item menu). */
     onSelect: (video: VideoListItem) => void;
@@ -341,7 +378,7 @@ function VideoRow({
             className="video-check"
             aria-label={`Select ${video.title}`}
             checked={picked}
-            disabled={disabled}
+            disabled={disabled || deleting}
             onChange={() => onToggle(video.id)}
         />
     ) : null;
@@ -364,7 +401,7 @@ function VideoRow({
                 {/* After the title in the DOM; the chips above are aria-hidden duplicates. */}
                 {summary}
                 <span className="video-cell video-status">
-                    <StatusBadge status={video.status} />
+                    {deleting ? <DeletingPill /> : <StatusBadge status={video.status} />}
                 </span>
                 <span className="video-cell video-created" title={fullDate || undefined}>
                     {added}
@@ -387,6 +424,7 @@ function VideoRow({
                 {/* After the title in the DOM (the accessible name starts with it); the chips above are aria-hidden duplicates. */}
                 {summary}
                 {status}
+                {deleting && <DeletingPill />}
                 {check}
             </>
         );
@@ -399,9 +437,18 @@ function VideoRow({
             </span>
         ) : null;
 
+    const rowClass = [
+        'video-row row-surface',
+        picked ? 'is-picked' : '',
+        deleting ? 'is-deleting' : '',
+        leaving ? 'is-leaving' : '',
+    ]
+        .filter((part) => part !== '')
+        .join(' ');
+
     if (selecting) {
         return (
-            <li className={picked ? 'video-row is-picked' : 'video-row'}>
+            <li className={rowClass} aria-busy={deleting ? true : undefined}>
                 <label className="video-open">{content}</label>
                 {addedCaption !== null && <div className="video-tools">{addedCaption}</div>}
             </li>
@@ -409,38 +456,40 @@ function VideoRow({
     }
 
     return (
-        <li className="video-row">
+        <li className={rowClass} aria-busy={deleting ? true : undefined}>
             <button
                 type="button"
                 className="video-open"
+                disabled={deleting}
+                aria-disabled={deleting ? true : undefined}
+                tabIndex={deleting ? -1 : undefined}
                 onClick={(event) => onOpen(video, event.currentTarget)}
             >
                 {content}
             </button>
             <div className="video-tools">
                 {addedCaption}
-                {video.status === 'ready' && (
-                    <QuickShortcodeButton
-                        title={video.title}
-                        busy={quickBusy}
-                        onQuick={(action) => onQuick(video, action)}
-                    />
-                )}
-                {video.thumbnailUrl !== null && (
-                    <QuickThumbnailButton
-                        title={video.title}
-                        busy={quickBusy}
-                        onQuick={(action) => onQuick(video, action)}
-                    />
-                )}
-                <VideoMenu
+                <VideoQuickActions
                     title={video.title}
                     busy={quickBusy}
-                    ready={video.status === 'ready'}
+                    disabled={deleting}
+                    actions={[
+                        ...(video.status === 'ready' ? (['shortcode'] as const) : []),
+                        ...(video.thumbnailUrl !== null ? (['thumbnail-url'] as const) : []),
+                    ]}
                     onQuick={(action) => onQuick(video, action)}
-                    onOpen={(opener) => onOpen(video, opener)}
-                    onDelete={() => onDelete(video)}
-                    onSelect={() => onSelect(video)}
+                    menu={
+                        <VideoMenu
+                            title={video.title}
+                            busy={quickBusy}
+                            disabled={deleting}
+                            ready={video.status === 'ready'}
+                            onQuick={(action) => onQuick(video, action)}
+                            onOpen={(opener) => onOpen(video, opener)}
+                            onDelete={() => onDelete(video)}
+                            onSelect={() => onSelect(video)}
+                        />
+                    }
                 />
             </div>
         </li>
@@ -451,16 +500,23 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const { api } = useApp();
     const toast = useToast();
     const quick = useQuickActions();
-    const { busy: uploading, upload } = useUploadVideos();
     const [input, setInput] = useState('');
     const [search, setSearch] = useState('');
     const [page, setPage] = useState(1);
-    const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
+    const [pageSize, setPageSize] = useState<number>(() =>
+        readPreference(PREF_KEYS.libraryPerPage, PAGE_SIZES, DEFAULT_PAGE_SIZE),
+    );
     const [sort, setSort] = useState<VideoSort>('newest');
     const [confirmDelete, setConfirmDelete] = useState<VideoListItem | null>(null);
     const [reloads, setReloads] = useState(0);
     const [load, setLoad] = useState<Load>({ kind: 'loading' });
+    // A quiet reload of the query on screen: the items stay, only the Refresh icon turns.
+    const [refreshing, setRefreshing] = useState(false);
     const latest = useRef(0);
+    // The query whose items are on screen (null until a first answer): a reload of the same query
+    // keeps them, any other query shows the skeleton.
+    const shownKey = useRef<string | null>(null);
+    const loadKind = useRef<Load['kind']>('loading');
     // The open video. The list below stays mounted (only hidden) while the detail page is open,
     // so its page, search text, loaded rows and scroll position are kept as they were.
     // A "View in Library" request from the Queue opens its video right away.
@@ -475,6 +531,17 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const [viewMode, setViewMode] = useState<ViewMode>(readView);
     const [confirmBulk, setConfirmBulk] = useState(false);
     const [bulkBusy, setBulkBusy] = useState(false);
+    // Videos the server is deleting (WordPress-style: a row stays, marked, until the server confirms).
+    const [deletingIds, setDeletingIds] = useState<ReadonlySet<number>>(new Set());
+    // Rows that fade out right before they are removed locally (single delete, after confirmation).
+    const [leavingIds, setLeavingIds] = useState<ReadonlySet<number>>(new Set());
+    const [announcement, setAnnouncement] = useState('');
+    // Synchronous mirror of `deletingIds` (blocks re-entry before the re-render).
+    const deletingRef = useRef(new Set<number>());
+    // Bulk ids whose markers wait for the quiet reload answer (the bulk API has no per-id result).
+    const awaitingReload = useRef(new Set<number>());
+    const mounted = useRef(true);
+    const timers = useRef(new Set<ReturnType<typeof setTimeout>>());
     const pendingFocus = useRef<'leave' | 'enter' | 'bulk' | 'heading' | null>(null);
     const cancelRef = useRef<HTMLButtonElement>(null);
     const bulkRef = useRef<HTMLButtonElement>(null);
@@ -575,28 +642,86 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     });
 
     useEffect(() => {
+        mounted.current = true;
+
+        const pendingTimers = timers.current;
+
+        return () => {
+            mounted.current = false;
+            pendingTimers.forEach((timer) => clearTimeout(timer));
+            pendingTimers.clear();
+        };
+    }, []);
+
+    /** Marks videos as deleting (or clears them); no state update after unmount. */
+    function setDeleting(ids: readonly number[], on: boolean): void {
+        ids.forEach((id) => {
+            if (on) deletingRef.current.add(id);
+            else deletingRef.current.delete(id);
+        });
+
+        if (mounted.current) setDeletingIds(new Set(deletingRef.current));
+    }
+
+    /**
+     * Called by a list answer that is the latest: the bulk markers it covers are cleared (the
+     * rows that were deleted are gone from the list, the others return to normal). The ids stay
+     * in `awaitingReload` until a latest answer clears them, so a superseded request never
+     * leaves a stale marker.
+     */
+    function releaseAwaiting(covered: readonly number[]): void {
+        if (covered.length === 0) return;
+
+        covered.forEach((id) => awaitingReload.current.delete(id));
+        setDeleting(covered, false);
+    }
+
+    useEffect(() => {
         // A newer request wins: answers of older ones are ignored.
         const request = ++latest.current;
         const params = listParams(page, pageSize, search, sort);
 
-        setLoad({ kind: 'loading' });
+        const key = JSON.stringify(params);
+        const quiet = loadKind.current === 'ready' && shownKey.current === key;
+        const covered = [...awaitingReload.current];
+
+        if (quiet) setRefreshing(true);
+        else {
+            setRefreshing(false);
+            setLoad({ kind: 'loading' });
+        }
 
         if (page === 1 && search === '') setStale(false);
+
+        function fail(message: string): void {
+            if (request !== latest.current) return;
+
+            setRefreshing(false);
+            releaseAwaiting(covered);
+
+            if (quiet) toast.show('error', message);
+            else setLoad({ kind: 'error', message });
+        }
 
         api.videos
             .list(params)
             .then((result) => {
                 if (request !== latest.current) return;
 
-                setLoad(
-                    result.ok
-                        ? { kind: 'ready', items: result.data, meta: result.meta }
-                        : { kind: 'error', message: result.error },
-                );
+                if (!result.ok) {
+                    fail(result.error);
+
+                    return;
+                }
+
+                shownKey.current = key;
+                setRefreshing(false);
+                setLoad({ kind: 'ready', items: result.data, meta: result.meta });
+                releaseAwaiting(covered);
             })
-            .catch(() => {
-                if (request === latest.current) setLoad({ kind: 'error', message: GENERIC_ERROR });
-            });
+            .catch(() => fail(GENERIC_ERROR));
+        // `toast` is a stable context value; the query inputs and `reloads` drive the fetch.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [api, search, page, pageSize, sort, reloads]);
 
     // Ignore an answer that arrives after the screen is gone.
@@ -619,6 +744,7 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         sort,
     });
 
+    loadKind.current = load.kind;
     view.current = {
         page,
         search,
@@ -649,15 +775,21 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
         }
 
         const request = ++latest.current;
+        const covered = [...awaitingReload.current];
 
         api.videos
             .list(listParams(1, now.pageSize, '', 'newest'))
             .then((result) => {
                 if (request === latest.current && result.ok) {
+                    shownKey.current = JSON.stringify(listParams(1, now.pageSize, '', 'newest'));
                     setLoad({ kind: 'ready', items: result.data, meta: result.meta });
+                    releaseAwaiting(covered);
                 }
             })
-            .catch(() => undefined);
+            .catch(() => undefined)
+            .finally(() => {
+                if (request === latest.current) setRefreshing(false);
+            });
     });
 
     function onRenamed(id: number, title: string): void {
@@ -724,43 +856,106 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     function choosePageSize(next: number): void {
         setPageSize(next);
         setPage(1);
+        writePreference(PREF_KEYS.libraryPerPage, next);
     }
 
     function askDelete(video: VideoListItem): void {
         setConfirmDelete(video);
     }
 
-    /** Deletes one video from its card menu (same server call and messages as the detail page). */
+    /**
+     * Deletes one video from its card menu (same server call and messages as the detail page).
+     * The row stays, marked "Deleting…", until the server answers; only a confirmed deletion
+     * removes it (after a short fade). Any other outcome returns the row to normal.
+     */
     function deleteOne(): void {
         const video = confirmDelete;
 
         if (video === null) return;
 
         setConfirmDelete(null);
+
+        // Re-entry: a video already being deleted is not deleted twice.
+        if (deletingRef.current.has(video.id)) return;
+
+        setDeleting([video.id], true);
+        setAnnouncement(`Deleting ${video.title}…`);
+
+        let removed = false;
+
         api.videos
             .delete(video.id)
             .then((result) => {
                 if (!result.ok) toast.show('error', result.error);
                 else if (result.status === 'deleted') {
+                    removed = true;
                     toast.show('success', result.message);
-                    setPicked((current) => {
-                        const next = new Set(current);
-
-                        next.delete(video.id);
-
-                        return next;
-                    });
-                    reloadAfterRemoval(1);
+                    if (mounted.current) setAnnouncement(`Deleted ${video.title}`);
+                    removeRow(video.id);
                 } else if (result.status === 'skipped') {
                     toast.show('info', 'The video is still processing; try again later.');
                 } else toast.show('error', result.message);
             })
-            .catch(() => toast.show('error', GENERIC_ERROR));
+            .catch(() => toast.show('error', GENERIC_ERROR))
+            .finally(() => {
+                // A confirmed deletion clears its marker when the row is removed.
+                if (!removed) {
+                    setDeleting([video.id], false);
+                    if (mounted.current) setAnnouncement('');
+                }
+            });
+    }
+
+    /** The server confirmed: fade the row out, drop it from the list, then reload quietly. */
+    function removeRow(id: number): void {
+        const finish = (): void => {
+            if (!mounted.current) return;
+
+            setLoad((current) =>
+                current.kind === 'ready'
+                    ? { ...current, items: current.items.filter((item) => item.id !== id) }
+                    : current,
+            );
+            setLeavingIds((current) => {
+                const next = new Set(current);
+
+                next.delete(id);
+
+                return next;
+            });
+            setPicked((current) => {
+                const next = new Set(current);
+
+                next.delete(id);
+
+                return next;
+            });
+            setDeleting([id], false);
+            reloadAfterRemoval(1);
+        };
+
+        if (!mounted.current) return;
+
+        if (prefersReducedMotion()) {
+            finish();
+
+            return;
+        }
+
+        setLeavingIds((current) => new Set(current).add(id));
+
+        // The timer (not transitionend) guarantees the row always unmounts.
+        const timer = setTimeout(() => {
+            timers.current.delete(timer);
+            finish();
+        }, LEAVE_MS + 40);
+
+        timers.current.add(timer);
     }
 
     function chooseView(next: ViewMode): void {
         setViewMode(next);
-        saveView(next);
+        writePreference(PREF_KEYS.libraryViewMode, next);
     }
 
     /** Item menu "Select": enters select mode with that video already picked. */
@@ -791,11 +986,51 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
     const pickedIds = items.filter((item) => picked.has(item.id)).map((item) => item.id);
     const allPicked = items.length > 0 && pickedIds.length === items.length;
 
+    // Shortcuts: "/" focuses the search field; Ctrl/Cmd+A in select mode picks the whole page.
+    // Neither works while typing in a field, with a dialog open, or on the video detail page.
+    const canPickAll = selectMode && !bulkBusy && items.length > 0;
+    const pageIdsKey = items.map((item) => item.id).join(',');
+
+    useEffect(() => {
+        if (isOpen) return;
+
+        function onKeyDown(event: KeyboardEvent): void {
+            if (event.defaultPrevented || isTypingTarget(event.target) || isDialogOpen()) return;
+
+            if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                event.preventDefault();
+                searchRef.current?.focus();
+            } else if (
+                canPickAll &&
+                event.key.toLowerCase() === 'a' &&
+                (event.ctrlKey || event.metaKey) &&
+                !event.altKey &&
+                !event.shiftKey
+            ) {
+                event.preventDefault();
+                setPicked(new Set(pageIdsKey.split(',').map(Number)));
+            }
+        }
+
+        document.addEventListener('keydown', onKeyDown);
+
+        return () => document.removeEventListener('keydown', onKeyDown);
+    }, [isOpen, canPickAll, pageIdsKey]);
+
     function deleteSelected(): void {
-        const ids = pickedIds;
+        const ids = pickedIds.filter((id) => !deletingRef.current.has(id));
 
         setConfirmBulk(false);
+
+        if (ids.length === 0) return;
+
         setBulkBusy(true);
+        setDeleting(ids, true);
+        setAnnouncement(`Deleting ${plural(ids.length, 'video')}…`);
+
+        // True once the request answered: the markers then wait for the reload answer.
+        let handedOver = false;
+
         api.videos
             .bulkDelete(ids)
             .then((result) => {
@@ -806,11 +1041,16 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                     return;
                 }
 
+                handedOver = true;
+                ids.forEach((id) => awaitingReload.current.add(id));
                 toast.show(
                     result.failed > 0 ? 'error' : result.deleted > 0 ? 'success' : 'info',
                     result.message,
                 );
                 pendingFocus.current = 'leave';
+
+                if (!mounted.current) return;
+
                 setSelectMode(false);
                 setPicked(new Set());
                 reloadAfterRemoval(result.deleted);
@@ -819,7 +1059,13 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                 toast.show('error', GENERIC_ERROR);
                 pendingFocus.current = 'bulk';
             })
-            .finally(() => setBulkBusy(false));
+            .finally(() => {
+                if (!handedOver) setDeleting(ids, false);
+                if (mounted.current) {
+                    setBulkBusy(false);
+                    if (!handedOver) setAnnouncement('');
+                }
+            });
     }
 
     function showNewVideos(): void {
@@ -901,6 +1147,8 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                                 maxLength={100}
                                 value={input}
                                 placeholder="Search by title"
+                                title="Press / to search"
+                                aria-keyshortcuts="/"
                                 onChange={onSearch}
                             />
                             {input !== '' && (
@@ -940,21 +1188,11 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                             ))}
                         </SelectBox>
                     </div>
-                    <div className="library-size">
-                        <label htmlFor="library-page-size">Per page</label>
-                        <SelectBox
-                            id="library-page-size"
-                            aria-label="Items per page"
-                            value={pageSize}
-                            onChange={(event) => choosePageSize(Number(event.target.value))}
-                        >
-                            {PAGE_SIZES.map((size) => (
-                                <option key={size} value={size}>
-                                    {size}
-                                </option>
-                            ))}
-                        </SelectBox>
-                    </div>
+                    <PerPageSelect
+                        value={pageSize}
+                        options={PAGE_SIZES}
+                        onChange={choosePageSize}
+                    />
                     <div className="library-actions">
                         <div className="segmented" role="group" aria-label="View">
                             <button
@@ -978,22 +1216,18 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                                 <ListViewIcon />
                             </button>
                         </div>
-                        <button
-                            type="button"
-                            className={
-                                load.kind === 'loading'
-                                    ? 'btn btn-sm library-refresh is-spinning'
-                                    : 'btn btn-sm library-refresh'
-                            }
-                            aria-label="Refresh"
-                            aria-busy={load.kind === 'loading'}
-                            title="Refresh"
+                        <RefreshButton
+                            busy={load.kind === 'loading' || refreshing}
                             onClick={refresh}
-                        >
-                            <RefreshIcon />
-                        </button>
+                            className="library-refresh"
+                        />
                     </div>
                 </div>
+
+                {/* One polite live region for the delete flow (decorative pills stay aria-hidden). */}
+                <p className="visually-hidden" aria-live="polite" aria-atomic="true">
+                    {announcement}
+                </p>
 
                 {stale && (
                     <p className="library-notice" role="status">
@@ -1006,16 +1240,8 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
 
                 {/* Upload sits at the start of the top pager row, so it stays available while
                     the list is loading, empty or failed (no pager then). */}
-                <div className="library-pager-row">
-                    <button
-                        type="button"
-                        className="btn btn-accent-create library-upload"
-                        disabled={uploading}
-                        onClick={() => void upload()}
-                    >
-                        <UploadIcon />
-                        Upload videos
-                    </button>
+                <div className="pager-row">
+                    <UploadVideosButton />
                     {pagerTop}
                 </div>
 
@@ -1090,9 +1316,10 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                 )}
 
                 {load.kind === 'ready' && load.items.length === 0 && (
-                    <p className="empty">
-                        {search !== '' ? 'No videos match your search' : 'No videos yet'}
-                    </p>
+                    <EmptyState
+                        icon={search !== '' ? <SearchIcon /> : <VideoFileIcon />}
+                        title={search !== '' ? 'No videos match your search' : 'No videos yet'}
+                    />
                 )}
 
                 {load.kind === 'ready' && load.items.length > 0 && (
@@ -1131,6 +1358,8 @@ export function LibraryScreen({ initialVideoId }: { initialVideoId?: number }) {
                                     onQuick={(item, action) => quick.run(item.id, action)}
                                     onDelete={askDelete}
                                     onSelect={startSelecting}
+                                    deleting={deletingIds.has(video.id)}
+                                    leaving={leavingIds.has(video.id)}
                                 />
                             ))}
                         </ul>

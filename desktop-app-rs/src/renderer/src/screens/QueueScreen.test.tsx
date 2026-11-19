@@ -124,11 +124,12 @@ describe('Queue screen', () => {
     it('shows the empty state and the drop zone', async () => {
         await renderQueue();
 
-        expect(
-            screen.getAllByText('Drop videos here to upload, or click Upload videos').length,
-        ).toBeGreaterThan(0);
+        expect(screen.getByText('Drop videos here to upload')).toBeInTheDocument();
+        expect(screen.getByText('No videos in the queue')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Upload videos' })).toBeInTheDocument();
-        expect(screen.getByRole('button', { name: 'Clear finished' })).toBeDisabled();
+        // No finished group yet, so no Clear finished button and no redundant section heading.
+        expect(screen.queryByRole('button', { name: 'Clear finished' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('heading', { name: 'Queue' })).not.toBeInTheDocument();
     });
 
     it.each(CASES)('renders a $state job with the right stage and actions', async (c) => {
@@ -428,7 +429,7 @@ describe('Queue screen', () => {
         expect(await screen.findByText('Added 2 videos to the queue.')).toBeInTheDocument();
     });
 
-    it('ignores drops without files and highlights the zone while dragging', async () => {
+    it('hands an empty drop on the card to the API (which may hold the paths) and clears the highlight', async () => {
         const { fake } = await renderQueue();
         const addDropped = vi.spyOn(fake.api.jobs, 'addDroppedFiles');
         const zone = screen.getByTestId('dropzone');
@@ -437,7 +438,7 @@ describe('Queue screen', () => {
         expect(zone).toHaveClass('is-dragging');
         fireEvent.drop(zone, { dataTransfer: { files: [] } });
         expect(zone).not.toHaveClass('is-dragging');
-        expect(addDropped).not.toHaveBeenCalled();
+        expect(addDropped).toHaveBeenCalledTimes(1);
     });
 
     it('opens the native dialog from the Upload videos button and reports skipped files', async () => {

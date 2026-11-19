@@ -5,7 +5,13 @@ import { ToastProvider, useToast } from '../state/Toasts';
 import { Banner } from './Banner';
 import { Feedback } from './Feedback';
 import { FLUENT } from './fluentIcons';
-import { StatusIcon } from './icons';
+import {
+    StatFailedIcon,
+    StatProcessingIcon,
+    StatReadyIcon,
+    StatTotalIcon,
+    StatusIcon,
+} from './icons';
 
 const KINDS: StatusKind[] = [
     'waiting',
@@ -26,6 +32,27 @@ describe('icons replace glyphs', () => {
         expect(container.querySelector('svg.icon path')).not.toBeNull();
         expect(container).toHaveTextContent('');
     });
+
+    it.each([
+        ['total', StatTotalIcon, 'statTotal'],
+        ['ready', StatReadyIcon, 'statReady'],
+        ['processing', StatProcessingIcon, 'statProcessing'],
+        ['failed', StatFailedIcon, 'statFailed'],
+    ] as const)(
+        'the %s stat icon renders only the filled style as a normal icon',
+        (_n, Icon, key) => {
+            const { container } = render(<Icon />);
+            const svgs = container.querySelectorAll('svg');
+
+            expect(svgs).toHaveLength(1);
+            expect(svgs[0]).toHaveClass('icon');
+            expect(svgs[0]).not.toHaveClass('icon-filled');
+            expect(svgs[0]).not.toHaveClass('icon-regular');
+            expect([...svgs[0]!.querySelectorAll('path')].map((p) => p.getAttribute('d'))).toEqual(
+                FLUENT[key].filled,
+            );
+        },
+    );
 
     it.each(['info', 'warning', 'danger'] as const)('the %s banner draws an SVG icon', (tone) => {
         const { container } = render(<Banner tone={tone} title="Heads up" />);

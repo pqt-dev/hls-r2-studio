@@ -164,6 +164,25 @@ h2 {
     height: 1rem;
 }
 
+/*
+ * Shared control-height size modifier. Any button that sits in a row with the Upload button
+ * (hero actions, drop card, toolbars) carries it so the heights, padding and font always match.
+ */
+.btn-control {
+    display: inline-flex;
+    gap: var(--space-2);
+    align-items: center;
+    min-height: var(--control-h);
+    padding: 0 var(--space-4);
+    font-size: var(--text-body);
+    line-height: 1.25rem;
+}
+
+.btn-control .icon {
+    width: 1.125rem;
+    height: 1.125rem;
+}
+
 .btn-primary {
     border-color: var(--primary);
     background: var(--primary);
@@ -458,6 +477,124 @@ select:disabled {
     margin-top: var(--space-2);
 }
 
+/* Shared SectionCard heading row: title on the left, optional action on the right. */
+.section-card-head {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: var(--space-3);
+}
+
+.section-card-heading {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+.section-card-lg .section-card-head {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    margin-bottom: var(--space-4);
+}
+
+.section-card-lg .section-card-title {
+    font-size: var(--text-title);
+    line-height: var(--lh-title);
+    overflow-wrap: anywhere;
+}
+
+/*
+ * Shared StatTile: tonal icon circle (same style as the EmptyState circle, 2.25rem), big tabular
+ * number, muted label. A button when clickable; zero is dimmed, `is-danger` takes the danger tint.
+ */
+.stat-tile {
+    display: flex;
+    gap: var(--space-3);
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    padding: var(--space-3) var(--space-4);
+    border: 0;
+    background: transparent;
+    color: var(--on-surface);
+    font: inherit;
+    text-align: left;
+}
+
+button.stat-tile {
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+}
+
+button.stat-tile:hover {
+    background-image: linear-gradient(var(--state-hover), var(--state-hover));
+}
+
+button.stat-tile:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -2px;
+}
+
+.stat-icon {
+    display: inline-grid;
+    flex: none;
+    width: 2.25rem;
+    height: 2.25rem;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.stat-tile-success .stat-icon {
+    background: var(--success-container);
+    color: var(--success);
+}
+
+.stat-tile-warning .stat-icon {
+    background: var(--warning-container);
+    color: var(--warning);
+}
+
+.stat-tile-danger .stat-icon {
+    background: var(--danger-container);
+    color: var(--danger);
+}
+
+.stat-text {
+    display: grid;
+    min-width: 0;
+}
+
+.stat-value {
+    font-size: var(--text-title);
+    font-variant-numeric: tabular-nums;
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-title);
+}
+
+.stat-label {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+    overflow-wrap: anywhere;
+}
+
+.stat-tile.is-danger {
+    background-color: var(--danger-container);
+}
+
+.stat-tile.is-danger .stat-value {
+    color: var(--danger);
+}
+
+.section-card-title {
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-subtitle);
+}
+
 .chip {
     display: inline-flex;
     gap: var(--space-1);
@@ -562,6 +699,16 @@ progress::-moz-progress-bar {
     background: var(--primary);
 }
 
+/* The fill grows smoothly between progress updates (width only, no JS); reduced motion is covered
+   by the global prefers-reduced-motion rule. */
+progress::-webkit-progress-value {
+    transition: width 300ms ease;
+}
+
+progress::-moz-progress-bar {
+    transition: width 300ms ease;
+}
+
 .empty {
     padding: var(--space-6) var(--space-5);
     border: 1px dashed var(--border-strong);
@@ -573,6 +720,44 @@ progress::-moz-progress-bar {
 
 .empty > * + * {
     margin-top: var(--space-2);
+}
+
+/* Shared EmptyState: tonal icon circle, one-line title, muted description, optional action. */
+.empty-state {
+    display: grid;
+    justify-items: center;
+}
+
+.empty-icon {
+    display: inline-grid;
+    width: 2.5rem;
+    height: 2.5rem;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
+.empty-icon .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.empty-title {
+    color: var(--on-surface);
+    font-weight: var(--weight-semibold);
+}
+
+.empty-state.is-compact {
+    padding: var(--space-3) var(--space-4);
+}
+
+@media (forced-colors: active) {
+    .empty-icon {
+        border: 1px solid CanvasText;
+        background: Canvas;
+        color: CanvasText;
+    }
 }
 
 /* ---- login and splash ------------------------------------------------------------------- */
@@ -630,28 +815,14 @@ progress::-moz-progress-bar {
     height: var(--brand-size, 1.75rem);
 }
 
-.brand-tile {
-    fill: var(--brand-80);
-}
-
-.brand-gear {
-    fill: #fff;
-}
-
-/* Dark theme: the brand ramp is inverted there, so use the tile blue. */
-@media (prefers-color-scheme: dark) {
-    .brand-tile {
-        fill: var(--tile-blue);
-    }
-}
-
+/* The tile carries its own gradient, so it looks the same on light and dark surfaces. */
 @media (forced-colors: active) {
     .brand-tile {
-        fill: ButtonText;
+        fill: CanvasText;
     }
 
-    .brand-gear {
-        fill: ButtonFace;
+    .brand-ink {
+        fill: Canvas;
     }
 }
 
@@ -834,6 +1005,20 @@ progress::-moz-progress-bar {
     margin-left: auto;
 }
 
+/*
+ * `scrollIntoView` (the Queue's bottom pager) and keyboard focus align the target to the top edge
+ * of the scrolling `.panel`, which is exactly where the sticky `.queue-sticky` band sits, so the
+ * target ended up hidden under it. The padding makes the browser keep that band's height clear;
+ * QueueScreen keeps `--queue-sticky-h` equal to the band's real height (6rem until measured).
+ */
+.panel:has(.queue-sticky) {
+    scroll-padding-top: var(--queue-sticky-h, 6rem);
+}
+
+.queue [data-group] {
+    scroll-margin-top: var(--queue-sticky-h, 6rem);
+}
+
 .panel {
     flex: 1 1 auto;
     min-height: 0;
@@ -849,10 +1034,14 @@ progress::-moz-progress-bar {
 }
 
 /*
- * The Library list uses the full window width (no 60rem cap); the other screens keep it. The
- * panel's padding stays. The open detail page caps itself (.detail), see below.
+ * List/grid screens (Library, Home, Queue, Logs) use the full window width (no 60rem cap); form
+ * screens (Settings, About) stay capped at 45rem and left-aligned. The panel's padding stays. The
+ * open detail page caps itself (.detail), see below.
  */
-.panel-inner:has(.library) {
+.panel-inner:has(.library),
+.panel-inner:has(.home),
+.panel-inner:has(.queue),
+.panel-inner:has(.logs) {
     max-width: none;
 }
 
@@ -1033,35 +1222,171 @@ progress::-moz-progress-bar {
     color: var(--on-surface);
 }
 
+/*
+ * Queue upload card (shared tokens only). It sits in `.queue-sticky`, which stays at the top of the
+ * scrolling panel. Compact (one line) with jobs, stacked and roomier when the queue is empty.
+ * Dragging files over the Queue switches it to the solid, stronger-tinted state.
+ */
+.queue-sticky {
+    position: sticky;
+    top: calc(var(--space-5) * -1);
+    z-index: 5;
+    margin: 0 calc(var(--space-5) * -1);
+    padding: var(--space-3) var(--space-5);
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-1);
+}
+
+/* With no banner above, the band also covers the panel's top padding (like the detail header). */
+.banners:empty + .queue-sticky {
+    margin-top: calc(var(--space-5) * -1);
+}
+
+@media (max-width: 56.1875rem) {
+    .queue-sticky {
+        top: calc(var(--space-4) * -1);
+        margin: 0 calc(var(--space-4) * -1);
+        padding: var(--space-3) var(--space-4);
+    }
+
+    .banners:empty + .queue-sticky {
+        margin-top: calc(var(--space-4) * -1);
+    }
+}
+
 .dropzone {
     display: grid;
     gap: var(--space-2);
     justify-items: center;
     padding: var(--space-6) var(--space-4);
     border: 2px dashed var(--border-strong);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background: var(--surface);
     text-align: center;
-    transition: background-color var(--dur-base) var(--ease);
+    transition:
+        background-color 150ms ease,
+        border-color 150ms ease,
+        box-shadow 150ms ease;
 }
 
-.dropzone.is-compact {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-4);
-    align-items: center;
-    justify-content: center;
-    padding: var(--space-4);
+.dropzone-icon {
+    display: inline-grid;
+    width: 3rem;
+    height: 3rem;
+    place-items: center;
+    border-radius: 50%;
+    background: var(--surface-sunken);
+    color: var(--on-surface-muted);
+    transition:
+        background-color 150ms ease,
+        color 150ms ease;
 }
 
-.dropzone.is-dragging {
-    border-color: var(--primary);
-    background: var(--primary-container);
-    color: var(--on-primary-container);
+.dropzone-icon .icon {
+    width: 1.5rem;
+    height: 1.5rem;
 }
 
 .dropzone-text {
-    font-weight: var(--weight-semibold);
+    color: var(--on-surface-muted);
+    font-weight: var(--weight-bold);
+    transition: color 150ms ease;
+}
+
+.dropzone-hint {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
+}
+
+.dropzone-body {
+    display: grid;
+    gap: var(--space-1);
+    min-width: 0;
+}
+
+/* With jobs in the queue: one compact line (icon, text, Upload videos button), about 4rem high. */
+.dropzone.is-compact {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: var(--space-3);
+    align-items: center;
+    min-height: 4rem;
+    padding: var(--space-2) var(--space-4);
+    text-align: left;
+}
+
+.dropzone.is-compact .dropzone-icon {
+    flex: none;
+    width: 2.5rem;
+    height: 2.5rem;
+}
+
+.dropzone.is-compact .dropzone-icon .icon {
+    width: 1.25rem;
+    height: 1.25rem;
+}
+
+.dropzone.is-compact .dropzone-body {
+    flex: 1 1 auto;
+}
+
+/* Files are over the Queue: primary solid border and tint, filled icon, primary title (new text). */
+.dropzone.is-dragging {
+    border-style: solid;
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary-container) 60%, var(--surface));
+    /* A ring instead of a scale: a scale would change the hit area at the card's edges. */
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--primary) 25%, transparent);
+}
+
+.dropzone.is-dragging .dropzone-text {
+    color: var(--primary);
+}
+
+.dropzone.is-dragging .dropzone-icon {
+    background: var(--primary);
+    color: var(--on-primary);
+}
+
+@media (forced-colors: active) {
+    .dropzone {
+        border-color: CanvasText;
+        background: Canvas;
+    }
+
+    .dropzone.is-dragging {
+        border-color: Highlight;
+        outline: 2px solid Highlight;
+        outline-offset: 2px;
+    }
+
+    .dropzone-text {
+        color: CanvasText;
+    }
+
+    .dropzone.is-dragging .dropzone-text {
+        color: Highlight;
+    }
+
+    .dropzone-icon {
+        border: 1px solid CanvasText;
+        background: Canvas;
+        color: CanvasText;
+    }
+
+    .dropzone.is-dragging .dropzone-icon {
+        border-color: Highlight;
+        background: Highlight;
+        color: HighlightText;
+        forced-color-adjust: none;
+    }
+
+    .queue-sticky {
+        border-bottom-color: CanvasText;
+        background: Canvas;
+    }
 }
 
 .section-head {
@@ -1088,41 +1413,22 @@ progress::-moz-progress-bar {
     gap: var(--space-2) var(--space-3);
     align-items: center;
     padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-1);
 }
 
-.job-icon {
+/* Neutral media tile: the video's thumbnail when known, else a plain media icon. */
+.media-tile {
     display: grid;
     width: 2.5rem;
     height: 2.5rem;
     place-items: center;
+    overflow: hidden;
     border-radius: var(--radius-md);
     background: var(--chip-neutral-bg);
     color: var(--chip-neutral-fg);
 }
 
-.job-running .job-icon {
-    background: var(--chip-processing-bg);
-    color: var(--chip-processing-fg);
-}
-
-.job-done .job-icon {
-    background: var(--chip-ready-bg);
-    color: var(--chip-ready-fg);
-}
-
-.job-failed .job-icon {
-    background: var(--chip-failed-bg);
-    color: var(--chip-failed-fg);
-}
-
-.job-attention .job-icon,
-.job-paused .job-icon {
-    background: var(--chip-pending-bg);
-    color: var(--chip-pending-fg);
+.media-tile .thumb-frame {
+    width: 100%;
 }
 
 .job-main,
@@ -1188,8 +1494,10 @@ progress::-moz-progress-bar {
 }
 
 @media (min-width: 62.5rem) {
+    /* The actions column has a fixed width, so the status column starts at the same x on every
+       row (Done and Transcoding pills line up whatever buttons a row has). */
     .job {
-        grid-template-columns: 2.5rem minmax(0, 1.2fr) minmax(0, 1fr) auto;
+        grid-template-columns: 2.5rem minmax(0, 1.2fr) minmax(0, 1fr) 6.5rem;
     }
 
     .job-status {
@@ -1203,8 +1511,8 @@ progress::-moz-progress-bar {
     }
 }
 
-/* Group headings of the queue (Running / Needs attention / Waiting / Finished). */
-.job-group {
+/* Shared group header (Queue groups; any grouped list): title, count, optional toggle/action. */
+.group-header {
     display: flex;
     gap: var(--space-2);
     align-items: center;
@@ -1216,18 +1524,24 @@ progress::-moz-progress-bar {
     text-transform: uppercase;
 }
 
-.job-group:first-child {
+.jobs > li:first-child > .group-header {
     margin-top: 0;
 }
 
-.job-group-count {
+.group-header-title {
+    font-size: inherit;
+    font-weight: inherit;
+    line-height: inherit;
+}
+
+.group-header-count {
     padding: 0 var(--space-2);
     border-radius: var(--radius-pill);
     background: var(--chip-neutral-bg);
     color: var(--chip-neutral-fg);
 }
 
-.job-group-toggle {
+.group-header-toggle {
     display: flex;
     gap: var(--space-2);
     align-items: center;
@@ -1242,8 +1556,71 @@ progress::-moz-progress-bar {
     cursor: pointer;
 }
 
-.job-group-toggle:hover {
+.group-header-toggle:hover {
     background: var(--state-hover);
+}
+
+/* Right-aligned action of the header (e.g. Clear finished); keeps its own button casing. */
+.group-header-action {
+    margin-left: auto;
+    letter-spacing: normal;
+    text-transform: none;
+}
+
+/* Status count chips: colored dot + count; the dot keeps the state readable without color alone. */
+.status-counts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
+}
+
+.status-count {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    padding: 2px var(--space-2);
+    border: 1px solid transparent;
+    border-radius: var(--radius-pill);
+    background: var(--neutral-container);
+    color: var(--on-surface);
+    font: inherit;
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-caption);
+    white-space: nowrap;
+}
+
+button.status-count {
+    cursor: pointer;
+}
+
+button.status-count:hover {
+    background-image: linear-gradient(var(--state-hover), var(--state-hover));
+}
+
+.status-count-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: var(--radius-pill);
+    background: var(--status-dot, var(--on-surface-muted));
+}
+
+.status-count-running {
+    --status-dot: var(--primary);
+}
+
+.status-count-waiting {
+    --status-dot: var(--warning);
+}
+
+.status-count-done {
+    --status-dot: var(--success);
+}
+
+.status-count-failed,
+.status-count-attention {
+    --status-dot: var(--danger);
 }
 
 .queue-footer {
@@ -1461,19 +1838,19 @@ progress::-moz-progress-bar {
     width: 9.5rem;
 }
 
-.library-size {
+.per-page {
     display: flex;
     flex: none;
     gap: var(--space-1);
     align-items: center;
 }
 
-.library-size label {
+.per-page label {
     color: var(--on-surface-muted);
     font-size: var(--text-caption);
 }
 
-.library-size .select {
+.per-page .select {
     width: auto;
     min-width: 4.5rem;
 }
@@ -1518,7 +1895,7 @@ progress::-moz-progress-bar {
     padding: 0;
 }
 
-.library-pager-row {
+.pager-row {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2) var(--space-4);
@@ -1527,18 +1904,22 @@ progress::-moz-progress-bar {
     margin: var(--space-3) 0;
 }
 
-/* The pager keeps its right alignment next to the button and wraps below it when narrow. */
-.library-pager-row .pager {
+/*
+ * Shared pager row (Library: Upload + pager; Queue Finished: Per page + pager). The pager keeps its
+ * right alignment next to the left control and wraps below it when narrow.
+ */
+.pager-row .pager {
     flex: 1 1 auto;
     margin: 0;
 }
 
-.library-upload {
+/* In the Queue list the grid gap spaces the row. */
+.jobs .pager-row {
+    margin: 0;
+}
+
+.upload-videos {
     flex: none;
-    min-height: var(--control-h);
-    padding: 0 var(--space-4);
-    font-size: var(--text-body);
-    line-height: 1.25rem;
 }
 
 .library-notice {
@@ -1597,15 +1978,170 @@ progress::-moz-progress-bar {
     list-style: none;
 }
 
+/*
+ * Shared row surface (Library rows, Queue rows, Home recent rows): the card look (border, radius,
+ * raised background, shadow), the full-row hover highlight, and the picked/focus states. Screens
+ * add layout only; they do not restyle the surface. `.row-surface-flat` drops the card look and
+ * keeps the hover highlight (dense table rows that have their own divider).
+ *
+ * The hover is an overlay gradient over the raised background, so the row's own radius covers it
+ * as one surface, also while the pointer is over the row's tools. A picked row keeps its selected
+ * background.
+ */
+.row-surface {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface-raised);
+    box-shadow: var(--shadow-1);
+    transition:
+        background-color 150ms ease,
+        border-color 150ms ease,
+        box-shadow 150ms ease;
+}
+
+.row-surface:not(.is-picked):hover {
+    background-image: linear-gradient(var(--state-hover), var(--state-hover));
+}
+
+.row-surface.is-picked {
+    border-color: var(--primary);
+    background: color-mix(in srgb, var(--primary-container) 70%, var(--surface-raised));
+    box-shadow:
+        0 0 0 1px var(--primary),
+        0 4px 14px color-mix(in srgb, var(--primary) 28%, transparent);
+}
+
+/*
+ * Pending delete (WordPress-style): the row waits for the server, then fades out and is removed
+ * (`.is-leaving`). Generic: any row-surface (Library today, Queue remove later) can use it.
+ * Danger-tinted surface, muted media, struck-through title, inert controls, no hover highlight.
+ */
+.row-surface.is-deleting {
+    border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+    background: color-mix(in srgb, var(--danger-container) 35%, var(--surface-raised));
+    box-shadow: var(--shadow-1);
+    cursor: progress;
+}
+
+.row-surface.is-deleting:not(.is-picked):hover {
+    background-image: none;
+}
+
+.row-surface.is-deleting .video-open,
+.row-surface.is-deleting .video-actions {
+    cursor: progress;
+    pointer-events: none;
+}
+
+.row-surface.is-deleting .thumb-frame {
+    opacity: 0.5;
+    filter: grayscale(1);
+}
+
+.row-surface.is-deleting .video-title {
+    color: var(--on-surface-muted);
+    text-decoration: line-through;
+}
+
+.row-surface.is-deleting .video-open > .chip {
+    visibility: hidden;
+}
+
+.row-surface.is-leaving {
+    opacity: 0;
+    transition: opacity 180ms ease;
+}
+
+/* "Deleting…" pill: grid = top-left of the card (where the status chip sits), list = Status column. */
+.deleting-pill {
+    display: inline-flex;
+    gap: var(--space-1);
+    align-items: center;
+    padding: 2px var(--space-2);
+    border: 1px solid var(--danger);
+    border-radius: var(--radius-pill);
+    background: var(--surface-raised);
+    color: var(--danger);
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-caption);
+    white-space: nowrap;
+}
+
+.video-open > .deleting-pill {
+    position: absolute;
+    top: var(--space-2);
+    left: var(--space-2);
+    z-index: 1;
+    box-shadow: var(--shadow-1);
+}
+
+.videos-list .video-open > .deleting-pill {
+    position: static;
+    justify-self: start;
+    box-shadow: none;
+}
+
+.deleting-spinner {
+    width: 0.75rem;
+    height: 0.75rem;
+    border: 2px solid currentcolor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+}
+
+.videos-wrap.is-selecting .video-row.is-deleting:not(.is-picked):hover {
+    border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+    box-shadow: var(--shadow-1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .deleting-spinner {
+        animation: none;
+    }
+
+    .row-surface.is-leaving {
+        transition: none;
+    }
+}
+
+@media (forced-colors: active) {
+    .row-surface.is-deleting {
+        outline: 2px dashed CanvasText;
+        outline-offset: -2px;
+        background: Canvas;
+        box-shadow: none;
+    }
+
+    .deleting-pill {
+        border-color: CanvasText;
+        background: Canvas;
+        color: CanvasText;
+    }
+
+    .row-surface.is-deleting .thumb-frame {
+        filter: none;
+    }
+}
+
+.row-surface:has(.video-check:focus-visible) {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+}
+
+.row-surface.row-surface-flat {
+    border: 0;
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    box-shadow: none;
+}
+
 .video-row {
     position: relative;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-1);
 }
 
 .video-open {
@@ -1624,16 +2160,6 @@ progress::-moz-progress-bar {
     font: inherit;
     text-align: left;
     cursor: pointer;
-}
-
-/*
- * Hover highlight on the whole row/card (the tools are siblings of .video-open, so a highlight on
- * .video-open alone left them out). It is an overlay gradient over the raised background, so the
- * row's own radius covers it as one surface, also while the pointer is over the tools. A picked
- * row keeps its selected background.
- */
-.video-row:not(.is-picked):hover {
-    background-image: linear-gradient(var(--state-hover), var(--state-hover));
 }
 
 .video-open:focus-visible {
@@ -2062,7 +2588,7 @@ progress::-moz-progress-bar {
 }
 
 /* Refresh button: the icon turns while a load is in flight (the button stays focusable). */
-.library-refresh.is-spinning .icon {
+.refresh-btn.is-spinning .icon {
     transform-origin: center;
     animation: spin 0.9s linear infinite;
 }
@@ -2085,7 +2611,7 @@ progress::-moz-progress-bar {
         will-change: auto;
     }
 
-    .library-refresh.is-spinning .icon {
+    .refresh-btn.is-spinning .icon {
         animation: spin-pulse 1.4s ease-in-out infinite;
     }
 }
@@ -2102,7 +2628,7 @@ progress::-moz-progress-bar {
         will-change: auto;
     }
 
-    .library-refresh.is-spinning .icon {
+    .refresh-btn.is-spinning .icon {
         animation: none;
     }
 }
@@ -2694,33 +3220,13 @@ progress::-moz-progress-bar {
     pointer-events: none;
 }
 
-.video-row {
-    transition:
-        background-color 150ms ease,
-        border-color 150ms ease,
-        box-shadow 150ms ease;
-}
-
 .videos-wrap.is-selecting .video-row:not(.is-picked):hover {
     border-color: var(--primary);
     box-shadow: 0 0 0 1px var(--primary);
 }
 
-.video-row.is-picked {
-    border-color: var(--primary);
-    background: color-mix(in srgb, var(--primary-container) 70%, var(--surface-raised));
-    box-shadow:
-        0 0 0 1px var(--primary),
-        0 4px 14px color-mix(in srgb, var(--primary) 28%, transparent);
-}
-
 .video-row.is-picked .thumb-frame::after {
     background: color-mix(in srgb, var(--primary) 16%, transparent);
-}
-
-.video-row:has(.video-check:focus-visible) {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
 }
 
 /*
@@ -2795,116 +3301,100 @@ progress::-moz-progress-bar {
     gap: var(--space-4);
 }
 
-.home-hero {
-    position: relative;
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-4);
-    align-items: center;
-    padding: var(--space-5) var(--space-6);
-    border: 0;
-    background: linear-gradient(135deg, var(--hero-from), var(--hero-to));
-    overflow: hidden;
+/* Small muted caption that names the source of a group of counts ("On server", "This device"). */
+.home-caption {
+    color: var(--on-surface-muted);
+    font-size: var(--text-caption);
+    line-height: var(--lh-caption);
 }
 
-.home-refresh {
-    position: absolute;
-    top: var(--space-2);
-    right: var(--space-2);
-    z-index: 1;
-    min-width: var(--control-h-sm);
-    min-height: var(--control-h-sm);
-    padding: 0;
+/* Overview card: greeting + actions on top, divider, then the stats strip inside the same card. */
+.home-overview .section-card-head {
+    gap: var(--space-3) var(--space-4);
 }
 
-.home-hero-text {
-    display: grid;
-    gap: var(--space-2);
-    min-width: 0;
-}
-
-.home-hero h2 {
-    font-size: var(--text-title-lg);
-    line-height: var(--lh-title-lg);
-    overflow-wrap: anywhere;
-}
-
-.home-hero-sub {
+.home-overview-sub {
     color: var(--on-surface-muted);
 }
 
-.home-hero-actions {
-    margin-top: var(--space-2);
+.home-overview-activity {
+    font-size: var(--text-caption);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-caption);
 }
 
-.home-hero-art {
-    width: min(100%, 13.75rem);
-    height: auto;
+.home-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: center;
 }
 
-.art-card {
-    fill: var(--art-card);
+/* Icon-only Refresh: a square at control height; the spin rules sit with the skeleton styles. */
+.refresh-btn.btn-control {
+    justify-content: center;
+    min-width: var(--control-h);
+    padding: 0;
 }
 
-.art-line {
-    fill: var(--art-soft);
-}
-
-.art-line-soft {
-    fill: var(--art-soft);
-    opacity: 0.6;
-}
-
-.art-accent {
-    fill: var(--art-accent);
-}
-
-.art-play {
-    fill: var(--on-tile);
-}
-
-.art-cloud {
-    fill: var(--art-cloud);
-}
-
-.art-arrow {
-    stroke: var(--on-tile);
-}
-
-.art-dot-a {
-    fill: var(--art-dot-a);
-}
-
-.art-dot-b {
-    fill: var(--art-dot-b);
-}
-
-/* Vivid rounded square behind a Fluent icon. */
-.icon-tile {
+.home-stats {
     display: grid;
-    width: 2.75rem;
-    height: 2.75rem;
-    place-items: center;
-    border-radius: var(--radius-md);
-    background: var(--tile-blue);
-    color: var(--on-tile);
+    gap: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
 }
 
-.icon-tile .icon {
-    width: 1.375rem;
-    height: 1.375rem;
+.stat-tiles {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0 calc(var(--space-4) * -1);
+    padding: 0;
+    list-style: none;
 }
 
-.icon-tile-green {
-    background: var(--tile-green);
+.stat-tiles > li {
+    min-width: 0;
+    border-left: 1px solid var(--border);
 }
 
-.icon-tile-amber {
-    background: var(--tile-amber);
+.stat-tiles > li:first-child {
+    border-left: 0;
 }
 
-.icon-tile-red {
-    background: var(--tile-red);
+/* Narrow: 2x2 with the same thin dividers. */
+@container home (max-width: 40rem) {
+    .stat-tiles {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .stat-tiles > li:nth-child(odd) {
+        border-left: 0;
+    }
+
+    .stat-tiles > li:nth-child(n + 3) {
+        border-top: 1px solid var(--border);
+    }
+}
+
+/* Running jobs under the queue status chips. */
+.home-running {
+    display: grid;
+    gap: var(--space-3);
+    padding: 0;
+    list-style: none;
+}
+
+.home-running-row {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.home-running-name {
+    overflow: hidden;
+    font-weight: var(--weight-semibold);
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .home-grid {
@@ -2921,20 +3411,10 @@ progress::-moz-progress-bar {
     min-width: 0;
 }
 
-@container home (min-width: 51.25rem) {
+/* Wide: Recent videos take the rest, Queue status + Needs your attention a fluid 22-28rem column. */
+@container home (min-width: 52rem) {
     .home-grid {
-        grid-template-columns: minmax(0, 2fr) minmax(17.5rem, 1fr);
-    }
-}
-
-@container home (max-width: 35rem) {
-    .home-hero {
-        grid-template-columns: minmax(0, 1fr);
-        padding: var(--space-4);
-    }
-
-    .home-hero-art {
-        display: none;
+        grid-template-columns: minmax(0, 1fr) minmax(22rem, 28rem);
     }
 }
 
@@ -2946,175 +3426,14 @@ progress::-moz-progress-bar {
     padding: var(--space-4) var(--space-5);
 }
 
-.home-card-head {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
-    justify-content: space-between;
-}
-
-.home-card-head h3 {
-    font-size: var(--text-subtitle);
-    font-weight: var(--weight-semibold);
-    line-height: var(--lh-subtitle);
+.home-card .section-card-head {
+    margin-bottom: 0;
 }
 
 .home-error {
     display: grid;
     gap: var(--space-2);
     justify-items: start;
-}
-
-/* Queue status: tinted rows; the whole row is the link (stretched button overlay). */
-.stat-rows {
-    display: grid;
-    gap: var(--space-2);
-}
-
-.stat-row {
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: var(--space-2) var(--space-3);
-    border-radius: var(--radius-md);
-}
-
-.stat-row dd {
-    font-size: var(--text-subtitle);
-    font-weight: var(--weight-semibold);
-}
-
-.stat-link {
-    padding: 0;
-    border: 0;
-    background: none;
-    color: inherit;
-    font: inherit;
-    font-weight: var(--weight-semibold);
-    cursor: pointer;
-}
-
-.stat-link::after {
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    content: '';
-}
-
-.stat-link:focus-visible {
-    outline: none;
-}
-
-.stat-link:focus-visible::after {
-    outline: 2px solid var(--focus-ring);
-    outline-offset: 2px;
-}
-
-.tint-blue {
-    background: var(--tint-blue-bg);
-    color: var(--tint-blue-fg);
-}
-
-.tint-green {
-    background: var(--tint-green-bg);
-    color: var(--tint-green-fg);
-}
-
-.tint-amber {
-    background: var(--tint-amber-bg);
-    color: var(--tint-amber-fg);
-}
-
-.tint-purple {
-    background: var(--tint-purple-bg);
-    color: var(--tint-purple-fg);
-}
-
-.tint-red {
-    background: var(--tint-red-bg);
-    color: var(--tint-red-fg);
-}
-
-.all-clear {
-    display: grid;
-    gap: 2px;
-    padding: var(--space-3);
-    border-radius: var(--radius-md);
-    background: var(--tint-green-bg);
-    color: var(--tint-green-fg);
-}
-
-.all-clear .muted {
-    color: inherit;
-    opacity: 0.85;
-}
-
-.all-clear-title {
-    font-weight: var(--weight-semibold);
-}
-
-.stat-cards {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 11rem), 1fr));
-    gap: var(--space-3);
-    padding: 0;
-    list-style: none;
-}
-
-.stat-cards > li {
-    display: flex;
-}
-
-.stat-card {
-    display: flex;
-    height: 100%;
-    gap: var(--space-3);
-    align-items: flex-start;
-    width: 100%;
-    padding: var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background: var(--surface-raised);
-    box-shadow: var(--shadow-1);
-    color: var(--on-surface);
-    font: inherit;
-    text-align: left;
-}
-
-button.stat-card {
-    cursor: pointer;
-    transition: box-shadow var(--dur-base) var(--ease);
-}
-
-button.stat-card:hover {
-    box-shadow: var(--shadow-2);
-}
-
-.stat-text {
-    display: grid;
-    min-width: 0;
-}
-
-.stat-value {
-    font-size: var(--text-title-lg);
-    font-weight: var(--weight-semibold);
-    line-height: var(--lh-title-lg);
-}
-
-.stat-sub {
-    color: var(--on-surface-muted);
-    font-size: var(--text-caption);
-    line-height: var(--lh-caption);
-    white-space: nowrap;
-}
-
-.stat-label {
-    color: var(--on-surface-muted);
-    font-size: var(--text-caption);
-    font-weight: var(--weight-semibold);
-    line-height: var(--lh-caption);
-    overflow-wrap: anywhere;
 }
 
 .stats {
@@ -3159,8 +3478,7 @@ button.stat-card:hover {
 }
 
 .recent-head {
-    padding: 0 var(--space-3) var(--space-2);
-    border-bottom: 1px solid var(--border);
+    padding: 0 calc(var(--space-3) + 1px) var(--space-2);
     color: var(--on-surface-muted);
     font-size: var(--text-caption);
     font-weight: var(--weight-semibold);
@@ -3172,26 +3490,16 @@ button.stat-card:hover {
 }
 
 .recent {
-    display: block;
+    display: grid;
+    gap: var(--space-2);
     padding: 0;
     list-style: none;
 }
 
 .recent-row {
+    /* The header adds 1px to its padding to match this row's card border (columns stay aligned). */
     padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border);
-    border-radius: var(--radius-md);
     cursor: pointer;
-    transition: background-color var(--dur-fast) var(--ease);
-}
-
-.recent-row:last-child {
-    border-bottom-color: transparent;
-}
-
-.recent-row:hover {
-    background: var(--state-hover);
-    border-bottom-color: transparent;
 }
 
 .recent-text {
@@ -3368,19 +3676,10 @@ button.stat-card:hover {
     gap: var(--space-2);
 }
 
-.log-section h3 {
-    font-size: var(--text-subtitle);
-    font-weight: var(--weight-semibold);
-    line-height: var(--lh-subtitle);
-}
-
 .log-row {
     display: grid;
     gap: var(--space-2);
     padding: var(--space-3) var(--space-4);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface-raised);
 }
 
 .log-main {
