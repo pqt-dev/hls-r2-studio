@@ -342,6 +342,8 @@ class VideoController extends Controller
             'output_bitrate_kbps' => $video->output_bitrate_kbps,
             'output_codec' => $video->output_codec,
             'embed_url' => route('embed.show', ['video' => $video->public_id]),
+            // Storage folder (key prefix) of the video's files; path only, never a URL or credentials.
+            'disk_prefix' => $video->disk_prefix,
             'playlist_url' => $url($video->playlist_path),
             'thumbnail_url' => $url($video->thumbnail_path),
             'has_custom_image' => (bool) $video->custom_image_path,

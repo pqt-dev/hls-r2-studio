@@ -134,6 +134,7 @@ class AppApiVideoManageTest extends TestCase
         $this->assertNull($json['error']);
         $this->assertSame(12.5, $json['duration']);
         $this->assertSame(route('embed.show', ['video' => 'abcdefghij12']), $json['embed_url']);
+        $this->assertSame(self::PREFIX, $json['disk_prefix']);
         $this->assertSame($this->disk->url(self::PREFIX.'playlist.m3u8'), $json['playlist_url']);
         $this->assertSame($this->disk->url(self::PREFIX.'thumbnail.jpg'), $json['thumbnail_url']);
         $this->assertFalse($json['has_custom_image']);
@@ -146,6 +147,16 @@ class AppApiVideoManageTest extends TestCase
             $json['embed_storyboard'],
         );
         $this->assertSame($video->fresh()->updated_at->toIso8601String(), $json['updated_at']);
+    }
+
+    public function test_show_returns_a_null_disk_prefix_when_unset(): void
+    {
+        $video = $this->makeVideo();
+
+        $json = $this->api('GET', "/api/app/videos/{$video->id}")->assertOk()->json();
+
+        $this->assertArrayHasKey('disk_prefix', $json);
+        $this->assertNull($json['disk_prefix']);
     }
 
     public function test_show_with_a_custom_image_has_a_cache_busting_url(): void
@@ -179,7 +190,7 @@ class AppApiVideoManageTest extends TestCase
 
         $body = $this->api('GET', "/api/app/videos/{$video->id}")->assertOk()->getContent();
 
-        foreach (['super-secret-value', 'AKIDEXAMPLE1234', 'upl-secret-1', 'upload_id', 'disk_prefix', 'playlist_path', 'r2_secret'] as $needle) {
+        foreach (['super-secret-value', 'AKIDEXAMPLE1234', 'upl-secret-1', 'upload_id', 'playlist_path', 'r2_secret'] as $needle) {
             $this->assertStringNotContainsString($needle, $body);
         }
     }
