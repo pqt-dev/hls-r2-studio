@@ -35,6 +35,9 @@
  *   videos:remove-image               videos_remove_image      { payload: {id} }
  *   overview:get                      overview_get             (no payload)
  *   logs:get                          logs_get                 { payload: {type?,page?,perPage?} }
+ *   r2:get                            r2_get                   (no payload)
+ *   r2:save                           r2_save                  { payload: {endpoint,bucket,url,accessKeyId?,secretAccessKey?} }
+ *   r2:test                           r2_test                  (no payload)
  *
  *   IpcEvents (Rust -> renderer)      Tauri event name
  *   --------------------------------  ----------------
@@ -74,6 +77,9 @@ import type {
     OverviewGetResult,
     PickDirectoryResult,
     QueueSummary,
+    R2GetResult,
+    R2SaveResult,
+    R2TestResult,
     RejectedFile,
     RendererApi,
     SettingsDto,
@@ -226,6 +232,11 @@ export function createTauriApi(call: InvokeFn, subscribeTo: ListenFn): RendererA
         },
         logs: {
             get: (params) => send<LogsGetResult>(IpcChannels.logsGet, params ?? {}),
+        },
+        r2: {
+            get: () => send<R2GetResult>(IpcChannels.r2Get),
+            save: (input) => send<R2SaveResult>(IpcChannels.r2Save, input),
+            test: () => send<R2TestResult>(IpcChannels.r2Test),
         },
     };
 }

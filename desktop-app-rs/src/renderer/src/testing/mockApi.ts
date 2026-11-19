@@ -146,6 +146,15 @@ export function installMockApi(search: string = window.location.search): void {
             maxConcurrent: 1,
         },
         nextDirectory: 'D:\\video-temp',
+        r2: {
+            configured: true,
+            source: 'database',
+            endpoint: 'https://mock-account.r2.cloudflarestorage.com',
+            bucket: 'mock-bucket',
+            url: 'https://cdn.mock.invalid',
+            accessKeyLast4: 'mock',
+            hasSecret: true,
+        },
     });
 
     // Slowly advance the running job so the progress bar can be seen moving.

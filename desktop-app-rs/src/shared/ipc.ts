@@ -34,6 +34,9 @@ export const IpcChannels = {
     videosRemoveImage: 'videos:remove-image',
     overviewGet: 'overview:get',
     logsGet: 'logs:get',
+    r2Get: 'r2:get',
+    r2Save: 'r2:save',
+    r2Test: 'r2:test',
 } as const;
 
 /** Main -> renderer push events. */
@@ -344,6 +347,44 @@ export interface Overview {
 
 export type OverviewGetResult = { ok: true; overview: Overview } | { ok: false; error: string };
 
+// ---- R2 storage settings (admin; shared with the site dashboard) ---------------------------
+
+export type R2Source = 'database' | 'none';
+
+/** What the site reports. The key id and the secret are never returned. */
+export interface R2Status {
+    configured: boolean;
+    /** Where the values come from: saved in the site database, or nowhere. */
+    source: R2Source;
+    endpoint: string | null;
+    bucket: string | null;
+    url: string | null;
+    /** Last four characters of the saved access key id. */
+    accessKeyLast4: string | null;
+    hasSecret: boolean;
+}
+
+/**
+ * Write-only values typed in the form. A blank or omitted `accessKeyId` / `secretAccessKey`
+ * keeps the stored value. They are sent once to Rust and never read back.
+ */
+export interface R2SaveInput {
+    endpoint: string;
+    bucket: string;
+    url: string;
+    accessKeyId?: string;
+    secretAccessKey?: string;
+}
+
+export type R2FieldName = 'endpoint' | 'bucket' | 'url' | 'accessKeyId' | 'secretAccessKey';
+
+export type R2GetResult = { ok: true; status: R2Status } | { ok: false; error: string };
+export type R2SaveResult =
+    | { ok: true; status: R2Status }
+    | { ok: false; error: string; fieldErrors?: Partial<Record<R2FieldName, string>> };
+/** Tests the SAVED settings (not the form values). */
+export type R2TestResult = { ok: true } | { ok: false; error: string };
+
 export type LogType = 'success' | 'error' | 'processing';
 
 export interface LogsParams {
@@ -468,6 +509,14 @@ export interface OverviewApi {
     get(): Promise<OverviewGetResult>;
 }
 
+export interface R2Api {
+    get(): Promise<R2GetResult>;
+    /** Refused (with an error) while videos are being processed. */
+    save(input: R2SaveInput): Promise<R2SaveResult>;
+    /** Tests the saved configuration. */
+    test(): Promise<R2TestResult>;
+}
+
 export interface LogsApi {
     /** No `type`: the summary view; with `type`: one paginated page. */
     get(params?: LogsParams): Promise<LogsGetResult>;
@@ -481,6 +530,7 @@ export interface RendererApi {
     videos: VideosApi;
     overview: OverviewApi;
     logs: LogsApi;
+    r2: R2Api;
 }
 
 /** Name of the property exposed on `window` through contextBridge. */

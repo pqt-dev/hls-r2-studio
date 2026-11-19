@@ -5,6 +5,7 @@ pub mod error;
 pub mod image_upload;
 pub mod logs;
 pub mod overview;
+pub mod r2;
 pub mod site_client;
 #[cfg(test)]
 pub mod test_server;

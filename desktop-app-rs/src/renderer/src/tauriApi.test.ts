@@ -25,7 +25,7 @@ function setup(response: unknown = { ok: true }) {
 describe('name mapping', () => {
     it('turns every channel into a valid command identifier', () => {
         for (const channel of Object.values(IpcChannels)) {
-            expect(commandName(channel)).toMatch(/^[a-z]+(_[a-z]+)+$|^[a-z]+_[a-z]+$/);
+            expect(commandName(channel)).toMatch(/^[a-z][a-z0-9]*(_[a-z][a-z0-9]*)+$/);
         }
         expect(commandName('app:get-version')).toBe('app_get_version');
         expect(commandName('jobs:retry-register')).toBe('jobs_retry_register');
@@ -63,6 +63,13 @@ describe('createTauriApi', () => {
         await api.overview.get();
         await api.logs.get();
         await api.logs.get({ type: 'error', page: 2, perPage: 10 });
+        await api.r2.get();
+        await api.r2.save({
+            endpoint: 'https://e.example.com',
+            bucket: 'b',
+            url: 'https://c.example.com',
+        });
+        await api.r2.test();
 
         expect(calls).toEqual([
             ['app_get_version', undefined],
@@ -84,6 +91,18 @@ describe('createTauriApi', () => {
             ['overview_get', undefined],
             ['logs_get', { payload: {} }],
             ['logs_get', { payload: { type: 'error', page: 2, perPage: 10 } }],
+            ['r2_get', undefined],
+            [
+                'r2_save',
+                {
+                    payload: {
+                        endpoint: 'https://e.example.com',
+                        bucket: 'b',
+                        url: 'https://c.example.com',
+                    },
+                },
+            ],
+            ['r2_test', undefined],
         ]);
     });
 

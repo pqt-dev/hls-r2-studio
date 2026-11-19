@@ -1386,13 +1386,6 @@ progress::-moz-progress-bar {
     }
 }
 
-.section-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: var(--space-3);
-}
-
 .queue-list {
     flex: 1 1 auto;
 }
@@ -1607,6 +1600,13 @@ button.status-count:hover {
     background-image: linear-gradient(var(--state-hover), var(--state-hover));
 }
 
+/* Toggle chips (Logs filter): the selected one takes the primary container. */
+button.status-count[aria-pressed='true'] {
+    border-color: var(--primary);
+    background: var(--primary-container);
+    color: var(--on-primary-container);
+}
+
 .status-count-dot {
     width: 0.5rem;
     height: 0.5rem;
@@ -1626,8 +1626,7 @@ button.status-count:hover {
     --status-dot: var(--success);
 }
 
-.status-count-failed,
-.status-count-attention {
+.status-count-failed {
     --status-dot: var(--danger);
 }
 
@@ -3462,8 +3461,7 @@ button.status-count:hover {
     line-height: var(--lh-title);
 }
 
-.attention,
-.log-list {
+.attention {
     display: grid;
     gap: var(--space-2);
     padding: 0;
@@ -3664,14 +3662,19 @@ button.status-count:hover {
 
 /* ---- logs ---------------------------------------------------------------------------------- */
 
+/* Layout only: the rows, chips, group headers and pager are the shared pieces. */
 .logs {
     display: grid;
     gap: var(--space-4);
     align-content: start;
 }
 
-.logs-filter {
-    justify-self: start;
+.logs-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+    justify-content: space-between;
 }
 
 .log-sections {
@@ -3684,49 +3687,13 @@ button.status-count:hover {
     gap: var(--space-2);
 }
 
-.log-row {
-    display: grid;
-    gap: var(--space-2);
-    padding: var(--space-3) var(--space-4);
+/* The expanded error detail spans the whole row under its columns. */
+.job-detail {
+    grid-column: 1 / -1;
 }
 
-.log-main {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
-}
-
-.log-title {
-    flex: 1 1 auto;
-}
-
-.log-time {
-    flex: none;
-}
-
-.log-progress {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
-}
-
-.log-progress progress {
-    flex: 1 1 auto;
-}
-
-.log-error {
-    color: var(--danger);
-    overflow-wrap: anywhere;
-}
-
-.log-details {
-    display: grid;
-    gap: var(--space-2);
-    justify-items: start;
-}
-
-.log-details .log {
-    width: 100%;
+.job-detail .log {
+    margin-top: 0;
 }
 
 /* ---- high contrast: make every boundary and state visible ---------------------------------- */
@@ -3734,7 +3701,6 @@ button.status-count:hover {
 @media (forced-colors: active) {
     .card,
     .job,
-    .log-row,
     .video-row,
     .dialog,
     .toast,
@@ -3776,8 +3742,7 @@ button.status-count:hover {
         color: CanvasText;
     }
 
-    .attention-title,
-    .log-title {
+    .attention-title {
         color: LinkText;
     }
 

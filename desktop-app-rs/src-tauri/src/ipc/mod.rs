@@ -15,6 +15,7 @@ mod jobs;
 mod logs;
 pub mod notices;
 mod overview;
+mod r2;
 mod settings;
 pub mod validate;
 mod videos;
@@ -24,6 +25,7 @@ pub use auth::*;
 pub use jobs::*;
 pub use logs::*;
 pub use overview::*;
+pub use r2::*;
 pub use settings::*;
 pub use videos::*;
 
@@ -113,6 +115,9 @@ register_commands!(
     videos_remove_image,
     overview_get,
     logs_get,
+    r2_get,
+    r2_save,
+    r2_test,
 );
 
 #[cfg(test)]
@@ -154,6 +159,9 @@ mod tests {
         "videos:remove-image",
         "overview:get",
         "logs:get",
+        "r2:get",
+        "r2:save",
+        "r2:test",
     ];
 
     fn command_of(channel: &str) -> String {

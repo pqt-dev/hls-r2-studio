@@ -9,6 +9,7 @@ import { SelectBox } from '../components/SelectBox';
 import { copyText } from '../lib/clipboard';
 import { plural } from '../lib/format';
 import { useApp } from '../state/AppProvider';
+import { R2SettingsCard } from './R2SettingsCard';
 import { useToast } from '../state/Toasts';
 
 type Confirm = 'signout' | null;
@@ -133,10 +134,10 @@ export function SettingsScreen() {
                         is built.
                     </p>
                 </div>
-                <p className="muted">
-                    {auth.username !== undefined ? `Signed in as ${auth.username}` : 'Signed in'}
-                </p>
                 <div className="row row-wrap">
+                    <span className="muted">
+                        {auth.username !== undefined ? `Signed in as ${auth.username}` : 'Signed in'}
+                    </span>
                     <ReloadConfigButton />
                     <button
                         type="button"
@@ -201,6 +202,8 @@ export function SettingsScreen() {
                     </p>
                 </div>
             </SectionCard>
+
+            <R2SettingsCard />
 
             {confirm === 'signout' && (
                 <ConfirmDialog

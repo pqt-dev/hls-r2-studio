@@ -12,6 +12,7 @@ import type {
     Overview,
     PickDirectoryResult,
     QueueSummary,
+    R2Status,
     RendererApi,
     SettingsDto,
     VideoDetail,
@@ -150,6 +151,8 @@ export interface FakeState {
     diagnostics: DiagnosticsDto;
     /** What the native folder dialog returns next. */
     nextDirectory: string | null;
+    /** What the site reports about R2 (never holds a key or a secret). */
+    r2: R2Status;
 }
 
 export interface FakeApi {
@@ -184,6 +187,15 @@ export function createFakeApi(initial: Partial<FakeState> = {}): FakeApi {
             ffmpeg: { checked: true, ok: true, version: '9.0.2', missing: [] },
         },
         nextDirectory: null,
+        r2: {
+            configured: true,
+            source: 'database',
+            endpoint: 'https://acct.r2.cloudflarestorage.com',
+            bucket: 'media',
+            url: 'https://cdn.example.com',
+            accessKeyLast4: 'wxyz',
+            hasSecret: true,
+        },
         ...initial,
     };
 
@@ -299,6 +311,27 @@ export function createFakeApi(initial: Partial<FakeState> = {}): FakeApi {
                     error: [],
                     processing: [],
                 }),
+        },
+        r2: {
+            get: () => Promise.resolve({ ok: true, status: state.r2 }),
+            // Like the site: only the last four characters of the key and a flag are kept.
+            save: (input) => {
+                const key = input.accessKeyId?.trim() ?? '';
+                const secret = input.secretAccessKey?.trim() ?? '';
+
+                state.r2 = {
+                    configured: true,
+                    source: 'database',
+                    endpoint: input.endpoint,
+                    bucket: input.bucket,
+                    url: input.url,
+                    accessKeyLast4: key === '' ? state.r2.accessKeyLast4 : key.slice(-4),
+                    hasSecret: secret !== '' || state.r2.hasSecret,
+                };
+
+                return Promise.resolve({ ok: true, status: state.r2 });
+            },
+            test: () => Promise.resolve({ ok: true }),
         },
     };
 

@@ -28,6 +28,10 @@ use super::error::SiteApiError;
 use super::image_upload::{build_multipart, ImageKind};
 use super::logs::{LogType, LogsPage, LogsReply, LogsSummary};
 use super::overview::Overview;
+use super::r2::{
+    parse_field_errors, parse_r2_status, parse_r2_test, R2Input, R2SaveError, R2Status,
+    R2TestOutcome,
+};
 use super::videos::{
     clean_url, normalize_video_title, BulkDeleteOutcome, VideoDeleteOutcome, VideoDetail,
     VideoPage, VideoSort, MAX_BULK_DELETE, MAX_LIST_ITEMS, MAX_VIDEOS_PER_PAGE, TITLE_INVALID,
@@ -507,6 +511,110 @@ impl SiteClient {
         }
 
         Ok(config)
+    }
+
+    /// `GET /api/app/r2`: the site's R2 settings without the key or the secret.
+    pub async fn get_r2(&self) -> Result<R2Status, SiteApiError> {
+        let raw = self.send(Method::GET, "/api/app/r2", true, None).await?;
+
+        Self::r2_status_check(&raw, "Could not load the R2 settings")?;
+
+        parse_r2_status(&raw.json()).ok_or_else(|| Self::r2_invalid(&raw))
+    }
+
+    /// `PUT /api/app/r2`. The key and the secret are only sent when given (`None` = keep the
+    /// stored value). The request body is a wiped buffer and is never logged; a 422 becomes
+    /// per-field messages that cannot contain the submitted values.
+    pub async fn set_r2(&self, input: &R2Input) -> Result<R2Status, R2SaveError> {
+        #[derive(Serialize)]
+        struct Body<'a> {
+            endpoint: &'a str,
+            bucket: &'a str,
+            url: &'a str,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            access_key_id: Option<&'a str>,
+            #[serde(skip_serializing_if = "Option::is_none")]
+            secret_access_key: Option<&'a str>,
+        }
+
+        let key = input.access_key_id.as_ref().map(Secret::expose);
+        let secret = input.secret_access_key.as_ref().map(Secret::expose);
+        let body = Body {
+            endpoint: &input.endpoint,
+            bucket: &input.bucket,
+            url: &input.url,
+            access_key_id: key,
+            secret_access_key: secret,
+        };
+        // Worst case every char is escaped as \uXXXX: reserve enough so the buffer never grows
+        // (a reallocation would leave an unwiped copy of the secret behind).
+        let text_len = input.endpoint.len()
+            + input.bucket.len()
+            + input.url.len()
+            + key.map_or(0, str::len)
+            + secret.map_or(0, str::len);
+        let mut bytes = Zeroizing::new(Vec::with_capacity(256 + 6 * text_len));
+
+        serde_json::to_writer(&mut *bytes, &body)
+            .map_err(|_| SiteApiError::new("Could not save the R2 settings."))?;
+
+        let raw = self
+            .send(Method::PUT, "/api/app/r2", true, Some(bytes))
+            .await?;
+
+        if raw.status == 422 {
+            let submitted: Vec<&str> = key.into_iter().chain(secret).collect();
+            let field_errors = parse_field_errors(&raw.json(), &submitted);
+            let message = if field_errors.is_empty() {
+                "The site rejected the R2 settings."
+            } else {
+                "Please fix the highlighted fields."
+            };
+
+            return Err(R2SaveError {
+                error: Self::http_error(&raw, message.to_string()),
+                field_errors,
+            });
+        }
+
+        Self::r2_status_check(&raw, "Could not save the R2 settings")?;
+
+        Ok(parse_r2_status(&raw.json()).ok_or_else(|| Self::r2_invalid(&raw))?)
+    }
+
+    /// `POST /api/app/r2/test`: tests the SAVED settings. A failed test is an `Ok` outcome with
+    /// `ok: false` and the site's (sanitized, capped) reason; only transport/HTTP problems are
+    /// errors.
+    pub async fn test_r2(&self) -> Result<R2TestOutcome, SiteApiError> {
+        let raw = self
+            .send(Method::POST, "/api/app/r2/test", true, None)
+            .await?;
+
+        Self::r2_status_check(&raw, "Could not test the R2 connection")?;
+
+        parse_r2_test(&raw.json()).ok_or_else(|| Self::r2_invalid(&raw))
+    }
+
+    fn r2_invalid(raw: &RawResponse) -> SiteApiError {
+        SiteApiError::new("The site sent an unexpected R2 response.")
+            .status(raw.status)
+            .code("invalid_response")
+    }
+
+    /// Non-200 answers of the R2 calls: 403 (not an admin) and 404 (older site) have their own
+    /// messages; the rest follows `video_status_check`.
+    fn r2_status_check(raw: &RawResponse, failure: &str) -> Result<(), SiteApiError> {
+        match raw.status {
+            403 => Err(Self::http_error(
+                raw,
+                "Only site administrators can manage the R2 settings.".to_string(),
+            )),
+            _ => Self::video_status_check(
+                raw,
+                failure,
+                "This site does not support R2 settings yet. Update the site.",
+            ),
+        }
     }
 
     /// `GET /api/app/videos?page=&per_page=&q=&sort=` (one page of the cloud library). The search

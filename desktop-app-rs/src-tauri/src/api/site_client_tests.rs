@@ -1984,3 +1984,209 @@ async fn get_logs_maps_failures_to_safe_errors_without_leaking_secrets() {
 
     assert!(!logs.contains("tok-123") && !logs.contains("secret-body"));
 }
+
+// ---- R2 settings ------------------------------------------------------------------------
+
+fn r2_status_body() -> Value {
+    json!({
+        "configured": true,
+        "source": "database",
+        "endpoint": "https://acct.r2.cloudflarestorage.com",
+        "bucket": "media",
+        "url": "https://cdn.example.com",
+        "access_key_last4": "wxyz",
+        "has_secret": true
+    })
+}
+
+fn r2_input(key: Option<&str>, secret: Option<&str>) -> crate::api::r2::R2Input {
+    crate::api::r2::R2Input {
+        endpoint: "https://acct.r2.cloudflarestorage.com".into(),
+        bucket: "media".into(),
+        url: "https://cdn.example.com".into(),
+        access_key_id: key.map(Secret::from),
+        secret_access_key: secret.map(Secret::from),
+    }
+}
+
+#[tokio::test]
+async fn get_r2_returns_the_status_without_secrets() {
+    let t = setup(|_| Reply::json(200, r2_status_body())).await;
+    let status = t.client.get_r2().await.unwrap();
+
+    assert!(status.configured && status.has_secret);
+    assert_eq!(status.bucket.as_deref(), Some("media"));
+    assert_eq!(status.access_key_last4.as_deref(), Some("wxyz"));
+
+    let calls = t.server.requests();
+
+    assert_eq!(calls.len(), 1);
+    assert_eq!(calls[0].method, "GET");
+    assert_eq!(calls[0].path, "/api/app/r2");
+    assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+}
+
+#[tokio::test]
+async fn r2_calls_map_failures_to_safe_errors() {
+    let t = setup(|_| Reply::json(401, json!({ "message": "Unauthenticated." }))).await;
+
+    assert_eq!(t.client.get_r2().await.unwrap_err().status, Some(401));
+    assert_eq!(t.unauthorized.load(Ordering::SeqCst), 1);
+
+    let forbidden = setup(|_| Reply::json(403, json!({ "message": "secret server text" }))).await;
+    let error = forbidden.client.get_r2().await.unwrap_err();
+
+    assert_eq!(
+        error.message,
+        "Only site administrators can manage the R2 settings."
+    );
+
+    let old_site = setup(|_| Reply::text(404, "<html>nope</html>")).await;
+
+    assert_eq!(
+        old_site.client.test_r2().await.unwrap_err().message,
+        "This site does not support R2 settings yet. Update the site."
+    );
+
+    let broken = setup(|_| Reply::text(500, "<html>trace tok-123</html>")).await;
+    let error = broken.client.get_r2().await.unwrap_err();
+
+    assert_eq!(error.message, "Could not load the R2 settings (HTTP 500).");
+    assert!(!broken.logger.text().contains("tok-123"));
+
+    let invalid = setup(|_| Reply::json(200, json!({ "source": "vault" }))).await;
+
+    assert_eq!(
+        invalid.client.get_r2().await.unwrap_err().code.as_deref(),
+        Some("invalid_response")
+    );
+}
+
+#[tokio::test]
+async fn set_r2_sends_the_key_and_secret_only_when_given() {
+    let t = setup(|_| Reply::json(200, r2_status_body())).await;
+
+    t.client
+        .set_r2(&r2_input(Some("AKIAKEY"), Some("s3cr3t-value")))
+        .await
+        .unwrap();
+    t.client.set_r2(&r2_input(None, None)).await.unwrap();
+
+    let calls = t.server.requests();
+
+    assert_eq!(calls.len(), 2);
+    assert_eq!(calls[0].method, "PUT");
+    assert_eq!(calls[0].path, "/api/app/r2");
+    assert_eq!(calls[0].header("authorization"), Some("Bearer tok-123"));
+    assert_eq!(
+        calls[0].json(),
+        json!({
+            "endpoint": "https://acct.r2.cloudflarestorage.com",
+            "bucket": "media",
+            "url": "https://cdn.example.com",
+            "access_key_id": "AKIAKEY",
+            "secret_access_key": "s3cr3t-value"
+        })
+    );
+    assert_eq!(
+        calls[1].json(),
+        json!({
+            "endpoint": "https://acct.r2.cloudflarestorage.com",
+            "bucket": "media",
+            "url": "https://cdn.example.com"
+        })
+    );
+
+    let logs = t.logger.text();
+
+    assert!(!logs.contains("AKIAKEY") && !logs.contains("s3cr3t-value"));
+}
+
+#[tokio::test]
+async fn set_r2_turns_a_422_into_field_errors_that_never_echo_the_secret() {
+    let t = setup(|_| {
+        Reply::json(
+            422,
+            json!({
+                "message": "The given data was invalid.",
+                "errors": {
+                    "endpoint": ["The endpoint field must be a valid URL."],
+                    "secret_access_key": ["Bad value s3cr3t-value."]
+                }
+            }),
+        )
+    })
+    .await;
+    let failure = t
+        .client
+        .set_r2(&r2_input(None, Some("s3cr3t-value")))
+        .await
+        .unwrap_err();
+
+    assert_eq!(failure.error.status, Some(422));
+    assert_eq!(failure.error.message, "Please fix the highlighted fields.");
+    assert_eq!(
+        failure.field_errors["endpoint"],
+        "The endpoint field must be a valid URL."
+    );
+    assert!(!failure.field_errors["secretAccessKey"].contains("s3cr3t-value"));
+    assert!(!t.logger.text().contains("s3cr3t-value"));
+
+    let bare = setup(|_| Reply::json(422, json!({ "message": "x" }))).await;
+    let failure = bare.client.set_r2(&r2_input(None, None)).await.unwrap_err();
+
+    assert!(failure.field_errors.is_empty());
+    assert_eq!(failure.error.message, "The site rejected the R2 settings.");
+}
+
+#[tokio::test]
+async fn set_r2_maps_other_failures_without_leaking() {
+    let forbidden = setup(|_| Reply::json(403, json!({}))).await;
+    let failure = forbidden
+        .client
+        .set_r2(&r2_input(Some("AKIAKEY"), Some("s3cr3t-value")))
+        .await
+        .unwrap_err();
+
+    assert_eq!(failure.error.status, Some(403));
+    assert!(!failure.error.message.contains("s3cr3t-value"));
+
+    let broken = setup(|_| Reply::text(500, "boom")).await;
+    let failure = broken
+        .client
+        .set_r2(&r2_input(None, None))
+        .await
+        .unwrap_err();
+
+    assert_eq!(
+        failure.error.message,
+        "Could not save the R2 settings (HTTP 500)."
+    );
+}
+
+#[tokio::test]
+async fn test_r2_reports_success_and_the_sites_failure_reason() {
+    let ok = setup(|_| Reply::json(200, json!({ "ok": true }))).await;
+    let outcome = ok.client.test_r2().await.unwrap();
+
+    assert!(outcome.ok && outcome.error.is_none());
+
+    let calls = ok.server.requests();
+
+    assert_eq!(calls[0].method, "POST");
+    assert_eq!(calls[0].path, "/api/app/r2/test");
+
+    let failed =
+        setup(|_| Reply::json(200, json!({ "ok": false, "error": "Access Denied" }))).await;
+    let outcome = failed.client.test_r2().await.unwrap();
+
+    assert!(!outcome.ok);
+    assert_eq!(outcome.error.as_deref(), Some("Access Denied"));
+
+    let invalid = setup(|_| Reply::json(200, json!({ "unexpected": 1 }))).await;
+
+    assert_eq!(
+        invalid.client.test_r2().await.unwrap_err().code.as_deref(),
+        Some("invalid_response")
+    );
+}

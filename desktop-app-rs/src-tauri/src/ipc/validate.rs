@@ -4,11 +4,18 @@
 //! arguments" of the Electron handlers map to `Option<Value>` here: `None` = no argument.
 //! String lengths are counted in UTF-16 units, like JS `.length`.
 
+use std::collections::BTreeMap;
 use std::fmt;
 
 use serde_json::{Map, Value};
+use url::Url;
+use zeroize::Zeroizing;
 
 use crate::api::logs::LogType;
+use crate::api::r2::{
+    R2Input, FIELD_BUCKET, FIELD_ENDPOINT, FIELD_URL, MAX_BUCKET_CHARS, MAX_ENDPOINT_CHARS,
+    MAX_KEY_CHARS, MAX_PUBLIC_URL_CHARS,
+};
 use crate::api::videos::{
     normalize_video_title, VideoSort, MAX_BULK_DELETE, MAX_TITLE_CHARS, MAX_VIDEOS_PER_PAGE,
     STATUS_FILTERS,
@@ -215,6 +222,102 @@ pub fn parse_settings_patch(payload: Option<Value>) -> Result<SettingsPatch> {
     }
 
     Ok(patch)
+}
+
+/// `r2:save`: `{ endpoint, bucket, url, accessKeyId?, secretAccessKey? }`. Types, keys and
+/// lengths are checked here (a failure is a generic rejection); the values are trimmed. A blank
+/// or missing key / secret becomes `None` = keep the stored value. The key and the secret are
+/// moved into zeroizing `Secret`s; no error text ever contains a value.
+pub fn parse_r2_save(payload: Option<Value>) -> Result<R2Input> {
+    let mut object = expect_single_object(
+        payload,
+        "r2",
+        &[
+            "endpoint",
+            "bucket",
+            "url",
+            "accessKeyId",
+            "secretAccessKey",
+        ],
+    )?;
+    let endpoint = expect_string(object.get("endpoint"), "endpoint", MAX_ENDPOINT_CHARS)?;
+    let bucket = expect_string(object.get("bucket"), "bucket", MAX_BUCKET_CHARS)?;
+    let url = expect_string(object.get("url"), "url", MAX_PUBLIC_URL_CHARS)?;
+    let access_key_id = optional_secret(object.remove("accessKeyId"), "accessKeyId")?;
+    let secret_access_key = optional_secret(object.remove("secretAccessKey"), "secretAccessKey")?;
+
+    Ok(R2Input {
+        endpoint: endpoint.trim().to_string(),
+        bucket: bucket.trim().to_string(),
+        url: url.trim().to_string(),
+        access_key_id,
+        secret_access_key,
+    })
+}
+
+/// Absent / `null` / blank = `None`; otherwise the trimmed text in a `Secret`.
+fn optional_secret(value: Option<Value>, name: &str) -> Result<Option<Secret>> {
+    let text = match value {
+        None | Some(Value::Null) => return Ok(None),
+        Some(Value::String(text)) => Zeroizing::new(text),
+        Some(_) => return invalid(format!("{name} must be a string")),
+    };
+
+    if js_length(&text) > MAX_KEY_CHARS {
+        return invalid(format!("{name} is too long"));
+    }
+
+    let trimmed = text.trim();
+
+    Ok(if trimmed.is_empty() {
+        None
+    } else {
+        Some(Secret::new(trimmed.to_string()))
+    })
+}
+
+/// Rules the user can fix in the form: endpoint and public URL are https URLs without
+/// credentials, the bucket is not empty. Returns the message per field (renderer field names);
+/// empty = valid. Values are never part of a message.
+pub fn r2_input_problems(input: &R2Input) -> BTreeMap<String, String> {
+    let mut problems = BTreeMap::new();
+
+    if let Some(problem) = https_url_problem(&input.endpoint, "Endpoint") {
+        problems.insert(FIELD_ENDPOINT.to_string(), problem);
+    }
+
+    if input.bucket.is_empty() {
+        problems.insert(
+            FIELD_BUCKET.to_string(),
+            "Enter the bucket name.".to_string(),
+        );
+    }
+
+    if let Some(problem) = https_url_problem(&input.url, "Public URL") {
+        problems.insert(FIELD_URL.to_string(), problem);
+    }
+
+    problems
+}
+
+fn https_url_problem(raw: &str, label: &str) -> Option<String> {
+    if raw.is_empty() {
+        return Some(format!("Enter the {}.", label.to_lowercase()));
+    }
+
+    let Ok(url) = Url::parse(raw) else {
+        return Some(format!("{label} must be a valid URL."));
+    };
+
+    if url.scheme() != "https" || url.host_str().is_none() {
+        return Some(format!("{label} must start with https://."));
+    }
+
+    if !url.username().is_empty() || url.password().is_some() {
+        return Some(format!("{label} must not contain a user name or password."));
+    }
+
+    None
 }
 
 /// `parseId`: `{ id }` with a safe job id (`jobs:cancel`, `retry`, `retry-register`, `resume`,
@@ -913,5 +1016,94 @@ mod tests {
         ] {
             assert!(parse_video_bulk_delete(bad.clone()).is_err(), "{bad:?}");
         }
+    }
+
+    #[test]
+    fn r2_save_trims_values_and_drops_blank_secrets() {
+        let input = parse_r2_save(Some(json!({
+            "endpoint": " https://acct.r2.cloudflarestorage.com ",
+            "bucket": " media ",
+            "url": "https://cdn.example.com",
+            "accessKeyId": "   ",
+            "secretAccessKey": "  s3cr3t  "
+        })))
+        .unwrap();
+
+        assert_eq!(input.endpoint, "https://acct.r2.cloudflarestorage.com");
+        assert_eq!(input.bucket, "media");
+        assert!(input.access_key_id.is_none());
+        assert_eq!(input.secret_access_key.as_ref().unwrap().expose(), "s3cr3t");
+        assert!(r2_input_problems(&input).is_empty());
+
+        let omitted = parse_r2_save(Some(json!({
+            "endpoint": "https://a.example.com", "bucket": "b", "url": "https://c.example.com",
+            "accessKeyId": null
+        })))
+        .unwrap();
+
+        assert!(omitted.access_key_id.is_none() && omitted.secret_access_key.is_none());
+    }
+
+    #[test]
+    fn r2_save_rejects_bad_shapes_without_echoing_values() {
+        let ok = json!({ "endpoint": "https://a.example.com", "bucket": "b", "url": "https://c.example.com" });
+
+        assert!(parse_r2_save(None).is_err());
+        assert!(parse_r2_save(Some(json!("x"))).is_err());
+
+        let mut extra = ok.clone();
+        extra["siteUrl"] = json!("https://evil.example.com");
+        assert!(parse_r2_save(Some(extra)).is_err());
+
+        let mut missing = ok.clone();
+        missing.as_object_mut().unwrap().remove("bucket");
+        assert!(parse_r2_save(Some(missing)).is_err());
+
+        let mut wrong_type = ok.clone();
+        wrong_type["secretAccessKey"] = json!(42);
+        assert!(parse_r2_save(Some(wrong_type)).is_err());
+
+        let mut long_bucket = ok.clone();
+        long_bucket["bucket"] = json!("b".repeat(256));
+        assert!(parse_r2_save(Some(long_bucket)).is_err());
+
+        let mut long_secret = ok.clone();
+        long_secret["secretAccessKey"] = json!("TOPSECRET".repeat(200));
+        let error = parse_r2_save(Some(long_secret)).unwrap_err();
+
+        assert!(!error.0.contains("TOPSECRET"));
+
+        let mut long_url = ok;
+        long_url["url"] = json!(format!("https://{}.example.com", "a".repeat(2100)));
+        assert!(parse_r2_save(Some(long_url)).is_err());
+    }
+
+    #[test]
+    fn r2_input_problems_flag_non_https_empty_bucket_and_credentials() {
+        let input = parse_r2_save(Some(json!({
+            "endpoint": "http://acct.example.com",
+            "bucket": "  ",
+            "url": "https://user:pw@cdn.example.com"
+        })))
+        .unwrap();
+        let problems = r2_input_problems(&input);
+
+        assert_eq!(problems["endpoint"], "Endpoint must start with https://.");
+        assert_eq!(problems["bucket"], "Enter the bucket name.");
+        assert_eq!(
+            problems["url"],
+            "Public URL must not contain a user name or password."
+        );
+        assert!(!problems["url"].contains("pw"));
+
+        let blank = parse_r2_save(Some(
+            json!({ "endpoint": "", "bucket": "b", "url": "not a url" }),
+        ))
+        .unwrap();
+        let problems = r2_input_problems(&blank);
+
+        assert_eq!(problems["endpoint"], "Enter the endpoint.");
+        assert_eq!(problems["url"], "Public URL must be a valid URL.");
+        assert!(!problems.contains_key("bucket"));
     }
 }
