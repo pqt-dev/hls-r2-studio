@@ -3,6 +3,7 @@
 //! handler function below; the handlers take the queue and a `JobsDesktop` (dialog, clipboard,
 //! browser) so they are tested without Tauri.
 
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -12,11 +13,14 @@ use tauri_plugin_dialog::DialogExt;
 
 use super::auth::rejected;
 use super::validate::{
-    expect_no_args, parse_add_paths, parse_copy, parse_job_id_payload, MAX_ADD_PATHS,
+    expect_no_args, parse_add_paths, parse_copy, parse_job_id_payload, VideosListInput,
+    MAX_ADD_PATHS,
 };
+use super::videos::{list_videos, VideosListResult};
 use super::IpcError;
+use crate::api::videos::VideoSort;
 use crate::desktop::{is_embed_url_of_site, open_external_https};
-use crate::dto::{ActionResult, AddFilesResult, CopyKind, JobDto};
+use crate::dto::{ActionResult, AddFilesResult, AuthStatus, CopyKind, JobDto};
 use crate::logger::Log;
 use crate::queue::job_dto::registered_field;
 use crate::queue::{JobQueue, VIDEO_EXTENSIONS};
@@ -265,7 +269,53 @@ pub fn jobs_list(
 ) -> Result<Vec<JobDto>, IpcError> {
     expect_no_args(payload.as_ref()).map_err(|e| rejected(&state, "jobs:list", e))?;
 
-    Ok(state.queue.list())
+    let jobs = state.queue.list();
+
+    start_thumbnail_prefetch(&state, &jobs);
+
+    Ok(jobs)
+}
+
+/// Per page of the one-off prefetch (the newest videos of the site).
+const PREFETCH_PER_PAGE: u32 = 100;
+
+/// True when a finished job knows its video but has no thumbnail URL yet.
+pub(crate) fn needs_thumbnail_prefetch(jobs: &[JobDto]) -> bool {
+    jobs.iter()
+        .any(|job| job.video_id.is_some() && job.thumbnail_url.is_none())
+}
+
+/// Fills the link cache once per signed-in session when finished jobs lack a thumbnail (older
+/// history, cache cleared): ONE request for the newest page of videos, fire and forget, then the
+/// jobs are emitted again. Never one request per job.
+fn start_thumbnail_prefetch(state: &AppState, jobs: &[JobDto]) {
+    if !needs_thumbnail_prefetch(jobs)
+        || state.auth.get_state().status != AuthStatus::SignedIn
+        || state.thumbnails_prefetched.swap(true, Ordering::SeqCst)
+    {
+        return;
+    }
+
+    let client = Arc::clone(&state.site_client);
+    let cache = Arc::clone(&state.video_links);
+    let queue = Arc::clone(&state.queue);
+    let r2_base = state.config.r2_public_url();
+
+    tauri::async_runtime::spawn(async move {
+        let input = VideosListInput {
+            page: 1,
+            per_page: PREFETCH_PER_PAGE,
+            query: None,
+            sort: VideoSort::Newest,
+            status: None,
+        };
+
+        if let VideosListResult::Ok { .. } =
+            list_videos(&client, input, r2_base.as_deref(), &cache).await
+        {
+            queue.notify_changed();
+        }
+    });
 }
 
 #[tauri::command]
@@ -403,7 +453,31 @@ pub(super) mod tests {
     use super::*;
     use crate::dto::JobState;
     use crate::logger::testing::RecordingLogger;
+    use crate::queue::file_validation::PathStyle;
+    use crate::queue::job_dto::{to_job_dto, JobRuntimeInfo};
     use crate::queue::testing::{record, signed_out, Harness};
+
+    #[test]
+    fn prefetch_is_needed_only_for_registered_jobs_without_a_thumbnail() {
+        let mut done = crate::store::history::tests_support::job("d", JobState::Done);
+        let dto = |record: &crate::store::JobRecord, thumbnail: Option<&str>| {
+            let info = JobRuntimeInfo {
+                thumbnail_url: thumbnail.map(str::to_string),
+                ..JobRuntimeInfo::default()
+            };
+
+            to_job_dto(record, &info, PathStyle::Posix)
+        };
+
+        assert!(!needs_thumbnail_prefetch(&[dto(&done, None)]));
+        done.registered = Some(json!({ "id": 3, "public_id": "p", "embed_url": EMBED }));
+        assert!(needs_thumbnail_prefetch(&[dto(&done, None)]));
+        assert!(!needs_thumbnail_prefetch(&[dto(
+            &done,
+            Some("https://cdn.example.com/t.jpg")
+        )]));
+        assert!(!needs_thumbnail_prefetch(&[]));
+    }
 
     const EMBED: &str = "https://site.example.com/embed/abc123";
     const SITE: Option<&str> = Some("https://site.example.com");

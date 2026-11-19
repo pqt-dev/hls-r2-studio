@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 use super::videos::{build_public_url, VideoDetail, VideoListItem};
+use crate::pipeline::register::{RegisterPayload, RegisteredVideo};
 
 /// Videos kept at most; a longer list restarts the cache instead of growing it.
 pub const MAX_CACHED_VIDEOS: usize = 5000;
@@ -53,6 +54,29 @@ impl From<&VideoDetail> for VideoLinks {
 }
 
 impl VideoLinks {
+    /// From a video the app just registered: the playlist and thumbnail URLs are built from the
+    /// register payload paths and the R2 public base URL (`None` when either is missing).
+    pub fn from_registered(
+        registered: &RegisteredVideo,
+        payload: &RegisterPayload,
+        r2_base: Option<&str>,
+    ) -> Self {
+        Self {
+            public_id: registered.public_id.clone(),
+            embed_url: Some(registered.embed_url.clone()),
+            playlist_url: r2_base.and_then(|base| build_public_url(base, &payload.playlist_path)),
+            storage_folder: None,
+            thumbnail_url: r2_base
+                .zip(payload.thumbnail_path.as_deref())
+                .and_then(|(base, path)| build_public_url(base, path)),
+            custom_image_url: None,
+            storyboard_urls: Vec::new(),
+            detail_loaded: false,
+            width: payload.output_width.and_then(|w| u32::try_from(w).ok()),
+            height: payload.output_height.and_then(|h| u32::try_from(h).ok()),
+        }
+    }
+
     /// From a list item; the playlist URL is built from its storage path and the R2 public base
     /// URL (`None` when either is missing).
     pub fn from_list_item(item: &VideoListItem, r2_base: Option<&str>) -> Self {
@@ -136,6 +160,55 @@ mod tests {
             width: Some(1280),
             height: Some(720),
         }
+    }
+
+    fn registered() -> (RegisteredVideo, RegisterPayload) {
+        let payload: RegisterPayload = serde_json::from_value(serde_json::json!({
+            "public_id": "aaaaaaaaaaaa", "title": "t", "original_filename": "t.mp4",
+            "original_size_bytes": 1, "disk_prefix": "2026/01/01/t-aaaaaaaaaaaa/",
+            "playlist_path": "2026/01/01/t-aaaaaaaaaaaa/playlist.m3u8",
+            "thumbnail_path": "2026/01/01/t-aaaaaaaaaaaa/thumbnail.jpg",
+            "storyboards": null, "duration": null, "output_width": 1280, "output_height": 720,
+            "output_fps": null, "output_bitrate_kbps": null, "output_codec": null
+        }))
+        .unwrap();
+        let registered = RegisteredVideo {
+            id: 5,
+            public_id: "aaaaaaaaaaaa".into(),
+            embed_url: "https://site.example.com/embed/aaaaaaaaaaaa".into(),
+        };
+
+        (registered, payload)
+    }
+
+    #[test]
+    fn from_registered_builds_urls_from_the_payload_and_r2_base() {
+        let (registered, mut payload) = registered();
+        let links =
+            VideoLinks::from_registered(&registered, &payload, Some("https://cdn.example.com"));
+
+        assert_eq!(
+            links.thumbnail_url.as_deref(),
+            Some("https://cdn.example.com/2026/01/01/t-aaaaaaaaaaaa/thumbnail.jpg")
+        );
+        assert_eq!(
+            links.playlist_url.as_deref(),
+            Some("https://cdn.example.com/2026/01/01/t-aaaaaaaaaaaa/playlist.m3u8")
+        );
+        assert_eq!((links.width, links.height), (Some(1280), Some(720)));
+        assert!(!links.detail_loaded);
+
+        // No R2 base or no thumbnail path: no thumbnail URL.
+        assert_eq!(
+            VideoLinks::from_registered(&registered, &payload, None).thumbnail_url,
+            None
+        );
+        payload.thumbnail_path = None;
+        assert_eq!(
+            VideoLinks::from_registered(&registered, &payload, Some("https://cdn.example.com"))
+                .thumbnail_url,
+            None
+        );
     }
 
     #[test]

@@ -10,6 +10,7 @@ use super::file_validation::PathStyle;
 use super::states::{
     is_attention_state, is_final_state, is_paused_upload, is_retryable_state, stage_key,
 };
+use crate::desktop::safe_https_url;
 use crate::dto::{JobDto, JobErrorDetail, JobState};
 use crate::store::JobRecord;
 
@@ -26,6 +27,9 @@ pub struct JobRuntimeInfo {
     pub waiting_for_network: bool,
     /// Epoch ms the current outage started.
     pub network_wait_since: Option<i64>,
+    /// Thumbnail URL Rust remembers for the job's video (link cache); validated before it is
+    /// put on the DTO.
+    pub thumbnail_url: Option<String>,
 }
 
 /// True when the record holds a usable register payload (`Boolean(job.registerPayload)`; a
@@ -41,7 +45,7 @@ pub fn registered_field<'a>(job: &'a JobRecord, field: &str) -> Option<&'a str> 
 }
 
 /// `registered.id` (the site's numeric video id) of a done job, when it is a positive integer.
-fn registered_video_id(job: &JobRecord) -> Option<i64> {
+pub fn registered_video_id(job: &JobRecord) -> Option<i64> {
     job.registered
         .as_ref()?
         .get("id")?
@@ -105,6 +109,11 @@ pub fn to_job_dto(job: &JobRecord, runtime: &JobRuntimeInfo, style: PathStyle) -
         job.public_id.clone()
     };
 
+    let video_id = registered_video_id(job);
+    let thumbnail_url = video_id
+        .and(runtime.thumbnail_url.as_deref())
+        .and_then(safe_https_url);
+
     JobDto {
         id: job.id.clone(),
         file_name: style.base_name(&job.source_path),
@@ -127,7 +136,8 @@ pub fn to_job_dto(job: &JobRecord, runtime: &JobRuntimeInfo, style: PathStyle) -
         error_detail: error_detail_of(job),
         public_id,
         embed_url: registered_field(job, "embed_url").map(str::to_string),
-        video_id: registered_video_id(job),
+        video_id,
+        thumbnail_url,
         created_at: job.created_at.clone(),
         updated_at: job.updated_at.clone(),
         started_at: job.started_at.clone(),
@@ -175,6 +185,84 @@ mod tests {
         assert!(!text.contains("disk_prefix"));
         assert!(!text.contains("2026/01/01"));
         assert!(dto.can_resume && dto.can_retry && dto.can_remove && !dto.can_cancel);
+        assert!(dto.thumbnail_url.is_none());
+
+        // A finished job exposes only the https CDN URL, still no path or prefix.
+        let (mut done, info) = done_with_video(Some("https://cdn.example.com/x/thumbnail.jpg"));
+        done.source_path = "/home/alice/secret/clip.mp4".into();
+        done.prefix = Some("2026/01/01/t-aaaaaaaaaaaa/".into());
+        let dto = to_job_dto(&done, &info, PathStyle::Posix);
+        let text = serde_json::to_string(&dto).unwrap();
+
+        assert!(dto
+            .thumbnail_url
+            .as_deref()
+            .unwrap()
+            .starts_with("https://"));
+        assert!(!text.contains("/home/alice"));
+        assert!(!text.contains("2026/01/01"));
+    }
+
+    fn done_with_video(thumbnail: Option<&str>) -> (JobRecord, JobRuntimeInfo) {
+        let mut done = job("d", JobState::Done);
+        done.registered =
+            Some(json!({ "id": 9, "public_id": "p", "embed_url": "https://s/embed/p" }));
+
+        (
+            done,
+            JobRuntimeInfo {
+                thumbnail_url: thumbnail.map(str::to_string),
+                ..JobRuntimeInfo::default()
+            },
+        )
+    }
+
+    #[test]
+    fn thumbnail_url_is_a_safe_https_url_or_absent() {
+        let (done, info) = done_with_video(Some("https://cdn.example.com/a/thumbnail.jpg"));
+        let dto = to_job_dto(&done, &info, PathStyle::Posix);
+
+        assert_eq!(
+            dto.thumbnail_url.as_deref(),
+            Some("https://cdn.example.com/a/thumbnail.jpg")
+        );
+        assert!(serde_json::to_string(&dto)
+            .unwrap()
+            .contains("\"thumbnailUrl\":\"https://cdn.example.com/a/thumbnail.jpg\""));
+
+        // Cache miss: absent and not serialized.
+        let (done, info) = done_with_video(None);
+        let dto = to_job_dto(&done, &info, PathStyle::Posix);
+        assert_eq!(dto.thumbnail_url, None);
+        assert!(!serde_json::to_string(&dto)
+            .unwrap()
+            .contains("thumbnailUrl"));
+
+        // Unsafe values are dropped.
+        for bad in [
+            "http://cdn.example.com/t.jpg",
+            "https://user:pw@cdn.example.com/t.jpg",
+            "file:///home/alice/t.jpg",
+            "/home/alice/t.jpg",
+        ] {
+            let (done, info) = done_with_video(Some(bad));
+            assert_eq!(
+                to_job_dto(&done, &info, PathStyle::Posix).thumbnail_url,
+                None
+            );
+        }
+
+        // Without a registered video id there is no thumbnail at all.
+        let mut no_id = job("n", JobState::Waiting);
+        no_id.registered = None;
+        let info = JobRuntimeInfo {
+            thumbnail_url: Some("https://cdn.example.com/t.jpg".into()),
+            ..JobRuntimeInfo::default()
+        };
+        assert_eq!(
+            to_job_dto(&no_id, &info, PathStyle::Posix).thumbnail_url,
+            None
+        );
     }
 
     #[test]

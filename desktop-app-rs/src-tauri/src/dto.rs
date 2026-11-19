@@ -215,6 +215,10 @@ pub struct JobDto {
     /// Numeric id of the video on the site (`registered.id`); set only for a registered job.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video_id: Option<i64>,
+    /// Public https thumbnail URL of a registered video when Rust already knows it (its link
+    /// cache); absent otherwise. Never a local path.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub thumbnail_url: Option<String>,
     pub created_at: String,
     pub updated_at: String,
     pub started_at: Option<String>,
@@ -434,6 +438,7 @@ mod tests {
             public_id: None,
             embed_url: None,
             video_id: None,
+            thumbnail_url: None,
             created_at: "t".into(),
             updated_at: "t".into(),
             started_at: None,

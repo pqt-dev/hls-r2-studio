@@ -567,6 +567,7 @@ impl Harness {
             runtime: tokio::runtime::Handle::current(),
             throttle: Duration::from_millis(250),
             shutdown_timeout: Duration::from_millis(200),
+            video_links: None,
         });
         let snapshots = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&snapshots);
