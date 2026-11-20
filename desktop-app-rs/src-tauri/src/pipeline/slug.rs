@@ -3,7 +3,7 @@
 //!
 //! Laravel's `Str::slug` first calls `Str::ascii()` (voku/portable-ascii, language 'en'), so
 //! `ascii_table.rs` is the table extracted from that very function by
-//! `desktop-app/scripts/gen-ascii-table.php` (Latin, Vietnamese, Greek, Cyrillic, punctuation,
+//! `desktop-app-rs/scripts/gen-ascii-table.php` (Latin, Vietnamese, Greek, Cyrillic, punctuation,
 //! currency, ligatures). It gives exact parity with PHP for those blocks (checked by the golden
 //! test) and adds no dependency.
 //!

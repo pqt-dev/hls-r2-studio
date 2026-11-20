@@ -1,5 +1,5 @@
 //! GENERATED mechanically from desktop-app/src/main/pipeline/asciiTable.generated.ts (itself generated
-//! by desktop-app/scripts/gen-ascii-table.php from Laravel `Str::ascii()`). Do not edit by hand.
+//! by desktop-app-rs/scripts/gen-ascii-table.php from Laravel `Str::ascii()`). Do not edit by hand.
 //!
 //! Sorted by code point (binary search). Only code points >= 0x80 are listed.
 
