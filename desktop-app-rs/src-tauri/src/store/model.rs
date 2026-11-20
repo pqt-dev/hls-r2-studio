@@ -9,7 +9,7 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::{Map, Number, Value};
 
-use crate::dto::JobState;
+use crate::dto::{ActivityLevel, JobState};
 use crate::pipeline::register::RegisterPayload;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -53,6 +53,17 @@ pub enum JobMode {
     Resume,
 }
 
+/// One line of a job's local activity log (shown in the Queue "View details" dialog). Local
+/// only; the text is written by `queue/activity.rs`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityEntry {
+    /// ISO 8601 time the line was recorded.
+    pub at: String,
+    pub level: ActivityLevel,
+    pub text: String,
+}
+
 /// `registerPayload` is `undefined | null | object`: keep null and absent apart.
 fn present_value<'de, D: Deserializer<'de>>(d: D) -> Result<Option<Value>, D::Error> {
     Value::deserialize(d).map(Some)
@@ -94,6 +105,10 @@ pub struct JobRecord {
     /// jobs finished before this field existed: they are never backfilled from the server.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thumbnail_url: Option<String>,
+    /// Local activity log, oldest first, capped at `queue::activity::MAX_ACTIVITY` lines. Absent
+    /// in records written before the field existed (they load with an empty list).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub activity: Vec<ActivityEntry>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -197,6 +212,31 @@ mod tests {
             record.thumbnail_url.as_deref(),
             Some("https://cdn.example.com/a/thumbnail.jpg")
         );
+        assert_eq!(serde_json::to_value(&record).unwrap(), stored);
+    }
+
+    #[test]
+    fn activity_is_optional_and_round_trips() {
+        // An old record (no field) loads with an empty list and writes back without it.
+        let old: JobRecord = serde_json::from_value(electron_record()).unwrap();
+
+        assert!(old.activity.is_empty());
+        assert!(serde_json::to_value(&old)
+            .unwrap()
+            .get("activity")
+            .is_none());
+
+        let mut stored = electron_record();
+
+        stored["activity"] = json!([
+            { "at": "2026-03-05T10:00:00.000Z", "level": "info", "text": "Added to the queue" },
+            { "at": "2026-03-05T10:00:05.000Z", "level": "error", "text": "Failed: x" }
+        ]);
+
+        let record: JobRecord = serde_json::from_value(stored.clone()).unwrap();
+
+        assert_eq!(record.activity.len(), 2);
+        assert_eq!(record.activity[1].level, ActivityLevel::Error);
         assert_eq!(serde_json::to_value(&record).unwrap(), stored);
     }
 

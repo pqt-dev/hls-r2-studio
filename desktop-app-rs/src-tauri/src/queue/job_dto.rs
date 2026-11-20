@@ -6,6 +6,7 @@
 use chrono::{SecondsFormat, TimeZone, Utc};
 use serde_json::Value;
 
+use super::activity::to_dto_entries;
 use super::file_validation::PathStyle;
 use super::states::{
     is_attention_state, is_final_state, is_paused_upload, is_retryable_state, stage_key,
@@ -124,6 +125,7 @@ pub fn to_job_dto(job: &JobRecord, runtime: &JobRuntimeInfo, style: PathStyle) -
         updated_at: job.updated_at.clone(),
         started_at: job.started_at.clone(),
         finished_at: job.finished_at.clone(),
+        activity: to_dto_entries(job),
         can_cancel: !runtime.cancel_requested
             && (running || job.state == JobState::Waiting || is_attention_state(job.state)),
         can_retry: !running && (is_retryable_state(job.state) || is_paused_upload(job.state)),

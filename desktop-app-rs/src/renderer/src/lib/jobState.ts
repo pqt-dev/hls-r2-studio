@@ -37,16 +37,6 @@ export function isFinished(state: JobState): boolean {
     );
 }
 
-/** States that offer the "View details" dialog. */
-export function hasDetailsView(state: JobState): boolean {
-    return (
-        state === 'failed' ||
-        state === 'register_failed' ||
-        state === 'interrupted' ||
-        state === 'upload_interrupted'
-    );
-}
-
 /**
  * Solid (filled) Fluent icon shown next to the status text so the state is never color only. All
  * but `attention` belong to the same circle family: clock, sync, check, dismiss, pause, subtract.

@@ -298,10 +298,19 @@ async fn persists_state_transitions_but_never_progress_ticks() {
     let before = h.store.get();
 
     h.clock.advance(1000);
-    for i in 1..=50 {
+    // Ticks below the first 10% mark write nothing at all.
+    for i in 1..=6 {
         hooks.on_progress(i);
     }
     assert_eq!(h.store.get(), before);
+
+    // Later ticks only add the activity lines of the marks they cross, nothing else.
+    for i in 7..=50 {
+        hooks.on_progress(i);
+    }
+    let mut after = h.store.get();
+    after.jobs[0].activity = before.jobs[0].activity.clone();
+    assert_eq!(after, before);
 
     hooks.on_stage(JobState::Thumbnail);
     assert_ne!(h.store.get(), before);
@@ -1872,4 +1881,209 @@ async fn recovery_keeps_uploads_with_payload_and_temp_dir_and_interrupts_the_res
     assert!(h.deleted().is_empty());
     assert!(h.queue.has_paused_uploads());
     assert!(h.dto("up").can_resume);
+}
+
+// ---- activity log ----------------------------------------------------------------------------
+
+fn activity_texts(h: &Harness) -> Vec<String> {
+    h.job("job-1")
+        .activity
+        .iter()
+        .map(|line| line.text.clone())
+        .collect()
+}
+
+#[tokio::test]
+async fn a_run_writes_the_activity_lines_in_order_with_each_mark_once() {
+    let h = started(vec![("/v/a.mp4", 1)]).await;
+    let hooks = h.run(0).hooks.clone();
+    let before_upload = h.store.get();
+
+    // Many ticks per stage: only the first crossing of each 10% mark writes a line.
+    hooks.on_stage(JobState::Transcoding);
+
+    let lines_before_ticks = h.job("job-1").activity.len();
+
+    for overall in 0..=69 {
+        hooks.on_progress(overall);
+        hooks.on_progress(overall);
+    }
+
+    assert_eq!(h.job("job-1").activity.len(), lines_before_ticks + 9);
+
+    for stage in [
+        JobState::Thumbnail,
+        JobState::Storyboard,
+        JobState::Uploading,
+    ] {
+        hooks.on_stage(stage);
+    }
+
+    let lines_before_ticks = h.job("job-1").activity.len();
+
+    for overall in 70..=97 {
+        hooks.on_progress(overall);
+        hooks.on_progress(overall);
+    }
+
+    assert_eq!(h.job("job-1").activity.len(), lines_before_ticks + 9);
+
+    hooks.on_stage(JobState::Registering);
+    h.run(0).resolve();
+    flush().await;
+
+    let mut expected: Vec<String> = ["Added to the queue", "Start transcoding\u{2026}"]
+        .map(String::from)
+        .to_vec();
+
+    expected.extend((1..=9).map(|n| format!("Transcoding: {}%", n * 10)));
+    expected.extend(
+        [
+            "Transcode finished",
+            "Start generating thumbnail\u{2026}",
+            "Thumbnail generated",
+            "Start generating storyboard\u{2026}",
+            "Storyboard generated",
+            "Start uploading to R2\u{2026}",
+        ]
+        .map(String::from),
+    );
+    expected.extend((1..=9).map(|n| format!("Uploading to R2: {}%", n * 10)));
+    expected.extend(
+        [
+            "Upload to R2 finished",
+            "Registering the video on the site\u{2026}",
+            "Finished: the video is ready",
+        ]
+        .map(String::from),
+    );
+
+    assert_eq!(activity_texts(&h), expected);
+    assert_ne!(h.store.get(), before_upload);
+    assert_eq!(h.queue.list()[0].activity.len(), expected.len());
+}
+
+#[tokio::test]
+async fn a_tick_that_jumps_over_transcode_marks_writes_only_the_highest() {
+    let h = started(vec![("/v/a.mp4", 1)]).await;
+    let hooks = h.run(0).hooks.clone();
+
+    hooks.on_stage(JobState::Transcoding);
+    // 35 of 70 is 50% of the transcode: marks 10..40 are skipped, not written late.
+    hooks.on_progress(35);
+    hooks.on_progress(36);
+    hooks.on_progress(42);
+
+    assert_eq!(
+        activity_texts(&h),
+        [
+            "Added to the queue",
+            "Start transcoding\u{2026}",
+            "Transcoding: 50%",
+            "Transcoding: 60%",
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_retried_run_writes_the_transcode_marks_again_from_the_start() {
+    let h = started(vec![("/v/a.mp4", 1)]).await;
+    let hooks = h.run(0).hooks.clone();
+
+    hooks.on_stage(JobState::Transcoding);
+    hooks.on_progress(14);
+    h.run(0).reject(PipelineError::new(
+        PipelineErrorKind::Failed,
+        JobState::Transcoding,
+        "ffmpeg failed",
+    ));
+    flush().await;
+    assert_eq!(h.queue.retry("job-1").await, ok());
+    flush().await;
+
+    let hooks = h.run(1).hooks.clone();
+
+    hooks.on_stage(JobState::Transcoding);
+    hooks.on_progress(14);
+
+    let marks = activity_texts(&h)
+        .into_iter()
+        .filter(|t| t == "Transcoding: 20%")
+        .count();
+
+    assert_eq!(marks, 2);
+}
+
+#[tokio::test]
+async fn a_failed_job_ends_with_an_error_line() {
+    let h = started(vec![("/v/a.mp4", 1)]).await;
+
+    h.run(0).reject(PipelineError::new(
+        PipelineErrorKind::Failed,
+        JobState::Transcoding,
+        "ffmpeg failed",
+    ));
+    flush().await;
+
+    let last = h.job("job-1").activity.last().cloned().unwrap();
+
+    assert_eq!(last.text, "Failed: ffmpeg failed");
+    assert_eq!(last.level, crate::dto::ActivityLevel::Error);
+}
+
+#[tokio::test]
+async fn a_resumed_upload_does_not_repeat_the_marks_already_written() {
+    let h = paused();
+
+    h.store.update(|d| {
+        let job = &mut d.jobs[0];
+
+        job.activity = [
+            "Start transcoding\u{2026}",
+            "Uploading to R2: 10%",
+            "Uploading to R2: 20%",
+        ]
+        .iter()
+        .map(|text| crate::store::ActivityEntry {
+            at: "2026-01-01T00:00:00.000Z".into(),
+            level: crate::dto::ActivityLevel::Info,
+            text: (*text).into(),
+        })
+        .collect();
+    });
+    assert_eq!(h.queue.resume("p1"), ok());
+    flush().await;
+
+    let hooks = h.resume_runs()[0].hooks.clone();
+
+    for overall in [80, 82, 84, 86, 88] {
+        hooks.on_progress(overall);
+    }
+
+    // Resuming does not transcode again: no transcode marks are written.
+    assert!(!h
+        .job("p1")
+        .activity
+        .iter()
+        .any(|l| l.text.starts_with("Transcoding: ")));
+
+    let texts: Vec<String> = h
+        .job("p1")
+        .activity
+        .iter()
+        .map(|l| l.text.clone())
+        .collect();
+
+    assert_eq!(
+        texts,
+        [
+            "Start transcoding\u{2026}",
+            "Uploading to R2: 10%",
+            "Uploading to R2: 20%",
+            "Resume requested",
+            "Resuming the upload",
+            "Uploading to R2: 30%",
+            "Uploading to R2: 40%",
+        ]
+    );
 }

@@ -38,6 +38,9 @@ export function makeJob(partial: Partial<JobDto> = {}): JobDto {
         updatedAt: '2026-01-01T10:00:00.000Z',
         startedAt: null,
         finishedAt: null,
+        activity: [
+            { at: '2026-01-01T10:00:00.000Z', level: 'info', text: 'Added to the queue' },
+        ],
         canCancel: false,
         canRetry: false,
         canResume: false,

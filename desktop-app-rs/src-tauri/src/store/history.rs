@@ -55,6 +55,7 @@ pub(crate) mod tests_support {
             mode: None,
             registered: None,
             thumbnail_url: None,
+            activity: Vec::new(),
             extra: Map::new(),
         }
     }

@@ -222,7 +222,7 @@ describe('GroupHeader', () => {
 });
 
 describe('Queue rows with the shared pieces', () => {
-    it('shows the accented View in Library button and Remove on a finished row, with the shared row surface', async () => {
+    it('shows the accented View in Library button, View details and Remove on a finished row, with the shared row surface', async () => {
         await renderQueue({
             jobs: [
                 makeJob({
@@ -243,7 +243,11 @@ describe('Queue rows with the shared pieces', () => {
             within(row)
                 .getAllByRole('button')
                 .map((button) => button.getAttribute('aria-label')),
-        ).toEqual(['View in Library for done.mp4', 'Remove for done.mp4']);
+        ).toEqual([
+            'View in Library for done.mp4',
+            'View details for done.mp4',
+            'Remove for done.mp4',
+        ]);
         expect(
             within(row).getByRole('button', { name: 'View in Library for done.mp4' }),
         ).toHaveClass('video-quick-primary');

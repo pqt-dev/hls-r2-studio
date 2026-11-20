@@ -30,6 +30,15 @@ function seedJobs(): JobDto[] {
             progress: 38,
             startedAt: iso(4 * MIN),
             createdAt: iso(5 * MIN),
+            activity: [
+                { at: iso(5 * MIN), level: 'info', text: 'Added to the queue' },
+                { at: iso(4 * MIN), level: 'info', text: 'Start transcoding\u2026' },
+                { at: iso(3 * MIN + 40_000), level: 'info', text: 'Transcoding: 10%' },
+                { at: iso(3 * MIN + 20_000), level: 'info', text: 'Transcoding: 20%' },
+                { at: iso(3 * MIN), level: 'info', text: 'Transcoding: 30%' },
+                { at: iso(2 * MIN + 30_000), level: 'info', text: 'Transcoding: 40%' },
+                { at: iso(2 * MIN), level: 'info', text: 'Transcoding: 50%' },
+            ],
             canCancel: true,
         }),
         makeJob({
@@ -60,6 +69,15 @@ function seedJobs(): JobDto[] {
             errorDetail: { step: 'transcoding', exitCode: 1, stderrTail },
             createdAt: iso(2 * 60 * MIN),
             finishedAt: iso(2 * 60 * MIN),
+            activity: [
+                { at: iso(2 * 60 * MIN + 20_000), level: 'info', text: 'Added to the queue' },
+                { at: iso(2 * 60 * MIN + 10_000), level: 'info', text: 'Start transcoding\u2026' },
+                {
+                    at: iso(2 * 60 * MIN),
+                    level: 'error',
+                    text: 'Failed: ffmpeg could not read this video.',
+                },
+            ],
             canRetry: true,
             canRemove: true,
         }),
@@ -106,6 +124,21 @@ function seedJobs(): JobDto[] {
                 'Upload stopped: the network was unavailable for 30 minutes. Resume when you are back online.',
             errorDetail: { step: 'uploading', exitCode: null, stderrTail: [] },
             createdAt: iso(2 * 60 * MIN),
+            activity: [
+                { at: iso(2 * 60 * MIN), level: 'info', text: 'Added to the queue' },
+                { at: iso(100 * MIN), level: 'info', text: 'Start uploading to R2\u2026' },
+                { at: iso(95 * MIN), level: 'info', text: 'Uploading to R2: 40%' },
+                {
+                    at: iso(90 * MIN),
+                    level: 'info',
+                    text: 'Waiting for the network to come back\u2026',
+                },
+                {
+                    at: iso(60 * MIN),
+                    level: 'error',
+                    text: 'Upload interrupted: Upload stopped: the network was unavailable for 30 minutes.',
+                },
+            ],
             canResume: true,
             canRetry: true,
             canRemove: true,

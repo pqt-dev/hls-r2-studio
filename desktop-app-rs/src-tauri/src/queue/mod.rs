@@ -12,6 +12,7 @@
 // `PipelineError` is large by design (it carries the register payload); same as `pipeline`/`ffmpeg`.
 #![allow(clippy::result_large_err, clippy::large_enum_variant)]
 
+pub mod activity;
 pub mod backend;
 #[cfg(test)]
 mod concurrency_tests;

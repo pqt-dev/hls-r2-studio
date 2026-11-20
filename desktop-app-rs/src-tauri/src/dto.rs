@@ -192,6 +192,23 @@ pub struct JobErrorDetail {
     pub stderr_tail: Vec<String>,
 }
 
+/// Severity of one activity line (`JobActivityEntry.level`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActivityLevel {
+    Info,
+    Error,
+}
+
+/// One line of a job's local activity log (`JobActivityEntry` in ipc.ts).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivityEntryDto {
+    pub at: String,
+    pub level: ActivityLevel,
+    pub text: String,
+}
+
 /// Renderer-visible job. No file paths, payloads or secrets.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -221,6 +238,9 @@ pub struct JobDto {
     pub updated_at: String,
     pub started_at: Option<String>,
     pub finished_at: Option<String>,
+    /// Local activity log, oldest first (always an array; rebuilt from the timestamps for jobs
+    /// stored before the log existed).
+    pub activity: Vec<ActivityEntryDto>,
     pub can_cancel: bool,
     pub can_retry: bool,
     pub can_resume: bool,
@@ -426,6 +446,11 @@ mod tests {
             updated_at: "t".into(),
             started_at: None,
             finished_at: None,
+            activity: vec![ActivityEntryDto {
+                at: "t".into(),
+                level: ActivityLevel::Error,
+                text: "Failed: x".into(),
+            }],
             can_cancel: false,
             can_retry: true,
             can_resume: true,
@@ -435,6 +460,10 @@ mod tests {
         let value = to_value(job).unwrap();
         assert_eq!(value["state"], "upload_interrupted");
         assert_eq!(value["fileName"], "a.mp4");
+        assert_eq!(
+            value["activity"],
+            json!([{ "at": "t", "level": "error", "text": "Failed: x" }])
+        );
         assert_eq!(
             value["errorDetail"],
             json!({ "step": "uploading", "exitCode": null, "stderrTail": ["x"] })

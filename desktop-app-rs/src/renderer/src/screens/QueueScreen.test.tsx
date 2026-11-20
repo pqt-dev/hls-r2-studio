@@ -23,41 +23,46 @@ const CASES: ReadonlyArray<{
     buttons: string[];
     job: Partial<JobDto>;
 }> = [
-    { state: 'waiting', stage: 'Waiting', buttons: ['Cancel'], job: { canCancel: true } },
+    {
+        state: 'waiting',
+        stage: 'Waiting',
+        buttons: ['View details', 'Cancel'],
+        job: { canCancel: true },
+    },
     {
         state: 'transcoding',
         stage: 'Transcoding',
-        buttons: ['Cancel'],
+        buttons: ['View details', 'Cancel'],
         job: { canCancel: true, progress: 40 },
     },
     {
         state: 'thumbnail',
         stage: 'Thumbnail',
-        buttons: ['Cancel'],
+        buttons: ['View details', 'Cancel'],
         job: { canCancel: true, progress: 60 },
     },
     {
         state: 'storyboard',
         stage: 'Storyboard',
-        buttons: ['Cancel'],
+        buttons: ['View details', 'Cancel'],
         job: { canCancel: true, progress: 65 },
     },
     {
         state: 'uploading',
         stage: 'Uploading',
-        buttons: ['Cancel'],
+        buttons: ['View details', 'Cancel'],
         job: { canCancel: true, progress: 80 },
     },
     {
         state: 'registering',
         stage: 'Registering',
-        buttons: ['Cancel'],
+        buttons: ['View details', 'Cancel'],
         job: { canCancel: true, progress: 98 },
     },
     {
         state: 'done',
         stage: 'Done',
-        buttons: ['View in Library', 'Remove'],
+        buttons: ['View in Library', 'View details', 'Remove'],
         job: { canRemove: true, progress: 100 },
     },
     {
@@ -74,7 +79,7 @@ const CASES: ReadonlyArray<{
     {
         state: 'cancelled',
         stage: 'Cancelled',
-        buttons: ['Retry', 'Remove'],
+        buttons: ['Retry', 'View details', 'Remove'],
         job: { canRetry: true, canRemove: true },
     },
     {
@@ -103,7 +108,7 @@ const CASES: ReadonlyArray<{
     {
         state: 'needs_sign_in',
         stage: 'Sign-in needed',
-        buttons: ['Retry register', 'Cancel'],
+        buttons: ['Retry register', 'View details', 'Cancel'],
         job: { canCancel: true, canRetryRegister: true },
     },
 ];
@@ -223,7 +228,7 @@ describe('Queue screen', () => {
         expect(within(item).queryByText('Uploading')).not.toBeInTheDocument();
         expect(within(item).getByText('Retrying automatically')).toBeInTheDocument();
         expect(within(item).getByRole('progressbar')).toHaveValue(72);
-        expect(actionsOfRow(item)).toEqual(['Cancel']);
+        expect(actionsOfRow(item)).toEqual(['View details', 'Cancel']);
 
         push(() =>
             fake.emitJobs([
@@ -706,6 +711,70 @@ describe('Queue screen', () => {
             expect(dialog).toHaveTextContent('Upload paused');
             expect(dialog).toHaveTextContent('Upload stopped: the network was unavailable.');
             expect(dialog).toHaveTextContent('kept on disk');
+            expect(within(dialog).queryByLabelText('ffmpeg output')).not.toBeInTheDocument();
+        });
+
+        it('shows the activity and updates it live when the job changes', async () => {
+            const line = (text: string) => ({
+                at: '2026-01-01T10:00:00.000Z',
+                level: 'info' as const,
+                text,
+            });
+            const { user, fake } = await renderQueue({
+                jobs: [{ ...failed, activity: [line('Added to the queue')] }],
+            });
+
+            await clickJobAction(user, /^View details for /);
+
+            const dialog = screen.getByRole('dialog', { name: 'Job details' });
+
+            expect(within(dialog).getByRole('list', { name: 'Activity' })).toHaveTextContent(
+                'Added to the queue',
+            );
+
+            push(() =>
+                fake.emitJobs([
+                    {
+                        ...failed,
+                        activity: [line('Added to the queue'), line('Failed: ffmpeg failed')],
+                    },
+                ]),
+            );
+
+            expect(within(dialog).getAllByRole('listitem')).toHaveLength(2);
+            expect(within(dialog).getByText('Failed: ffmpeg failed')).toBeInTheDocument();
+        });
+
+        it('opens details for a running job and shows its activity without error sections', async () => {
+            const { user } = await renderQueue({
+                jobs: [
+                    makeJob({
+                        id: 't',
+                        fileName: 'live.mp4',
+                        state: 'transcoding',
+                        canCancel: true,
+                        progress: 40,
+                        activity: [
+                            {
+                                at: '2026-01-01T10:00:00.000Z',
+                                level: 'info',
+                                text: 'Transcoding started',
+                            },
+                        ],
+                    }),
+                ],
+            });
+
+            await clickJobAction(user, 'View details for live.mp4');
+
+            const dialog = screen.getByRole('dialog', { name: 'Job details' });
+
+            expect(within(dialog).getByRole('list', { name: 'Activity' })).toHaveTextContent(
+                'Transcoding started',
+            );
+            expect(within(dialog).queryByText('Message')).not.toBeInTheDocument();
+            expect(within(dialog).queryByText('No message was recorded.')).not.toBeInTheDocument();
+            expect(within(dialog).queryByText('Failing step')).not.toBeInTheDocument();
             expect(within(dialog).queryByLabelText('ffmpeg output')).not.toBeInTheDocument();
         });
 

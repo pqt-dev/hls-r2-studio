@@ -104,6 +104,14 @@ export interface AddFilesResult {
     canceled: boolean;
 }
 
+/** One line of a job's local activity log (written by Rust, never fetched from the site). */
+export interface JobActivityEntry {
+    /** ISO 8601 time. */
+    at: string;
+    level: 'info' | 'error';
+    text: string;
+}
+
 /** Renderer-visible job. No file paths, payloads or secrets. */
 export interface JobDto {
     id: string;
@@ -131,6 +139,8 @@ export interface JobDto {
     updatedAt: string;
     startedAt: string | null;
     finishedAt: string | null;
+    /** What happened to the job, oldest first; always an array (may be empty). */
+    activity: JobActivityEntry[];
     canCancel: boolean;
     /** For `upload_interrupted` this means "Start over" (process the video again). */
     canRetry: boolean;

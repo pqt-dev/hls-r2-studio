@@ -15,4 +15,4 @@ pub use app_store::{
 pub use file_ops::{FileOps, StdFileOps};
 pub use history::{cap_history, MAX_DONE_HISTORY};
 pub use json_store::{JsonStore, JsonStoreOptions};
-pub use model::{AppData, AppSettings, JobMode, JobRecord};
+pub use model::{ActivityEntry, AppData, AppSettings, JobMode, JobRecord};

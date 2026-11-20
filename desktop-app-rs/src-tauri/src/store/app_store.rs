@@ -102,6 +102,7 @@ fn is_valid_job(job: &Value) -> bool {
         && absent_or(get("registerStarted"), Value::is_boolean)
         && absent_or(get("mode"), |v| v.as_str() == Some("resume"))
         && absent_or(get("thumbnailUrl"), Value::is_string)
+        && absent_or(get("activity"), Value::is_array)
 }
 
 /// Structural check of a parsed store file (current schema). Does not repair anything.

@@ -146,6 +146,7 @@ pub fn record(id: &str, state: JobState) -> JobRecord {
         mode: None,
         registered: None,
         thumbnail_url: None,
+        activity: Vec::new(),
         extra: Map::new(),
     }
 }

@@ -13,6 +13,7 @@ Responsibilities between Rust (`src-tauri`) and the renderer (`src/renderer`) ar
 - Error and UI text stays in English.
 - API limits (per_page max etc.) are defined once in api/ and enforced in the client; callers never hardcode them.
 - Queue is local-only: it shows data stored in the job record at completion and never calls the site API (no list/detail lookups for Queue rows). Queue rows only manage the local job (cancel, retry, resume, remove, details, view in Library) as visible icon-only buttons "<Action> for <file>" (accent first, then View details, Cancel, Remove last; no kebab menu): no copy or open of site links there.
+- Each job keeps a local activity log (`activity` in the job record, written only by `src-tauri/src/queue/activity.rs`, max 200 lines, transcode and upload progress only at 10% marks) that the Queue shows in "View details"; it never calls the site.
 
 ## Shared UI components
 

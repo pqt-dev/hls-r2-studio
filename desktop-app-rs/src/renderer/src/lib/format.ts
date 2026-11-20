@@ -59,6 +59,20 @@ export function formatDateTime(iso: string): string {
     return new Intl.DateTimeFormat('en', { dateStyle: 'medium', timeStyle: 'short' }).format(time);
 }
 
+/** Absolute local time of day (`HH:MM:SS`, 24 hours), used for activity lines. */
+export function formatTimeOfDay(iso: string): string {
+    const time = new Date(iso);
+
+    if (Number.isNaN(time.getTime())) return '';
+
+    return new Intl.DateTimeFormat('en-GB', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false,
+    }).format(time);
+}
+
 export const STAGE_LABELS: Record<JobState, string> = {
     waiting: 'Waiting',
     transcoding: 'Transcoding',

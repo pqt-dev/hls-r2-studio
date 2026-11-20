@@ -1735,6 +1735,27 @@ button.status-count:hover {
     white-space: pre;
 }
 
+/* Activity list of the job details dialog: reuses `.log` (box, mono font) as a list of lines. */
+.activity-log {
+    list-style: none;
+    white-space: normal;
+}
+
+.activity-log li {
+    display: flex;
+    gap: var(--space-3);
+}
+
+.activity-log time {
+    flex: none;
+    color: var(--on-surface-muted);
+}
+
+.activity-log .activity-error,
+.activity-log .activity-error time {
+    color: var(--danger);
+}
+
 .toasts {
     position: fixed;
     right: var(--space-4);

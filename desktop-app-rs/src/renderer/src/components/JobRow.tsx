@@ -6,7 +6,7 @@ import { JobStateChip } from './JobStateChip';
 import { MediaTile } from './MediaTile';
 import { CloseIcon, InfoIcon, LibraryIcon, PlayIcon, RefreshIcon, TrashIcon } from './icons';
 import { QUICK_ACCENT_CLASS, QuickIconButton } from './VideoQuickActions';
-import { hasDetailsView, isRunning, statusKind } from '../lib/jobState';
+import { isRunning, statusKind } from '../lib/jobState';
 
 export type JobAction =
     'cancel' | 'retry' | 'retry-register' | 'resume' | 'remove' | 'view-library' | 'details';
@@ -105,7 +105,7 @@ function actionButtons(job: JobDto): RowButton[] {
             action: 'details',
             label: 'View details',
             icon: <InfoIcon />,
-            enabled: hasDetailsView(job.state),
+            enabled: true,
         },
         { action: 'cancel', label: 'Cancel', icon: <CloseIcon />, enabled: job.canCancel },
         { action: 'remove', label: 'Remove', icon: <TrashIcon />, enabled: job.canRemove },

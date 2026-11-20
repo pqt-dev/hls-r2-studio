@@ -186,6 +186,8 @@ describe('Queue order', () => {
         const { fake, user } = await renderQueue({ jobs: [first, second] });
 
         screen.getByRole('button', { name: 'Cancel for second.mp4' }).focus();
+        // Back over the second row's View details to the first row's Cancel.
+        await user.tab({ shift: true });
         await user.tab({ shift: true });
         expect(screen.getByRole('button', { name: 'Cancel for first.mp4' })).toHaveFocus();
 

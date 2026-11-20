@@ -33,6 +33,7 @@ use tokio::runtime::Handle;
 use tokio::sync::Notify;
 use tokio_util::sync::CancellationToken;
 
+use super::activity::{self, ActivityEvent, MarkKind};
 use super::backend::{QueueBackend, QueueContext, RunOutcome};
 use super::file_validation::{validate_video_path, PathStyle, REASON_DUPLICATE};
 use super::job_dto::{has_register_payload, to_job_dto, JobRuntimeInfo};
@@ -137,6 +138,9 @@ struct Runtime {
     /// State to return to when a register retry is cancelled.
     previous_state: JobState,
     progress: u32,
+    /// Highest transcode / upload 10% mark already logged (`None` = not read from the record yet).
+    transcode_mark: Option<u32>,
+    upload_mark: Option<u32>,
     /// Upload retries because the network is down (RAM only, never persisted).
     waiting_for_network: bool,
     network_wait_since: Option<i64>,
@@ -537,6 +541,7 @@ impl JobQueue {
         );
 
         let started_at = self.iso();
+        self.note_transition(&id, JobState::Transcoding);
         self.patch(&id, |j| {
             j.state = JobState::Transcoding;
             j.public_id = Some(public_id.clone());
@@ -596,6 +601,16 @@ impl JobQueue {
                 j.error_message = Some(message);
                 j.mode = None;
             });
+            self.note(
+                &job.id,
+                ActivityEvent::Ended {
+                    state: JobState::UploadInterrupted,
+                    message: self
+                        .get_job(&job.id)
+                        .and_then(|j| j.error_message)
+                        .as_deref(),
+                },
+            );
 
             return true;
         }
@@ -620,6 +635,7 @@ impl JobQueue {
             j.finished_at = None;
             j.mode = None;
         });
+        self.note(&id, ActivityEvent::Resuming);
         self.logger
             .info("Upload resumed", Some(json!({ "id": id })));
 
@@ -656,6 +672,8 @@ impl JobQueue {
             kind,
             previous_state,
             progress: 0,
+            transcode_mark: None,
+            upload_mark: None,
             waiting_for_network: false,
             network_wait_since: None,
             last_emit_at: self.now_ms(),
@@ -754,6 +772,14 @@ impl JobQueue {
                         job.error_message = Some(RECOVERED_UPLOAD_MESSAGE.into());
                         job.error_detail = Some(error_detail(JobState::Uploading, None, vec![]));
                         job.updated_at = now.clone();
+                        activity::record(
+                            job,
+                            &now,
+                            ActivityEvent::Ended {
+                                state: JobState::UploadInterrupted,
+                                message: Some(RECOVERED_UPLOAD_MESSAGE),
+                            },
+                        );
                         paused += 1;
                         continue;
                     }
@@ -768,6 +794,14 @@ impl JobQueue {
                         job.error_message = Some(RECOVERED_UPLOAD_MESSAGE.into());
                         job.finished_at = None;
                         job.updated_at = now.clone();
+                        activity::record(
+                            job,
+                            &now,
+                            ActivityEvent::Ended {
+                                state: JobState::UploadInterrupted,
+                                message: Some(RECOVERED_UPLOAD_MESSAGE),
+                            },
+                        );
                         paused += 1;
                         continue;
                     }
@@ -778,6 +812,14 @@ impl JobQueue {
                     job.finished_at = Some(now.clone());
                     job.updated_at = now.clone();
                     job.tmp_dir = None;
+                    activity::record(
+                        job,
+                        &now,
+                        ActivityEvent::Ended {
+                            state: JobState::Interrupted,
+                            message: Some(INTERRUPTED_MESSAGE),
+                        },
+                    );
 
                     if let Some(public_id) =
                         job.public_id.as_deref().filter(|id| is_valid_public_id(id))
@@ -973,6 +1015,7 @@ impl JobQueue {
                         mode: None,
                         registered: None,
                         thumbnail_url: None,
+                        activity: activity::initial(&now),
                         extra: Map::new(),
                     })
                     .collect();
@@ -1018,6 +1061,14 @@ impl JobQueue {
                 let resuming = job.mode == Some(JobMode::Resume);
                 let finished = self.iso();
 
+                self.note(
+                    id,
+                    ActivityEvent::Ended {
+                        state: JobState::Cancelled,
+                        message: None,
+                    },
+                );
+
                 self.patch(id, |j| {
                     j.state = JobState::Cancelled;
                     j.error_message = Some(CANCELLED_WAITING.into());
@@ -1037,6 +1088,13 @@ impl JobQueue {
                 // Files stay on R2: the site may already have registered the video.
                 let finished = self.iso();
 
+                self.note(
+                    id,
+                    ActivityEvent::Ended {
+                        state: JobState::Cancelled,
+                        message: None,
+                    },
+                );
                 self.patch(id, |j| {
                     j.state = JobState::Cancelled;
                     j.error_message = Some(CANCELLED_ATTENTION.into());
@@ -1075,6 +1133,12 @@ impl JobQueue {
 
             let stale_prefix = self.stale_prefix_of(&job);
 
+            self.note(
+                id,
+                ActivityEvent::RetryRequested {
+                    paused: is_paused_upload(job.state),
+                },
+            );
             self.restart_fresh_locked(id);
 
             (stale_prefix, job.site_origin.clone(), job.public_id.clone())
@@ -1189,6 +1253,7 @@ impl JobQueue {
                 return fail(other_site_message(&foreign));
             }
 
+            self.note(id, ActivityEvent::ResumeRequested);
             self.patch(id, |j| {
                 j.state = JobState::Waiting;
                 j.mode = Some(JobMode::Resume);
@@ -1236,6 +1301,7 @@ impl JobQueue {
                 id.to_string(),
                 self.new_runtime(seq, cancel.clone(), RunKind::Register, job.state),
             );
+            self.note_transition(id, JobState::Registering);
             self.patch(id, |j| {
                 j.state = JobState::Registering;
                 j.error_message = None;
@@ -1329,7 +1395,8 @@ impl JobQueue {
                     job.error_message = None;
                     job.error_detail = None;
                     job.finished_at = Some(now.clone());
-                    job.updated_at = now;
+                    job.updated_at = now.clone();
+                    activity::record(job, &now, ActivityEvent::Done);
                 }
 
                 d.jobs = cap_history(&d.jobs, MAX_DONE_HISTORY);
@@ -1416,6 +1483,7 @@ impl JobQueue {
             // Cancelling a register retry only stops that attempt; the uploaded files stay.
             let previous = runtime.previous_state;
 
+            self.note(id, ActivityEvent::RegisterCancelled);
             self.patch(id, |j| {
                 j.state = previous;
                 j.error_message = Some(REGISTER_CANCELLED.into());
@@ -1434,6 +1502,13 @@ impl JobQueue {
                 let message = redact(&failure.message);
                 let tmp_dir = tmp_dir.to_string_lossy().into_owned();
 
+                self.note(
+                    id,
+                    ActivityEvent::Ended {
+                        state: JobState::UploadInterrupted,
+                        message: Some(&message),
+                    },
+                );
                 self.patch(id, |j| {
                     j.state = JobState::UploadInterrupted;
                     j.error_message = Some(message);
@@ -1467,6 +1542,7 @@ impl JobQueue {
                     "Cannot resume the upload; starting over with a new video ID.",
                     Some(json!({ "id": id })),
                 );
+                self.note(id, ActivityEvent::ResumeUnavailable);
                 self.restart_fresh_locked(id);
 
                 return AfterFailure::Restart {
@@ -1492,6 +1568,13 @@ impl JobQueue {
         let keeps_payload = is_attention_state(kind);
         let finished = self.iso();
 
+        self.note(
+            id,
+            ActivityEvent::Ended {
+                state: kind,
+                message: Some(&message),
+            },
+        );
         self.patch(id, |j| {
             j.state = kind;
             j.error_message = Some(message);
@@ -1554,6 +1637,7 @@ impl JobQueue {
                 Self::clear_network_wait(rt);
             }
 
+            self.note_transition(id, stage);
             self.patch(id, |j| j.state = stage);
         }
 
@@ -1568,6 +1652,7 @@ impl JobQueue {
             };
 
             rt.progress = rt.progress.max(percent.min(100));
+            self.note_marks(rt, id);
             self.throttle(rt, id)
         };
 
@@ -1635,6 +1720,7 @@ impl JobQueue {
         };
 
         if started {
+            self.note(id, ActivityEvent::NetworkWait);
             self.changed(Some(id));
         } else if emit {
             self.emit_jobs();
@@ -1653,6 +1739,7 @@ impl JobQueue {
             }
 
             Self::clear_network_wait(rt);
+            self.note(id, ActivityEvent::NetworkRestored);
         }
 
         self.changed(Some(id));
@@ -1713,6 +1800,62 @@ impl JobQueue {
     }
 
     // ---- helpers --------------------------------------------------------------------------
+
+    /// Writes the activity line(s) of `event` into the job record, inside the same in-memory
+    /// store the state change uses (no extra file write: the store saves debounced). Callers
+    /// hold `state`. The texts and the decision to write live in `activity`.
+    fn note(&self, id: &str, event: ActivityEvent<'_>) {
+        let now = self.iso();
+
+        self.store.update(|d| {
+            if let Some(job) = d.jobs.iter_mut().find(|j| j.id == id) {
+                activity::record(job, &now, event);
+            }
+        });
+    }
+
+    /// `note` for the job moving from its current state to `to` (call BEFORE the patch that
+    /// changes the state).
+    fn note_transition(&self, id: &str, to: JobState) {
+        let now = self.iso();
+
+        self.store.update(|d| {
+            if let Some(job) = d.jobs.iter_mut().find(|j| j.id == id) {
+                let from = job.state;
+
+                activity::record(job, &now, ActivityEvent::Transition { from, to });
+            }
+        });
+    }
+
+    /// Progress ticks write nothing unless the transcode or upload crossed a new 10% mark (at
+    /// most 9 lines per stage per attempt). The marks already in the record (a resume) are read
+    /// once per run.
+    fn note_marks(&self, rt: &mut Runtime, id: &str) {
+        for kind in MarkKind::ALL {
+            let Some(mark) = activity::mark_of(kind, rt.progress) else {
+                continue;
+            };
+            let cache = match kind {
+                MarkKind::Transcode => &mut rt.transcode_mark,
+                MarkKind::Upload => &mut rt.upload_mark,
+            };
+            let logged = cache.unwrap_or_else(|| {
+                self.store.read(|d| {
+                    d.jobs
+                        .iter()
+                        .find(|j| j.id == id)
+                        .map_or(0, |j| activity::logged_mark(kind, &j.activity))
+                })
+            });
+
+            if mark > logged {
+                self.note(id, ActivityEvent::Mark(kind, mark));
+            }
+
+            *cache = Some(mark.max(logged));
+        }
+    }
 
     /// Persisted state change (a transition, never a progress tick). Callers hold `state`.
     fn patch(&self, id: &str, mutate: impl FnOnce(&mut JobRecord)) {
