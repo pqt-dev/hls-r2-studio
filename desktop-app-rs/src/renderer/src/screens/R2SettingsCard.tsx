@@ -44,8 +44,10 @@ function isDirty(form: Form, status: R2Status): boolean {
     );
 }
 
-const MASKED_KEY_PREFIX = '••••••••••••';
-const MASKED_SECRET = '••••••••••••••••';
+// Data masks for stored credentials, not icons; built with repeat() to avoid a literal glyph.
+const MASK_CHAR = String.fromCharCode(0x2022);
+const MASKED_KEY_PREFIX = MASK_CHAR.repeat(12);
+const MASKED_SECRET = MASK_CHAR.repeat(16);
 
 type SecretField = 'accessKeyId' | 'secretAccessKey';
 

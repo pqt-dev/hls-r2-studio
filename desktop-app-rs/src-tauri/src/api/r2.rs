@@ -246,8 +246,7 @@ mod tests {
 
     #[test]
     fn unknown_source_from_an_older_site_is_treated_as_none() {
-        let status =
-            parse_r2_status(&json!({ "configured": true, "source": "env" })).unwrap();
+        let status = parse_r2_status(&json!({ "configured": true, "source": "env" })).unwrap();
 
         assert_eq!(status.source, R2Source::None);
         assert!(status.configured);

@@ -60,9 +60,10 @@ describe('Queue row thumbnail', () => {
         ];
         const buttons = within(row()).getAllByRole('button');
 
-        // A finished row has View in Library and Remove only.
+        // A finished row has View in Library, View details, and Remove only.
         expect(buttons.map((b) => b.getAttribute('aria-label'))).toEqual([
             'View in Library for clip.mp4',
+            'View details for clip.mp4',
             'Remove for clip.mp4',
         ]);
         expect(screen.queryByRole('button', { name: /Copy thumbnail URL/ })).toBeNull();
