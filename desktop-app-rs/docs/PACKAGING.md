@@ -185,6 +185,16 @@ the ffmpeg and ffprobe binaries and the notices and ffmpeg license files after a
 TODO: verify on Windows: the exact pages of the wizard, whether a Desktop shortcut is created, and the
 default install folder.
 
+## App icon
+
+The master is `src-tauri/icons/source/logo.png` (1024x1024, Windows 11 style rounded-square tile). To
+regenerate: run `npx tauri icon src-tauri/icons/source/logo.png` from `desktop-app-rs`, then delete the extra
+output it creates (`Square*Logo.png`, `StoreLogo.png`, `android/`, `ios/`; only `32x32.png`, `128x128.png`,
+`128x128@2x.png`, `64x64.png`, `icon.png`, `icon.icns` and `icon.ico` are kept). The generator's `icon.ico` has
+no 20 and 40 px entries, so rebuild it with PNG entries for 16, 20, 24, 32, 40, 48, 64 and 256 (downscale each
+from the master; the 16 to 24 px entries may use a slightly bolder symbol). Also refresh
+`src/renderer/src/assets/logo.png` (128x128 copy of the master, used by `BrandMark`).
+
 ## Upgrade in place
 
 TODO: verify on Windows. Expected: installing a newer `HLS R2 Studio_<version>_x64-setup.exe` over an

@@ -130,7 +130,7 @@ export const CheckboxIcon = ({ state }: { state: 'none' | 'some' | 'all' }) => (
 );
 
 /**
- * App mark: the app logo (red circle, clapperboard and gear) as a decorative image. Source of truth
+ * App mark: the app logo (red rounded-square tile, clapperboard and gear) as a decorative image. Source of truth
  * is `src-tauri/icons/source/logo.png`; `src/assets/logo.png` is a downscaled copy for the UI.
  * `size` is in rem.
  */
