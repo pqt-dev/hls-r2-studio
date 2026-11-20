@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { ConfirmDialog } from '../components/Dialog';
 import {
     AboutIcon,
     BrandMark,
@@ -6,9 +7,11 @@ import {
     LibraryIcon,
     QueueIcon,
     SettingsIcon,
+    SignOutIcon,
 } from '../components/icons';
-import { siteHost } from '../lib/format';
+import { plural } from '../lib/format';
 import { useApp } from '../state/AppProvider';
+import { useToast } from '../state/Toasts';
 import { NavigationContext, type NavigationApi, type Tab } from '../state/Navigation';
 import { AboutScreen } from './AboutScreen';
 import { HomeScreen } from './HomeScreen';
@@ -31,15 +34,29 @@ const TABS: ReadonlyArray<{
 ];
 
 export function MainScreen() {
-    const { auth, settings, summary } = useApp();
+    const { api, auth, summary } = useApp();
+    const toast = useToast();
     const [tab, setTab] = useState<Tab>('home');
     // The video the Library should open when it mounts; cleared by any tab change of the user.
     const [libraryVideoId, setLibraryVideoId] = useState<number | undefined>(undefined);
     const refs = useRef<Partial<Record<Tab, HTMLButtonElement | null>>>({});
+    const [confirmSignOut, setConfirmSignOut] = useState(false);
+    const [signingOut, setSigningOut] = useState(false);
 
-    const host = siteHost(auth.siteUrl ?? settings?.siteUrl);
     const active = summary.running + summary.waiting;
     const current = TABS.find((item) => item.id === tab);
+
+    async function signOut(): Promise<void> {
+        setSigningOut(true);
+
+        try {
+            await api.auth.logout();
+        } catch {
+            toast.show('error', 'Could not sign out. Please try again.');
+        } finally {
+            setSigningOut(false);
+        }
+    }
 
     function selectTab(next: Tab): void {
         setLibraryVideoId(undefined);
@@ -135,27 +152,32 @@ export function MainScreen() {
                         ])}
                     </div>
 
-                    <div
-                        className="sidebar-footer"
-                        role="group"
-                        aria-label="Account"
-                        title={auth.siteUrl}
-                    >
-                        <span className="avatar" aria-hidden="true">
-                            {(auth.username ?? '?').slice(0, 1).toUpperCase()}
-                        </span>
-                        <p className="account">
-                            {auth.username !== undefined && (
+                    <div className="sidebar-footer" role="group" aria-label="Account">
+                        <div className="account-card">
+                            <span className="avatar" aria-hidden="true">
+                                {(auth.username ?? '?').slice(0, 1).toUpperCase()}
+                            </span>
+                            <span className="account">
                                 <strong className="account-name" title={auth.username}>
-                                    {auth.username}
+                                    {auth.username ?? 'Account'}
                                 </strong>
-                            )}
-                            {host !== '' && (
-                                <span className="account-site" title={host}>
-                                    {host}
-                                </span>
-                            )}
-                        </p>
+                                <span className="account-sub">Signed in</span>
+                            </span>
+                            <button
+                                type="button"
+                                className="btn btn-sm btn-danger-quiet account-signout"
+                                aria-label="Sign out"
+                                title="Sign out"
+                                disabled={signingOut}
+                                onClick={() => {
+                                    if (summary.running > 0) setConfirmSignOut(true);
+                                    else void signOut();
+                                }}
+                            >
+                                <SignOutIcon />
+                                <span className="account-signout-label">Sign out</span>
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -191,6 +213,21 @@ export function MainScreen() {
                     </main>
                 </div>
             </div>
+
+            {confirmSignOut && (
+                <ConfirmDialog
+                    title="Sign out now?"
+                    message={`${plural(summary.running, 'video is', 'videos are')} still being processed. They may need you to sign in again before they can finish.`}
+                    confirmLabel="Sign out"
+                    cancelLabel="Stay signed in"
+                    danger
+                    onCancel={() => setConfirmSignOut(false)}
+                    onConfirm={() => {
+                        setConfirmSignOut(false);
+                        void signOut();
+                    }}
+                />
+            )}
         </NavigationContext.Provider>
     );
 }

@@ -106,7 +106,6 @@ describe('Login screen', () => {
         const account = screen.getByRole('group', { name: 'Account' });
 
         expect(within(account).getByText('bob')).toBeInTheDocument();
-        expect(within(account).getByText('b.example.com')).toBeInTheDocument();
     });
 
     it('keeps the main screen when offline', async () => {

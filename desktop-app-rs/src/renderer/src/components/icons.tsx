@@ -100,6 +100,23 @@ export const DimensionsIcon = ({ orientation }: { orientation: VideoOrientation 
 );
 export const BitrateIcon = () => <Glyph name="bitrate" />;
 export const UploadedIcon = () => <Glyph name="uploaded" />;
+/** Sign-out glyph (door frame with an outgoing arrow), drawn as a 20px stroke icon. */
+export const SignOutIcon = () => (
+    <svg
+        className="icon"
+        viewBox="0 0 20 20"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+        focusable="false"
+    >
+        <path d="M8 3.5H5.5A1.5 1.5 0 0 0 4 5v10a1.5 1.5 0 0 0 1.5 1.5H8" />
+        <path d="M8.5 10h8M13.5 7l3 3-3 3" />
+    </svg>
+);
 export const CheckIcon = () => <Glyph name="check" />;
 export const CloseIcon = () => <Glyph name="close" />;
 export const ChevronLeftIcon = () => <Glyph name="chevronLeft" />;

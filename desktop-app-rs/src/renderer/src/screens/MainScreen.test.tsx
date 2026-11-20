@@ -1,7 +1,7 @@
 import { screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
-import { makeJob } from '../testing/fakeApi';
-import { renderApp } from '../testing/renderApp';
+import { describe, expect, it, vi } from 'vitest';
+import { makeJob, makeSummary } from '../testing/fakeApi';
+import { push, renderApp } from '../testing/renderApp';
 
 const ITEMS = ['Home', 'Queue', 'Library', 'Settings', 'About'];
 
@@ -74,7 +74,7 @@ describe('App shell navigation', () => {
         expect(screen.getByRole('tab', { name: /Home/ })).not.toHaveTextContent('1');
     });
 
-    it('shows the signed-in username and site in the sidebar footer', async () => {
+    it('shows the signed-in username without the site host in the sidebar footer', async () => {
         await renderApp({
             auth: { status: 'signed_in', username: 'alice', siteUrl: 'https://site.example.com' },
         });
@@ -82,7 +82,80 @@ describe('App shell navigation', () => {
         const account = screen.getByRole('group', { name: 'Account' });
 
         expect(within(account).getByText('alice')).toBeInTheDocument();
-        expect(within(account).getByText('site.example.com')).toBeInTheDocument();
+        expect(within(account).getByText('Signed in')).toBeInTheDocument();
+        expect(within(account).queryByText('site.example.com')).not.toBeInTheDocument();
+    });
+
+    it('falls back to Account when there is no username', async () => {
+        await renderApp({ auth: { status: 'signed_in', siteUrl: 'https://site.example.com' } });
+
+        expect(
+            within(screen.getByRole('group', { name: 'Account' })).getByText('Account'),
+        ).toBeInTheDocument();
+    });
+
+    it('shows a Sign out button right in the footer, with no popup menu', async () => {
+        await renderApp();
+
+        const account = screen.getByRole('group', { name: 'Account' });
+        const button = within(account).getByRole('button', { name: 'Sign out' });
+
+        expect(button).toHaveAttribute('title', 'Sign out');
+        expect(button).not.toHaveAttribute('aria-haspopup');
+        expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    });
+
+    it('signs out from the footer button when no job is running', async () => {
+        const { fake, user } = await renderApp();
+        const logout = vi.spyOn(fake.api.auth, 'logout');
+
+        await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+        expect(logout).toHaveBeenCalled();
+        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+    });
+
+    it('asks for confirmation before signing out while jobs run', async () => {
+        const { fake, user } = await renderApp({
+            jobs: [makeJob({ state: 'uploading', canCancel: true })],
+        });
+        const logout = vi.spyOn(fake.api.auth, 'logout');
+
+        push(() => fake.emitSummary(makeSummary({ running: 1 })));
+        await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+        const dialog = screen.getByRole('alertdialog', { name: 'Sign out now?' });
+
+        expect(dialog).toHaveTextContent('1 video is still being processed');
+        expect(logout).not.toHaveBeenCalled();
+
+        await user.click(within(dialog).getByRole('button', { name: 'Sign out' }));
+        expect(logout).toHaveBeenCalled();
+    });
+
+    it('keeps the user signed in when Stay signed in is chosen', async () => {
+        const { fake, user } = await renderApp({
+            jobs: [makeJob({ state: 'uploading', canCancel: true })],
+        });
+        const logout = vi.spyOn(fake.api.auth, 'logout');
+
+        push(() => fake.emitSummary(makeSummary({ running: 1 })));
+        await user.click(screen.getByRole('button', { name: 'Sign out' }));
+        await user.click(screen.getByRole('button', { name: 'Stay signed in' }));
+
+        expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+        expect(logout).not.toHaveBeenCalled();
+    });
+
+    it('shows an error toast when signing out fails', async () => {
+        const { fake, user } = await renderApp();
+
+        vi.spyOn(fake.api.auth, 'logout').mockRejectedValue(new Error('x'));
+        await user.click(screen.getByRole('button', { name: 'Sign out' }));
+
+        expect(
+            await screen.findByText(/Could not sign out\. Please try again\./),
+        ).toBeInTheDocument();
     });
 
     it('shows the Offline chip in the top bar', async () => {
