@@ -914,24 +914,39 @@ progress::-moz-progress-bar {
 }
 
 .sidebar-footer {
-    display: flex;
-    gap: var(--space-3);
-    align-items: center;
+    position: relative;
     min-width: 0;
-    padding: var(--space-3) var(--space-2) 0;
+    padding: var(--space-3) 0 0;
     border-top: 1px solid var(--border);
+}
+
+.account-card {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: var(--space-2) var(--space-3);
+    align-items: center;
+    padding: var(--space-3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface-raised);
+}
+
+.account-signout {
+    grid-column: 1 / -1;
+    justify-content: center;
+    width: 100%;
 }
 
 .avatar {
     display: grid;
     flex: none;
-    width: 2rem;
-    height: 2rem;
+    width: 2.5rem;
+    height: 2.5rem;
     place-items: center;
     border-radius: var(--radius-pill);
     background: var(--primary-container);
     color: var(--on-primary-container);
-    font-size: var(--text-caption);
+    font-size: var(--text-body);
     font-weight: var(--weight-semibold);
 }
 
@@ -943,17 +958,18 @@ progress::-moz-progress-bar {
     line-height: var(--lh-caption);
 }
 
-.account-name,
-.account-site {
+.account-name {
     overflow: hidden;
+    color: var(--on-surface);
+    font-size: var(--text-subtitle);
+    font-weight: var(--weight-semibold);
+    line-height: var(--lh-body);
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
-.account-name {
-    color: var(--on-surface);
-    font-size: var(--text-body);
-    line-height: var(--lh-body);
+.account-sub {
+    color: var(--on-surface-muted);
 }
 
 .workspace {
@@ -1093,7 +1109,30 @@ progress::-moz-progress-bar {
     }
 
     .sidebar-footer {
-        padding: var(--space-3) 0 0;
+        width: 100%;
+    }
+
+    /* Rail: no card, just the avatar over an icon-only Sign out button. */
+    .account-card {
+        grid-template-columns: auto;
+        justify-items: center;
+        padding: 0;
+        border: 0;
+        background: none;
+    }
+
+    .account-signout {
+        width: 2.75rem;
+        padding: var(--space-1);
+    }
+
+    .account-signout-label {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
     }
 
     .topbar {
@@ -1119,30 +1158,70 @@ progress::-moz-progress-bar {
 /* ---- settings and about -------------------------------------------------------------------- */
 
 .settings {
+    max-width: 52rem;
+}
+
+/* Single stacked column: Video processing above R2 storage. */
+.settings-columns {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
     gap: var(--space-4);
-    align-items: stretch;
 }
 
-.settings-signed-in {
-    margin: var(--space-4) 0 0;
+/* Each card is its own container so the field grid adapts to the card width, not the viewport. */
+.settings .card {
+    container: settings-card / inline-size;
 }
 
-.settings-actions {
+.settings .form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-3) var(--space-4);
+}
+
+.settings .form-grid > .field {
+    margin-top: 0;
+    align-content: start;
+}
+
+.settings .form-grid > .field-span {
+    grid-column: 1 / -1;
+}
+
+.settings .row {
+    flex-wrap: wrap;
+}
+
+.settings .row > input {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+
+.settings .form-footer {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+    align-items: center;
+    justify-content: space-between;
+    margin-top: var(--space-4);
+}
+
+.settings .form-footer > .help {
+    flex: 1 1 12rem;
+    margin: 0;
+}
+
+.settings .form-actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--space-2);
-    align-items: center;
-    margin-top: var(--space-2);
+    justify-content: flex-end;
+    margin-left: auto;
 }
 
-.settings-actions + .help {
-    margin: var(--space-2) 0 0;
-}
-
-.settings > .card-wide {
-    grid-column: 1 / -1;
+@container settings-card (max-width: 34rem) {
+    .settings .form-grid {
+        grid-template-columns: minmax(0, 1fr);
+    }
 }
 
 .r2-status {
@@ -3357,8 +3436,9 @@ button.status-count:hover {
     gap: var(--space-3) var(--space-4);
 }
 
-.home-overview-sub {
-    color: var(--on-surface-muted);
+/* The username in the greeting is highlighted with the primary accent. */
+.greeting-name {
+    color: var(--primary);
 }
 
 .home-overview-activity {

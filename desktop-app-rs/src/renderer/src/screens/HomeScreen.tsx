@@ -45,7 +45,6 @@ import {
     formatRelativeTime,
     plural,
     qualityTier,
-    siteHost,
     stageLabel,
 } from '../lib/format';
 import { needsAttention, queueGroup, sortJobsForQueue } from '../lib/queueOrder';
@@ -235,7 +234,7 @@ function eventTime(item: LogItem): string | null {
 }
 
 export function HomeScreen() {
-    const { api, auth, settings, jobs, summary } = useApp();
+    const { api, auth, jobs, summary } = useApp();
     const { openTab, openLibraryVideo } = useNavigation();
     const quick = useQuickActions();
     const now = useNow();
@@ -352,7 +351,6 @@ export function HomeScreen() {
     // A finished upload adds a video: refresh quietly (no loading states).
     useJobFinished(() => void loadAll(true));
 
-    const host = siteHost(auth.siteUrl ?? settings?.siteUrl);
     const greeting = greetingFor(new Date().getHours());
     const runningJobs = sortJobsForQueue(jobs).filter((job) => queueGroup(job.state) === 1);
     const attention = jobs.filter((job) => needsAttention(job.state)).length;
@@ -371,14 +369,19 @@ export function HomeScreen() {
     return (
         <section className="home" aria-labelledby="home-heading">
             <SectionCard
-                title={auth.username === undefined ? greeting : `${greeting}, ${auth.username}`}
+                title={
+                    auth.username === undefined ? (
+                        greeting
+                    ) : (
+                        <>
+                            {greeting}, <span className="greeting-name">{auth.username}</span>
+                        </>
+                    )
+                }
                 size="lg"
                 className="home-overview"
                 description={
                     <>
-                        <p className="home-overview-sub">
-                            {host === '' ? 'Signed in' : `${host} · Signed in`}
-                        </p>
                         {activity !== null && (
                             <p className="home-overview-activity" data-testid="home-activity">
                                 {activity}

@@ -152,7 +152,7 @@ describe('Home screen header', () => {
         expect(
             screen.getByRole('heading', { level: 2, name: `${text}, alice` }),
         ).toBeInTheDocument();
-        expect(screen.getByText('site.example.com · Signed in')).toBeInTheDocument();
+        expect(within(overviewCard()).queryByText(/Signed in/)).toBeNull();
     });
 
     it('is the default tab after sign-in', async () => {
@@ -929,7 +929,8 @@ describe('Home bento dashboard', () => {
         expect(document.querySelector('svg.home-hero-art')).toBeNull();
 
         expect(within(hero).getByRole('heading', { level: 2 })).toHaveTextContent(/alice/);
-        expect(within(hero).getByText('site.example.com · Signed in')).toBeInTheDocument();
+        expect(within(hero).queryByText(/Signed in/)).toBeNull();
+        expect(within(hero).queryByText(/site\.example\.com/)).toBeNull();
     });
 
     it('has no quick-action tile row, only a Refresh control in the overview', async () => {
