@@ -1,13 +1,13 @@
 # HLS R2 Studio desktop app (Tauri 2)
 
-Tauri 2 port of `../desktop-app` (Electron). The React renderer in `src/renderer` and the shared
+Tauri 2 port of the former Electron desktop app (since removed from the repository). The React renderer in `src/renderer` and the shared
 types in `src/shared` are copies of the Electron app's; the only renderer change is
 `src/renderer/src/tauriApi.ts`, which installs `window.hlsApi` on top of Tauri `invoke`/`listen`
 (the command/event name mapping table is at the top of that file).
 
 ## Layout
 
-- `src/renderer`, `src/shared` - React UI and shared DTOs (copied from `desktop-app`).
+- `src/renderer`, `src/shared` - React UI and shared DTOs (ported from the former Electron app).
 - `src-tauri/src/dto.rs` - serde mirrors of the DTOs in `src/shared/ipc.ts`.
 - `src-tauri/src/store/` - atomic, debounced JSON store (`json_store.rs`), the `store.json` document and its validation (`app_store.rs`, `model.rs`), history cap (`history.rs`).
 - `src-tauri/src/logger/` - redaction rules (`redact.rs`) and the rotating file logger (`file_logger.rs`).
@@ -17,11 +17,11 @@ types in `src/shared` are copies of the Electron app's; the only renderer change
 - `src-tauri/src/config/` - `ConfigService` (site config in memory only, stale-result protection).
 - `src-tauri/src/auth/` - `AuthService` state machine (sign-in, sign-out, startup restore, 401, offline, races).
 - `src-tauri/src/ipc/` - one Tauri command per IPC channel (22 channels, all registered in `ipc/mod.rs`), payload validation (`validate.rs`) and the sender guard applied to every command (`guard.rs`).
-- `src-tauri/src/ffmpeg/` - the ffmpeg layer (port of `desktop-app/src/main/ffmpeg`): `args.rs` (ffmpeg/ffprobe argument builders and timeouts), `binaries.rs` (where the executables are), `kill_tree.rs` (process-tree kill), `probe_parse.rs` / `progress.rs` (ffprobe output and `-progress pipe:1` parsers), `runner.rs` (async spawn with timeout, cancellation, streamed output, stderr tail), `errors.rs` (typed pipeline failure reused by the later pipeline milestone), `self_check.rs` (startup check feeding `diagnostics_get`), `file_names.rs` (job temp file names).
-- `src-tauri/src/pipeline/` - the job pipeline (port of `desktop-app/src/main/pipeline`; driven by the job queue (M6)):
+- `src-tauri/src/ffmpeg/` - the ffmpeg layer (ported from the former Electron app): `args.rs` (ffmpeg/ffprobe argument builders and timeouts), `binaries.rs` (where the executables are), `kill_tree.rs` (process-tree kill), `probe_parse.rs` / `progress.rs` (ffprobe output and `-progress pipe:1` parsers), `runner.rs` (async spawn with timeout, cancellation, streamed output, stderr tail), `errors.rs` (typed pipeline failure reused by the later pipeline milestone), `self_check.rs` (startup check feeding `diagnostics_get`), `file_names.rs` (job temp file names).
+- `src-tauri/src/pipeline/` - the job pipeline (ported from the former Electron app; driven by the job queue (M6)):
   - M4a: pure helpers `slug.rs` (+ `ascii_table.rs`, generated from Laravel `Str::ascii`, checked against `tests/fixtures/slug-golden.json`), `public_id.rs`, `prefix.rs`, `file_names.rs`, `progress_model.rs`, `pool.rs`, `thumbnail_plan.rs`, `storyboard_plan.rs`; `register.rs` (payload, validation, error mapping, `RegisterClient`; the HTTP call is `SiteClient::register`); `deps.rs` (traits for the process runner, filesystem, clock, object store, sleeper, free space); `steps/` (`probe`, `transcode`, `thumbnail`, `storyboard`, `score`, `cleanup`, `image_size`, `env`, `fs_util`).
   - M5: `run.rs` (`run_pipeline`, `retry_register`, `register_with_retry`, `PipelineDeps`, `PipelineHooks`), `resume.rs` (`resume_upload`), `steps/upload.rs` (upload step + network-wait policy), `upload/` (`plan.rs`, `classify_error.rs`), `s3/` (`sigv4.rs`, `client.rs` = the R2 client, `xml.rs`), `job_dir.rs` (job temp dir creation and safe removal), `fault.rs` (failure -> `PipelineError` mapping); test doubles in `testing/` (`fakes.rs`, `fake_s3_server.rs`).
-- `src-tauri/src/queue/` - the job queue (M6, port of `desktop-app/src/main/queue`): `job_queue.rs` (`JobQueue`), `backend.rs` (side-effect seams `QueueBackend` / `QueueContext` and their real implementations over the M5 pipeline), `job_dto.rs` (`JobRecord` -> `JobDto`, no paths/payloads/secrets), `file_validation.rs`, `states.rs`; fakes and tests in `testing.rs`, `tests.rs` (port of `jobQueue.test.ts`), `concurrency_tests.rs`, `smoke_tests.rs`.
+- `src-tauri/src/queue/` - the job queue (M6, ported from the former Electron app): `job_queue.rs` (`JobQueue`), `backend.rs` (side-effect seams `QueueBackend` / `QueueContext` and their real implementations over the M5 pipeline), `job_dto.rs` (`JobRecord` -> `JobDto`, no paths/payloads/secrets), `file_validation.rs`, `states.rs`; fakes and tests in `testing.rs`, `tests.rs` (port of `jobQueue.test.ts`), `concurrency_tests.rs`, `smoke_tests.rs`.
 - `src-tauri/src/lifecycle/` - `quit.rs` (`QuitCoordinator`, port of `quitCoordinator.ts`), `app_deps.rs` (its Tauri implementation), `startup.rs` (fatal startup error box + non-zero exit).
 - `src-tauri/src/desktop.rs` - OS integration used by `jobs_open_embed` / `jobs_copy` / `app_open_notices` (https-only URL checks, `ShellExecuteW` on Windows, clipboard through `arboard`).
 - `src-tauri/src/window.rs` - main window (1100x720, min 760x520, hidden until loaded, navigation locked, no new windows).
