@@ -5,18 +5,19 @@ import { push, renderApp } from '../testing/renderApp';
 const signedOut = { status: 'signed_out' } as const;
 
 describe('Login screen', () => {
-    it('shows the login form when signed out, with the fixed site shown read-only', async () => {
+    it('shows the login form when signed out, with only the two fields', async () => {
         await renderApp({ auth: signedOut });
 
         expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
+        // The logo is decorative: present in the DOM but hidden from the accessibility tree.
+        expect(screen.queryByRole('img')).not.toBeInTheDocument();
+        expect(document.querySelector('.login-brand img.brand-mark')).toHaveAttribute('aria-hidden', 'true');
         // No site URL input: the site is fixed when the app is built.
         expect(screen.queryByLabelText('Site URL')).not.toBeInTheDocument();
         expect(screen.getAllByRole('textbox')).toHaveLength(1);
-        expect(screen.getByText('Signing in to', { exact: false })).toHaveTextContent(
-            'Signing in to site.example.com',
-        );
+        expect(screen.queryByText('Signing in to', { exact: false })).not.toBeInTheDocument();
+        expect(screen.queryByLabelText('Stay signed in')).not.toBeInTheDocument();
         expect(screen.getByLabelText('Password')).toHaveAttribute('type', 'password');
-        expect(screen.getByLabelText('Stay signed in')).toBeChecked();
         expect(screen.queryByRole('tablist')).not.toBeInTheDocument();
     });
 
@@ -32,16 +33,15 @@ describe('Login screen', () => {
         expect(await screen.findByRole('tablist')).toBeInTheDocument();
     });
 
-    it('passes staySignedIn=false when the box is unchecked', async () => {
+    it('always signs in with staySignedIn=true', async () => {
         const { fake, user } = await renderApp({ auth: signedOut });
         const login = vi.spyOn(fake.api.auth, 'login');
 
         await user.type(screen.getByLabelText('Username'), 'alice');
         await user.type(screen.getByLabelText('Password'), 'secret');
-        await user.click(screen.getByLabelText('Stay signed in'));
         await user.click(screen.getByRole('button', { name: 'Sign in' }));
 
-        expect(login).toHaveBeenCalledWith('alice', 'secret', false);
+        expect(login).toHaveBeenCalledWith('alice', 'secret', true);
     });
 
     it('submits with Enter and shows the returned error inline', async () => {

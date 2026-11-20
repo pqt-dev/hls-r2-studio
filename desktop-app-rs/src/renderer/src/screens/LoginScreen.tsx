@@ -1,17 +1,13 @@
 import { useId, useState, type FormEvent } from 'react';
 import { BrandMark } from '../components/icons';
-import { siteHost } from '../lib/format';
 import { useApp } from '../state/AppProvider';
 
 export function LoginScreen() {
-    const { api, auth, settings } = useApp();
+    const { api, auth } = useApp();
     const ids = { user: useId(), pass: useId(), error: useId() };
 
-    // The site is fixed when the app is built: it is shown, never asked for.
-    const host = siteHost(auth.siteUrl ?? settings?.siteUrl);
     const [username, setUsername] = useState('');
     const [password, setPassword] = useState('');
-    const [staySignedIn, setStaySignedIn] = useState(true);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -34,7 +30,7 @@ export function LoginScreen() {
         setSubmitting(true);
 
         try {
-            const result = await api.auth.login(username.trim(), password, staySignedIn);
+            const result = await api.auth.login(username.trim(), password, true);
 
             if (result.status !== 'signed_in' && result.status !== 'offline') {
                 setError(result.error ?? 'Sign-in failed. Please try again.');
@@ -52,16 +48,9 @@ export function LoginScreen() {
         <main className="login">
             <form className="card login-card" onSubmit={(event) => void submit(event)} noValidate>
                 <div className="login-brand">
-                    <BrandMark size={2.25} />
-                    <p className="wordmark">HLS R2 Studio</p>
+                    <BrandMark size={3} />
                 </div>
                 <h1 className="login-title">Sign in</h1>
-                <p className="muted">Use the account you have on your HLS site.</p>
-                {host !== '' && (
-                    <p className="muted small">
-                        Signing in to <strong>{host}</strong>
-                    </p>
-                )}
 
                 <div className="field">
                     <label htmlFor={ids.user}>Username</label>
@@ -86,16 +75,6 @@ export function LoginScreen() {
                         onChange={(event) => setPassword(event.target.value)}
                     />
                 </div>
-
-                <label className="check">
-                    <input
-                        type="checkbox"
-                        checked={staySignedIn}
-                        disabled={busy}
-                        onChange={(event) => setStaySignedIn(event.target.checked)}
-                    />
-                    <span>Stay signed in</span>
-                </label>
 
                 <div id={ids.error} className="form-error" role="alert">
                     {shownError}
