@@ -13,7 +13,7 @@ export function SectionCard({
     className,
     children,
 }: {
-    title: string;
+    title: ReactNode;
     /** Heading level: 2 on screens with no page heading above, 3 inside a titled screen. */
     level?: 2 | 3;
     action?: ReactNode;

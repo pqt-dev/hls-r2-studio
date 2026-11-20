@@ -41,14 +41,16 @@ describe('Settings screen', () => {
 
         await openTab(user, 'Settings');
 
-        expect(screen.getByLabelText('Embed site URL')).toHaveValue('https://site.example.com');
-        // The site is fixed when the app is built: it can be read but not edited or changed.
-        expect(screen.getByLabelText('Embed site URL')).toHaveAttribute('readonly');
-        expect(screen.queryByRole('button', { name: 'Change site' })).not.toBeInTheDocument();
-        expect(screen.getByLabelText('Temporary folder')).toHaveValue('C:\\Temp\\hls-r2-studio');
-        expect(screen.getByLabelText('Temporary folder')).toHaveAttribute('readonly');
-        expect(screen.getByLabelText('Parallel jobs')).toHaveValue('1');
-        expect(screen.getByText(/much more CPU/)).toBeInTheDocument();
+        expect(screen.queryByLabelText('Embed site URL')).not.toBeInTheDocument();
+        // Sign out lives in the sidebar footer, not on the Settings page.
+        expect(
+            within(screen.getByRole('tabpanel')).queryByRole('button', { name: 'Sign out' }),
+        ).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Refresh site settings' })).toBeNull();
+        expect(screen.getByLabelText('Working folder')).toHaveValue('C:\\Temp\\hls-r2-studio');
+        expect(screen.getByLabelText('Working folder')).toHaveAttribute('readonly');
+        expect(screen.getByLabelText('Videos processed at once')).toHaveValue('1');
+        expect(screen.getByText(/uses more CPU, memory and disk/)).toBeInTheDocument();
     });
 
     it('disables the folder while jobs run, and explains why', async () => {
@@ -72,8 +74,8 @@ describe('Settings screen', () => {
         await user.click(screen.getByRole('button', { name: /Choose folder/ }));
 
         expect(set).toHaveBeenCalledWith({ tmpRoot: 'D:\\video-temp' });
-        expect(await screen.findByText('Temporary folder saved.')).toBeInTheDocument();
-        expect(screen.getByLabelText('Temporary folder')).toHaveValue('D:\\video-temp');
+        expect(await screen.findByText('Working folder saved.')).toBeInTheDocument();
+        expect(screen.getByLabelText('Working folder')).toHaveValue('D:\\video-temp');
     });
 
     it('does nothing when the folder dialog is cancelled', async () => {
@@ -97,90 +99,34 @@ describe('Settings screen', () => {
         await user.click(screen.getByRole('button', { name: /Choose folder/ }));
 
         expect(await screen.findByRole('alert')).toHaveTextContent('not writable');
-        expect(screen.getByLabelText('Temporary folder')).toHaveValue('C:\\Temp\\hls-r2-studio');
+        expect(screen.getByLabelText('Working folder')).toHaveValue('C:\\Temp\\hls-r2-studio');
     });
 
-    it('saves the parallel jobs setting on change', async () => {
+    it('saves the videos processed at once setting on change', async () => {
         const { fake, user } = await renderApp();
         const set = vi.spyOn(fake.api.settings, 'set');
 
         await openTab(user, 'Settings');
-        await user.selectOptions(screen.getByLabelText('Parallel jobs'), '2');
+        await user.selectOptions(screen.getByLabelText('Videos processed at once'), '2');
 
         expect(set).toHaveBeenCalledWith({ maxConcurrent: 2 });
-        expect(await screen.findByText('Parallel jobs saved.')).toBeInTheDocument();
+        expect(await screen.findByText('Setting saved.')).toBeInTheDocument();
         // It is a toast, not inline text next to the field.
-        expect(screen.getByLabelText('Parallel jobs').closest('.field')).not.toHaveTextContent(
-            'Parallel jobs saved.',
-        );
-        expect(screen.getByLabelText('Parallel jobs')).toHaveValue('2');
+        expect(
+            screen.getByLabelText('Videos processed at once').closest('.field'),
+        ).not.toHaveTextContent('Setting saved.');
+        expect(screen.getByLabelText('Videos processed at once')).toHaveValue('2');
     });
 
-    it('shows a toast when saving the parallel jobs setting fails', async () => {
+    it('shows a toast when saving the videos processed at once setting fails', async () => {
         const { fake, user } = await renderApp();
 
         vi.spyOn(fake.api.settings, 'set').mockResolvedValue({ ok: false, error: 'Nope.' });
         await openTab(user, 'Settings');
-        await user.selectOptions(screen.getByLabelText('Parallel jobs'), '2');
+        await user.selectOptions(screen.getByLabelText('Videos processed at once'), '2');
 
         expect(await screen.findByText(/Nope\./)).toBeInTheDocument();
-        expect(screen.getByLabelText('Parallel jobs')).toHaveValue('1');
-    });
-
-    it('copies the site URL and confirms with a toast', async () => {
-        const { user } = await renderApp();
-        const writeText = vi.fn().mockResolvedValue(undefined);
-
-        await openTab(user, 'Settings');
-        Object.defineProperty(navigator, 'clipboard', {
-            value: { writeText },
-            configurable: true,
-        });
-        await user.click(screen.getByRole('button', { name: 'Copy site URL' }));
-
-        expect(writeText).toHaveBeenCalledWith('https://site.example.com');
-        expect(await screen.findByText('Link copied.')).toBeInTheDocument();
-    });
-
-    it('signs out immediately when no job is running', async () => {
-        const { fake, user } = await renderApp();
-        const logout = vi.spyOn(fake.api.auth, 'logout');
-
-        await openTab(user, 'Settings');
-        await user.click(screen.getByRole('button', { name: 'Sign out' }));
-
-        expect(logout).toHaveBeenCalled();
-        expect(await screen.findByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
-    });
-
-    it('asks for confirmation before signing out while jobs run', async () => {
-        const { fake, user } = await renderApp({
-            jobs: [makeJob({ state: 'uploading', canCancel: true })],
-        });
-        const logout = vi.spyOn(fake.api.auth, 'logout');
-
-        push(() => fake.emitSummary(makeSummary({ running: 1 })));
-        await openTab(user, 'Settings');
-        await user.click(screen.getByRole('button', { name: 'Sign out' }));
-
-        const dialog = screen.getByRole('alertdialog', { name: 'Sign out now?' });
-
-        expect(dialog).toHaveTextContent('1 video is still being processed');
-        expect(logout).not.toHaveBeenCalled();
-
-        await user.click(within(dialog).getByRole('button', { name: 'Sign out' }));
-        expect(logout).toHaveBeenCalled();
-    });
-
-    it('reloads the configuration', async () => {
-        const { fake, user } = await renderApp();
-        const reload = vi.spyOn(fake.api.auth, 'reloadConfig');
-
-        await openTab(user, 'Settings');
-        await user.click(screen.getByRole('button', { name: 'Refresh site settings' }));
-
-        expect(reload).toHaveBeenCalled();
-        expect(await screen.findByText('Site settings refreshed.')).toBeInTheDocument();
+        expect(screen.getByLabelText('Videos processed at once')).toHaveValue('1');
     });
 });
 

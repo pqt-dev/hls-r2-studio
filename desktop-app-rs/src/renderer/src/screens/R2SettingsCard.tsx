@@ -196,7 +196,7 @@ export function R2SettingsCard() {
 
     if (load.kind !== 'ready') {
         return (
-            <SectionCard title="R2 storage" level={3} className="card-wide">
+            <SectionCard title="R2 storage" level={3}>
                 {load.kind === 'loading' ? (
                     <p className="muted" role="status" aria-busy="true">
                         {'Loading…'}
@@ -227,7 +227,7 @@ export function R2SettingsCard() {
     };
 
     return (
-        <SectionCard title="R2 storage" level={3} className="card-wide">
+        <SectionCard title="R2 storage" level={3}>
             <p className="r2-status">
                 {status.configured ? (
                     <span className="chip chip-done">
@@ -252,169 +252,175 @@ export function R2SettingsCard() {
             )}
 
             <form onSubmit={(event) => void save(event)} autoComplete="off" noValidate>
-                <div className="field">
-                    <label htmlFor={ids.endpoint}>Endpoint</label>
-                    <input
-                        id={ids.endpoint}
-                        type="text"
-                        autoComplete="off"
-                        spellCheck={false}
-                        value={form.endpoint}
-                        aria-invalid={fieldErrors.endpoint !== undefined}
-                        onChange={(event) => change('endpoint', event.target.value)}
-                    />
-                    <Feedback message={fieldError('endpoint')} />
-                </div>
+                <div className="form-grid">
+                    <div className="field field-span">
+                        <label htmlFor={ids.endpoint}>Endpoint</label>
+                        <input
+                            id={ids.endpoint}
+                            type="text"
+                            autoComplete="off"
+                            spellCheck={false}
+                            value={form.endpoint}
+                            aria-invalid={fieldErrors.endpoint !== undefined}
+                            onChange={(event) => change('endpoint', event.target.value)}
+                        />
+                        <Feedback message={fieldError('endpoint')} />
+                    </div>
 
-                <div className="field">
-                    <label htmlFor={ids.bucket}>Bucket</label>
-                    <input
-                        id={ids.bucket}
-                        type="text"
-                        autoComplete="off"
-                        spellCheck={false}
-                        value={form.bucket}
-                        aria-invalid={fieldErrors.bucket !== undefined}
-                        onChange={(event) => change('bucket', event.target.value)}
-                    />
-                    <Feedback message={fieldError('bucket')} />
-                </div>
+                    <div className="field">
+                        <label htmlFor={ids.bucket}>Bucket</label>
+                        <input
+                            id={ids.bucket}
+                            type="text"
+                            autoComplete="off"
+                            spellCheck={false}
+                            value={form.bucket}
+                            aria-invalid={fieldErrors.bucket !== undefined}
+                            onChange={(event) => change('bucket', event.target.value)}
+                        />
+                        <Feedback message={fieldError('bucket')} />
+                    </div>
 
-                <div className="field">
-                    <label htmlFor={ids.url}>Public URL</label>
-                    <input
-                        id={ids.url}
-                        type="text"
-                        autoComplete="off"
-                        spellCheck={false}
-                        value={form.url}
-                        aria-invalid={fieldErrors.url !== undefined}
-                        onChange={(event) => change('url', event.target.value)}
-                    />
-                    <Feedback message={fieldError('url')} />
-                </div>
+                    <div className="field">
+                        <label htmlFor={ids.url}>Public URL</label>
+                        <input
+                            id={ids.url}
+                            type="text"
+                            autoComplete="off"
+                            spellCheck={false}
+                            value={form.url}
+                            aria-invalid={fieldErrors.url !== undefined}
+                            onChange={(event) => change('url', event.target.value)}
+                        />
+                        <Feedback message={fieldError('url')} />
+                    </div>
 
-                <div className="field">
-                    <label htmlFor={ids.key}>Access Key ID</label>
-                    {status.accessKeyLast4 !== null && !editing.accessKeyId ? (
-                        <div className="row">
-                            <input
-                                id={ids.key}
-                                type="text"
-                                readOnly
-                                autoComplete="off"
-                                value={`${MASKED_KEY_PREFIX}${status.accessKeyLast4}`}
-                            />
-                            <button
-                                type="button"
-                                className="btn"
-                                aria-label="Change Access Key ID"
-                                onClick={() => startEditing('accessKeyId')}
-                            >
-                                Change
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="row">
-                            <input
-                                id={ids.key}
-                                type="text"
-                                autoComplete="off"
-                                spellCheck={false}
-                                required={status.accessKeyLast4 === null}
-                                value={form.accessKeyId}
-                                aria-invalid={fieldErrors.accessKeyId !== undefined}
-                                onChange={(event) => change('accessKeyId', event.target.value)}
-                            />
-                            {status.accessKeyLast4 !== null && (
+                    <div className="field">
+                        <label htmlFor={ids.key}>Access Key ID</label>
+                        {status.accessKeyLast4 !== null && !editing.accessKeyId ? (
+                            <div className="row">
+                                <input
+                                    id={ids.key}
+                                    type="text"
+                                    readOnly
+                                    autoComplete="off"
+                                    value={`${MASKED_KEY_PREFIX}${status.accessKeyLast4}`}
+                                />
                                 <button
                                     type="button"
                                     className="btn"
-                                    aria-label="Cancel changing Access Key ID"
-                                    onClick={() => cancelEditing('accessKeyId')}
+                                    aria-label="Change Access Key ID"
+                                    onClick={() => startEditing('accessKeyId')}
                                 >
-                                    Cancel
+                                    Change
                                 </button>
-                            )}
-                        </div>
-                    )}
-                    <Feedback message={fieldError('accessKeyId')} />
-                </div>
+                            </div>
+                        ) : (
+                            <div className="row">
+                                <input
+                                    id={ids.key}
+                                    type="text"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    required={status.accessKeyLast4 === null}
+                                    value={form.accessKeyId}
+                                    aria-invalid={fieldErrors.accessKeyId !== undefined}
+                                    onChange={(event) => change('accessKeyId', event.target.value)}
+                                />
+                                {status.accessKeyLast4 !== null && (
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        aria-label="Cancel changing Access Key ID"
+                                        onClick={() => cancelEditing('accessKeyId')}
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        <Feedback message={fieldError('accessKeyId')} />
+                    </div>
 
-                <div className="field">
-                    <label htmlFor={ids.secret}>Secret Access Key</label>
-                    {status.hasSecret && !editing.secretAccessKey ? (
-                        <div className="row">
-                            <input
-                                id={ids.secret}
-                                type="text"
-                                readOnly
-                                autoComplete="off"
-                                value={MASKED_SECRET}
-                            />
-                            <button
-                                type="button"
-                                className="btn"
-                                aria-label="Change Secret Access Key"
-                                onClick={() => startEditing('secretAccessKey')}
-                            >
-                                Change
-                            </button>
-                        </div>
-                    ) : (
-                        <div className="row">
-                            <input
-                                id={ids.secret}
-                                type="password"
-                                autoComplete="off"
-                                spellCheck={false}
-                                required={!status.hasSecret}
-                                value={form.secretAccessKey}
-                                aria-invalid={fieldErrors.secretAccessKey !== undefined}
-                                onChange={(event) => change('secretAccessKey', event.target.value)}
-                            />
-                            {status.hasSecret && (
+                    <div className="field">
+                        <label htmlFor={ids.secret}>Secret Access Key</label>
+                        {status.hasSecret && !editing.secretAccessKey ? (
+                            <div className="row">
+                                <input
+                                    id={ids.secret}
+                                    type="text"
+                                    readOnly
+                                    autoComplete="off"
+                                    value={MASKED_SECRET}
+                                />
                                 <button
                                     type="button"
                                     className="btn"
-                                    aria-label="Cancel changing Secret Access Key"
-                                    onClick={() => cancelEditing('secretAccessKey')}
+                                    aria-label="Change Secret Access Key"
+                                    onClick={() => startEditing('secretAccessKey')}
                                 >
-                                    Cancel
+                                    Change
                                 </button>
-                            )}
-                        </div>
-                    )}
-                    <Feedback message={fieldError('secretAccessKey')} />
+                            </div>
+                        ) : (
+                            <div className="row">
+                                <input
+                                    id={ids.secret}
+                                    type="password"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    required={!status.hasSecret}
+                                    value={form.secretAccessKey}
+                                    aria-invalid={fieldErrors.secretAccessKey !== undefined}
+                                    onChange={(event) =>
+                                        change('secretAccessKey', event.target.value)
+                                    }
+                                />
+                                {status.hasSecret && (
+                                    <button
+                                        type="button"
+                                        className="btn"
+                                        aria-label="Cancel changing Secret Access Key"
+                                        onClick={() => cancelEditing('secretAccessKey')}
+                                    >
+                                        Cancel
+                                    </button>
+                                )}
+                            </div>
+                        )}
+                        <Feedback message={fieldError('secretAccessKey')} />
+                    </div>
                 </div>
 
-                <div className="row row-wrap">
-                    <button
-                        type="submit"
-                        className="btn btn-primary"
-                        disabled={working || busyJobs}
-                        aria-busy={saving}
-                    >
-                        {saving ? 'Saving…' : 'Save R2 settings'}
-                    </button>
-                    <button
-                        type="button"
-                        className="btn"
-                        disabled={working || dirty || !status.configured}
-                        aria-busy={testing}
-                        aria-describedby={ids.help}
-                        onClick={() => void testConnection()}
-                    >
-                        {testing ? 'Testing…' : 'Test connection'}
-                    </button>
+                <div className="form-footer">
+                    <p id={ids.help} className="help">
+                        {busyJobs
+                            ? 'The settings cannot be saved while videos are being processed.'
+                            : dirty
+                              ? 'Save your changes first: the test uses the saved settings, not the values in this form.'
+                              : 'Test connection checks the saved settings.'}
+                    </p>
+                    <div className="form-actions">
+                        <button
+                            type="submit"
+                            className="btn btn-primary"
+                            disabled={working || busyJobs}
+                            aria-busy={saving}
+                        >
+                            {saving ? 'Saving…' : 'Save R2 settings'}
+                        </button>
+                        <button
+                            type="button"
+                            className="btn"
+                            disabled={working || dirty || !status.configured}
+                            aria-busy={testing}
+                            aria-describedby={ids.help}
+                            onClick={() => void testConnection()}
+                        >
+                            {testing ? 'Testing…' : 'Test connection'}
+                        </button>
+                    </div>
                 </div>
-                <p id={ids.help} className="help">
-                    {busyJobs
-                        ? 'The settings cannot be saved while videos are being processed.'
-                        : dirty
-                          ? 'Save your changes first: the test uses the saved settings, not the values in this form.'
-                          : 'Test connection checks the saved settings.'}
-                </p>
                 <Feedback message={formError} />
             </form>
         </SectionCard>
