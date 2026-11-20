@@ -11,7 +11,7 @@ describe('Tabs', () => {
     it('switches panels and supports arrow-key navigation', async () => {
         const { user } = await renderApp();
 
-        // Home is the first and default tab; Settings is now the fifth (Logs sits before it).
+        // Home is the first and default tab; Settings is the fourth.
         expect(screen.getByRole('tab', { name: 'Home' })).toHaveAttribute('aria-selected', 'true');
 
         screen.getByRole('tab', { name: 'Home' }).focus();
@@ -20,7 +20,7 @@ describe('Tabs', () => {
             'aria-selected',
             'true',
         );
-        await user.keyboard('{ArrowRight}{ArrowRight}');
+        await user.keyboard('{ArrowRight}');
         expect(screen.getByRole('tab', { name: 'Settings' })).toHaveAttribute(
             'aria-selected',
             'true',

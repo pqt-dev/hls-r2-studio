@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { makeJob } from '../testing/fakeApi';
 import { renderApp } from '../testing/renderApp';
 
-const ITEMS = ['Home', 'Queue', 'Library', 'Logs', 'Settings', 'About'];
+const ITEMS = ['Home', 'Queue', 'Library', 'Settings', 'About'];
 
 describe('App shell navigation', () => {
     it('renders the nav items as a vertical tablist with the first one active', async () => {
@@ -27,7 +27,7 @@ describe('App shell navigation', () => {
         expect(screen.getByRole('tab', { name: 'About' })).toHaveClass('tab-secondary');
     });
 
-    it('moves the selection with ArrowDown, ArrowUp, End and Home across the six tabs', async () => {
+    it('moves the selection with ArrowDown, ArrowUp, End and Home across the five tabs', async () => {
         const { user } = await renderApp();
         const selected = () =>
             screen.getAllByRole('tab').find((tab) => tab.getAttribute('aria-selected') === 'true');
@@ -47,7 +47,7 @@ describe('App shell navigation', () => {
         await user.keyboard('{ArrowLeft}');
         expect(selected()).toHaveTextContent('About');
         await user.keyboard('{ArrowUp}{ArrowUp}');
-        expect(selected()).toHaveTextContent('Logs');
+        expect(selected()).toHaveTextContent('Library');
         await user.keyboard('{Home}');
         expect(selected()).toHaveTextContent('Home');
         await user.keyboard('{End}');
@@ -61,10 +61,10 @@ describe('App shell navigation', () => {
             ITEMS.map((name) => [name, name === 'Home' ? 0 : -1]),
         );
 
-        await user.click(screen.getByRole('tab', { name: 'Logs' }));
-        expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('tabindex', '0');
+        await user.click(screen.getByRole('tab', { name: 'Library' }));
+        expect(screen.getByRole('tab', { name: 'Library' })).toHaveAttribute('tabindex', '0');
         expect(screen.getByRole('tab', { name: 'Home' })).toHaveAttribute('tabindex', '-1');
-        expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'tab-logs');
+        expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', 'tab-library');
     });
 
     it('keeps the Queue count badge on the Queue tab', async () => {

@@ -20,7 +20,7 @@ export function Pagination({
     page: number;
     lastPage: number;
     total: number;
-    /** What is counted in the summary ("3 videos", "3 logs"). */
+    /** What is counted in the summary ("3 videos"). */
     noun?: string;
     onPageChange: (page: number) => void;
     /** Accessible name of the navigation (two pagers on one screen need different names). */

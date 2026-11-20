@@ -4,7 +4,6 @@ import {
     BrandMark,
     HomeIcon,
     LibraryIcon,
-    LogsIcon,
     QueueIcon,
     SettingsIcon,
 } from '../components/icons';
@@ -14,7 +13,6 @@ import { NavigationContext, type NavigationApi, type Tab } from '../state/Naviga
 import { AboutScreen } from './AboutScreen';
 import { HomeScreen } from './HomeScreen';
 import { LibraryScreen } from './LibraryScreen';
-import { LogsScreen } from './LogsScreen';
 import { QueueScreen } from './QueueScreen';
 import { SettingsScreen } from './SettingsScreen';
 
@@ -28,7 +26,6 @@ const TABS: ReadonlyArray<{
     { id: 'home', label: 'Home', icon: <HomeIcon duo />, group: 'Workspace' },
     { id: 'queue', label: 'Queue', icon: <QueueIcon duo /> },
     { id: 'library', label: 'Library', icon: <LibraryIcon duo /> },
-    { id: 'logs', label: 'Logs', icon: <LogsIcon duo /> },
     { id: 'settings', label: 'Settings', icon: <SettingsIcon duo />, group: 'System' },
     { id: 'about', label: 'About', icon: <AboutIcon duo /> },
 ];
@@ -188,7 +185,6 @@ export function MainScreen() {
                             {tab === 'home' && <HomeScreen />}
                             {tab === 'queue' && <QueueScreen />}
                             {tab === 'library' && <LibraryScreen initialVideoId={libraryVideoId} />}
-                            {tab === 'logs' && <LogsScreen />}
                             {tab === 'settings' && <SettingsScreen />}
                             {tab === 'about' && <AboutScreen />}
                         </div>

@@ -262,7 +262,7 @@ describe('Home screen cards', () => {
             'Total videos: 100, open Library',
             'Ready: 85, open Library',
             'Processing: 10, open Library',
-            'Failed: 5, open Logs',
+            'Failed: 5, open Library',
         ]) {
             expect(within(videos).getByRole('button', { name })).toBeInTheDocument();
         }
@@ -270,7 +270,7 @@ describe('Home screen cards', () => {
         expect(within(videos).getByRole('button', { name: 'Ready: 85, open Library' })).toHaveClass(
             'stat-ready',
         );
-        expect(within(videos).getByRole('button', { name: 'Failed: 5, open Logs' })).toHaveClass(
+        expect(within(videos).getByRole('button', { name: 'Failed: 5, open Library' })).toHaveClass(
             'stat-failed',
         );
     });
@@ -282,7 +282,7 @@ describe('Home screen cards', () => {
             'Total videos: 100, open Library',
             'Ready: 85, open Library',
             'Processing: 10, open Library',
-            'Failed: 5, open Logs',
+            'Failed: 5, open Library',
         ].map((name) => {
             const circle = within(overviewCard())
                 .getByRole('button', { name })
@@ -303,7 +303,7 @@ describe('Home screen cards', () => {
         ['Total videos: 100, open Library', 'Library'],
         ['Ready: 85, open Library', 'Library'],
         ['Processing: 10, open Library', 'Library'],
-        ['Failed: 5, open Logs', 'Logs'],
+        ['Failed: 5, open Library', 'Library'],
     ])('the %s tile opens the %s tab', async (name, tab) => {
         const { user } = await openHome();
 
@@ -669,16 +669,6 @@ describe('Home screen needs attention', () => {
             'true',
         );
     });
-
-    it('View logs opens the Logs tab', async () => {
-        const { user } = await openHome();
-
-        await user.click(
-            within(card('Needs your attention')).getByRole('button', { name: 'View logs' }),
-        );
-
-        expect(screen.getByRole('tab', { name: 'Logs' })).toHaveAttribute('aria-selected', 'true');
-    });
 });
 
 describe('Home screen loading and failures', () => {
@@ -997,7 +987,7 @@ describe('Home bento dashboard', () => {
             within(attention).getByText('4 local videos on this computer need attention.'),
         ).toBeInTheDocument();
         expect(within(attention).getAllByRole('button', { name: 'View in Queue' })).toHaveLength(1);
-        expect(within(attention).getByRole('button', { name: 'View logs' })).toBeInTheDocument();
+        expect(within(attention).queryByRole('button', { name: 'View logs' })).toBeNull();
     });
 
     it('says "All caught up" when nothing needs attention', async () => {

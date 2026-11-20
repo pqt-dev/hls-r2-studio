@@ -57,7 +57,6 @@ interface IconProps {
 export const HomeIcon = ({ duo }: IconProps) => <Glyph name="home" duo={duo} />;
 export const QueueIcon = ({ duo }: IconProps) => <Glyph name="queue" duo={duo} />;
 export const LibraryIcon = ({ duo }: IconProps) => <Glyph name="library" duo={duo} />;
-export const LogsIcon = ({ duo }: IconProps) => <Glyph name="logs" duo={duo} />;
 export const SettingsIcon = ({ duo }: IconProps) => <Glyph name="settings" duo={duo} />;
 export const AboutIcon = ({ duo }: IconProps) => <Glyph name="about" duo={duo} />;
 export const SearchIcon = () => <Glyph name="search" />;

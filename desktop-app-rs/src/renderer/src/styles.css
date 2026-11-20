@@ -531,12 +531,6 @@ button.stat-tile:hover {
     background-image: linear-gradient(var(--state-hover), var(--state-hover));
 }
 
-/* Filter tile (Logs): the chosen one keeps the primary container and a ring. */
-.stat-tile.is-selected {
-    background-color: var(--primary-container);
-    box-shadow: inset 0 0 0 2px var(--primary);
-}
-
 button.stat-tile:focus-visible {
     outline: 2px solid var(--focus-ring);
     outline-offset: -2px;
@@ -1031,14 +1025,13 @@ progress::-moz-progress-bar {
 }
 
 /*
- * List/grid screens (Library, Home, Queue, Logs) use the full window width (no 60rem cap); form
+ * List/grid screens (Library, Home, Queue) use the full window width (no 60rem cap); form
  * screens (Settings, About) stay capped at 45rem and left-aligned. The panel's padding stays. The
  * open detail page caps itself (.detail), see below.
  */
 .panel-inner:has(.library),
 .panel-inner:has(.home),
-.panel-inner:has(.queue),
-.panel-inner:has(.logs) {
+.panel-inner:has(.queue) {
     max-width: none;
 }
 
@@ -3702,130 +3695,6 @@ button.status-count:hover {
     gap: var(--space-2) var(--space-3);
     align-items: center;
     justify-content: space-between;
-}
-
-/* ---- logs ---------------------------------------------------------------------------------- */
-
-/* Layout only: the tiles, cards, rows, progress and pager are the shared pieces. */
-.logs {
-    display: grid;
-    gap: var(--space-4);
-    align-content: start;
-}
-
-.logs-head {
-    display: flex;
-    gap: var(--space-3);
-    align-items: flex-start;
-}
-
-.logs-stats {
-    display: grid;
-    flex: 1 1 auto;
-    grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
-    gap: var(--space-3);
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-/* The tile brings its own padding: the card only frames it. */
-.logs-stats > li {
-    padding: 0;
-    overflow: hidden;
-}
-
-.log-columns {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-4);
-    align-items: start;
-}
-
-@media (min-width: 62.5rem) {
-    .log-columns {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-}
-
-.log-card-count {
-    margin-left: auto;
-}
-
-.log-list {
-    display: grid;
-    gap: var(--space-1);
-    margin: 0;
-    padding: 0;
-    list-style: none;
-}
-
-.log-row {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--space-1) var(--space-3);
-    align-items: center;
-    padding: var(--space-3) var(--space-2);
-}
-
-.log-row-main {
-    display: grid;
-    gap: var(--space-1);
-    min-width: 0;
-}
-
-.log-row-head {
-    display: flex;
-    gap: var(--space-2);
-    align-items: baseline;
-    justify-content: space-between;
-    min-width: 0;
-}
-
-.log-row-head .job-meta {
-    flex: none;
-}
-
-.log-row-status {
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-1) var(--space-2);
-    align-items: center;
-}
-
-.log-error-message {
-    color: var(--danger);
-    font-size: var(--text-caption);
-    line-height: var(--lh-caption);
-    overflow-wrap: anywhere;
-}
-
-.log-row-actions {
-    display: flex;
-    gap: var(--space-2);
-    align-items: center;
-}
-
-/* The expanded error detail spans the whole row under its columns. */
-.log-row-detail {
-    grid-column: 1 / -1;
-}
-
-.log-row-detail .log {
-    margin-top: 0;
-}
-
-.log-processing-summary {
-    display: grid;
-    gap: var(--space-2);
-    margin-bottom: var(--space-3);
-}
-
-/* A queued video is dimmed, the same cue as the web Logs page. */
-.log-row.is-queued .log-row-head,
-.log-row.is-queued .job-progress {
-    opacity: 0.6;
 }
 
 /* ---- high contrast: make every boundary and state visible ---------------------------------- */

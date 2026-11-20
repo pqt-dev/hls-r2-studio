@@ -192,8 +192,8 @@ const STATS: readonly StatSpec[] = [
         label: 'Failed',
         tone: 'danger',
         icon: <StatFailedIcon />,
-        to: 'logs',
-        toLabel: 'Logs',
+        to: 'library',
+        toLabel: 'Library',
     },
 ];
 
@@ -545,18 +545,7 @@ export function HomeScreen() {
                         )}
                     </CardShell>
 
-                    <CardShell
-                        title="Needs your attention"
-                        action={
-                            <button
-                                type="button"
-                                className="btn btn-sm btn-text"
-                                onClick={() => openTab('logs')}
-                            >
-                                View logs
-                            </button>
-                        }
-                    >
+                    <CardShell title="Needs your attention">
                         <CardBody state={logs} onRetry={() => load({ logs: true }, false)}>
                             {(slice) => {
                                 const failed = slice.errors.slice(0, ATTENTION_COUNT);

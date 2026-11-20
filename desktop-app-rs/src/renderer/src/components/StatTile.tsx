@@ -15,7 +15,6 @@ export function StatTile({
     onClick,
     actionLabel,
     alert = false,
-    selected,
     className,
 }: {
     icon: ReactNode;
@@ -29,11 +28,9 @@ export function StatTile({
     actionLabel?: string;
     /** Highlight the tile as a problem (danger tint). */
     alert?: boolean;
-    /** Toggle state of a tile used as a filter (button with `aria-pressed`); omit for plain links. */
-    selected?: boolean;
     className?: string;
 }) {
-    const classes = `stat-tile stat-tile-${tone}${alert ? ' is-danger' : ''}${selected === true ? ' is-selected' : ''}${className === undefined ? '' : ` ${className}`}`;
+    const classes = `stat-tile stat-tile-${tone}${alert ? ' is-danger' : ''}${className === undefined ? '' : ` ${className}`}`;
     const body = (
         <>
             <span className="stat-icon" aria-hidden="true">
@@ -55,7 +52,6 @@ export function StatTile({
             aria-label={
                 actionLabel === undefined ? undefined : `${label}: ${value}, ${actionLabel}`
             }
-            aria-pressed={selected}
             onClick={onClick}
         >
             {body}
